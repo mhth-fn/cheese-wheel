@@ -1373,7 +1373,7 @@
     <nav class="nav">
       <button class="nav-btn active" data-page="wheel">🎡 Колесо</button>
       <button class="nav-btn" data-page="watched">📋 Просмотренные</button>
-      <a class="nav-btn-link" href="http://localhost:8096" target="_blank">🎬 Jellyfin</a>
+      <a class="nav-btn-link" href="http://31.130.128.212:8096" target="_blank">🎬 Jellyfin</a>
       <button class="nav-btn" data-page="games">🎮 Игры</button>
       <div class="nav-user">
         <span>👤</span>
@@ -1412,7 +1412,7 @@
     <nav class="nav">
       <button class="nav-btn" data-page="wheel">🎡 Колесо</button>
       <button class="nav-btn active" data-page="watched">📋 Просмотренные</button>
-      <a class="nav-btn-link" href="http://localhost:8096" target="_blank">🎬 Jellyfin</a>
+      <a class="nav-btn-link" href="http://31.130.128.212:8096" target="_blank">🎬 Jellyfin</a>
       <button class="nav-btn" data-page="games">🎮 Игры</button>
       <div class="nav-user">
         <span>👤</span>
@@ -1441,7 +1441,7 @@
     <nav class="nav">
       <button class="nav-btn" data-page="wheel">🎡 Колесо</button>
       <button class="nav-btn" data-page="watched">📋 Просмотренные</button>
-      <a class="nav-btn-link" href="http://localhost:8096" target="_blank">🎬 Jellyfin</a>
+      <a class="nav-btn-link" href="http://31.130.128.212:8096" target="_blank">🎬 Jellyfin</a>
       <button class="nav-btn active" data-page="games">🎮 Игры</button>
       <div class="nav-user">
         <span>👤</span>
@@ -1637,8 +1637,16 @@
 
     // ========== ИНИЦИАЛИЗАЦИЯ ==========
     async function init() {
-      await loadUsers();
-      await loadSettings();
+      try {
+        await loadUsers();
+      } catch (err) {
+        console.error('Ошибка загрузки пользователей:', err);
+      }
+      try {
+        await loadSettings();
+      } catch (err) {
+        console.error('Ошибка загрузки настроек:', err);
+      }
       setupEventListeners();
       setupSocketListeners();
       
@@ -1794,7 +1802,6 @@
       const userName = isGuest ? 'Гость' : currentUser.name;
       document.getElementById('current-user-name').textContent = userName;
       document.getElementById('current-user-name-2').textContent = userName;
-      document.getElementById('current-user-name-3').textContent = userName;
       document.getElementById('current-user-name-4').textContent = userName;
       showPage('wheel');
       loadWheelMovies();
@@ -2340,7 +2347,6 @@
 
       document.getElementById('logout-btn').addEventListener('click', logout);
       document.getElementById('logout-btn-2').addEventListener('click', logout);
-      document.getElementById('logout-btn-3').addEventListener('click', logout);
       document.getElementById('logout-btn-4').addEventListener('click', logout);
 
       // Форма добавления на странице колеса
