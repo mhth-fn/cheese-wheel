@@ -190,6 +190,112 @@
       border-color: #ffd700;
     }
 
+    /* ========== ВЕСЕННЯЯ ТЕМА ========== */
+    body.theme-spring {
+      background:
+        radial-gradient(ellipse 80px 70px at 5% 10%, rgba(144, 238, 144, 0.3) 40%, transparent 70%),
+        radial-gradient(ellipse 120px 100px at 90% 5%, rgba(255, 182, 193, 0.3) 40%, transparent 70%),
+        radial-gradient(ellipse 60px 50px at 80% 80%, rgba(144, 238, 144, 0.3) 40%, transparent 70%),
+        radial-gradient(ellipse 100px 80px at 15% 75%, rgba(255, 182, 193, 0.3) 40%, transparent 70%),
+        radial-gradient(ellipse 50px 60px at 50% 90%, rgba(144, 238, 144, 0.3) 40%, transparent 70%),
+        radial-gradient(ellipse 70px 60px at 95% 45%, rgba(255, 218, 185, 0.3) 40%, transparent 70%),
+        radial-gradient(ellipse 40px 50px at 3% 45%, rgba(255, 182, 193, 0.3) 40%, transparent 70%),
+        linear-gradient(180deg, #e8f5e9 0%, #c8e6c9 30%, #fff9c4 70%, #ffe0b2 100%);
+    }
+
+    /* Лепестки (только для весенней темы) */
+    .petals {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1000;
+      overflow: hidden;
+      display: none;
+    }
+
+    body.theme-spring .petals {
+      display: block;
+    }
+
+    .petal {
+      position: absolute;
+      top: -30px;
+      font-size: 1.2rem;
+      animation: petalFall linear infinite;
+      opacity: 0.8;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
+    }
+
+    @keyframes petalFall {
+      0% { transform: translateY(-30px) translateX(0) rotate(0deg); }
+      25% { transform: translateY(25vh) translateX(20px) rotate(90deg); }
+      50% { transform: translateY(50vh) translateX(-15px) rotate(180deg); }
+      75% { transform: translateY(75vh) translateX(25px) rotate(270deg); }
+      100% { transform: translateY(100vh) translateX(-10px) rotate(360deg); }
+    }
+
+    /* Весенние кнопки */
+    body.theme-spring .nav-btn,
+    body.theme-spring .auth-btn,
+    body.theme-spring .spin-btn,
+    body.theme-spring .add-movie-btn,
+    body.theme-spring .auth-password-btn {
+      background: linear-gradient(135deg, #66bb6a 0%, #43a047 100%);
+      border-color: #2e7d32;
+    }
+
+    body.theme-spring .nav-btn:hover,
+    body.theme-spring .auth-btn:hover,
+    body.theme-spring .add-movie-btn:hover,
+    body.theme-spring .auth-password-btn:hover {
+      background: linear-gradient(135deg, #81c784 0%, #66bb6a 100%);
+    }
+
+    body.theme-spring .nav-btn.active,
+    body.theme-spring .auth-btn.selected {
+      background: linear-gradient(135deg, #ec407a 0%, #d81b60 100%);
+    }
+
+    body.theme-spring .spin-btn {
+      box-shadow: 0 6px 0 #1b5e20, 0 0 20px rgba(102, 187, 106, 0.3);
+    }
+
+    body.theme-spring .watched-table th {
+      background: linear-gradient(135deg, #66bb6a 0%, #43a047 100%);
+      border-bottom-color: #2e7d32;
+    }
+
+    body.theme-spring .watched-table th:hover {
+      background: linear-gradient(135deg, #81c784 0%, #66bb6a 100%);
+    }
+
+    body.theme-spring .wheel-center {
+      background: linear-gradient(135deg, #ec407a 0%, #d81b60 100%);
+      border-color: #fff;
+    }
+
+    body.theme-spring .wheel {
+      box-shadow: 0 0 0 10px #66bb6a, 0 0 0 14px #fff, 0 15px 40px rgba(0,0,0,0.2);
+    }
+
+    body.theme-spring .nav-user,
+    body.theme-spring .spin-duration,
+    body.theme-spring .auth-password-input {
+      border-color: #66bb6a;
+    }
+
+    body.theme-spring .movie-tag {
+      border-color: #66bb6a;
+    }
+
+    body.theme-spring .admin-btn {
+      background: linear-gradient(135deg, #66bb6a 0%, #43a047 100%);
+      border-color: #2e7d32;
+    }
+
     .page {
       display: none;
       min-height: 100vh;
@@ -206,6 +312,168 @@
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ========== TOAST УВЕДОМЛЕНИЯ ========== */
+    .toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 3000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    }
+
+    .toast {
+      background: rgba(255,255,255,0.97);
+      border-radius: 14px;
+      padding: 14px 22px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+      border-left: 5px solid var(--cheese-dark);
+      font-size: 0.95rem;
+      color: var(--text);
+      pointer-events: auto;
+      animation: toastIn 0.35s ease, toastOut 0.35s ease 2.65s forwards;
+      backdrop-filter: blur(10px);
+      max-width: 340px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .toast.toast-success { border-left-color: #27ae60; }
+    .toast.toast-error { border-left-color: #e74c3c; }
+    .toast.toast-info { border-left-color: #3498db; }
+
+    .toast-icon { font-size: 1.2rem; flex-shrink: 0; }
+
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateX(40px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    @keyframes toastOut {
+      from { opacity: 1; transform: translateX(0); }
+      to { opacity: 0; transform: translateX(40px); }
+    }
+
+    /* ========== ПОИСК ФИЛЬМОВ ========== */
+    .search-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255,255,255,0.95);
+      border: 3px solid var(--cheese-dark);
+      border-radius: 16px;
+      padding: 10px 18px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    }
+
+    .search-bar input {
+      flex: 1;
+      border: none;
+      outline: none;
+      font-family: 'Comfortaa', cursive;
+      font-size: 1rem;
+      background: transparent;
+      color: var(--text);
+    }
+
+    .search-bar input::placeholder {
+      color: var(--text-light);
+    }
+
+    .search-icon {
+      font-size: 1.2rem;
+      opacity: 0.5;
+    }
+
+    .search-clear {
+      background: none;
+      border: none;
+      font-size: 1.1rem;
+      cursor: pointer;
+      opacity: 0.4;
+      transition: opacity 0.2s;
+      display: none;
+    }
+
+    .search-clear.visible {
+      display: block;
+    }
+
+    .search-clear:hover {
+      opacity: 1;
+    }
+
+    /* ========== СТАТИСТИКА ========== */
+    .stats-panel {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-bottom: 25px;
+    }
+
+    .stat-card {
+      background: rgba(255,255,255,0.95);
+      border-radius: 16px;
+      padding: 20px;
+      text-align: center;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+      border: 2px solid var(--cheese-dark);
+      transition: transform 0.2s;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-2px);
+    }
+
+    .stat-card-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--crust);
+      margin-bottom: 4px;
+    }
+
+    .stat-card-label {
+      font-size: 0.85rem;
+      color: var(--text-light);
+    }
+
+    .stat-card-sub {
+      font-size: 0.8rem;
+      color: var(--text-light);
+      margin-top: 4px;
+      opacity: 0.7;
+    }
+
+    .stats-users {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .stats-user-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .stats-user-name {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .stats-user-avg {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--crust);
     }
 
     /* ========== АВТОРИЗАЦИЯ ========== */
@@ -1119,6 +1387,128 @@
       transform: translateY(-1px);
     }
 
+    /* ========== СТРАНИЦА ПИВА ========== */
+    .beer-page { padding: 20px; }
+    .beer-container { max-width: 900px; margin: 0 auto; }
+    .beer-title {
+      font-family: 'Caveat', cursive;
+      font-size: 2.5rem;
+      color: var(--text);
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .beer-form {
+      background: rgba(255,255,255,0.95);
+      border-radius: 20px;
+      padding: 25px;
+      margin-bottom: 25px;
+      box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+    }
+    .beer-form h3 {
+      margin-bottom: 15px;
+      font-size: 1.1rem;
+    }
+    .beer-form-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .beer-form-row input[type="text"],
+    .beer-form-row textarea {
+      flex: 1;
+      min-width: 200px;
+      padding: 10px 15px;
+      border: 2px solid var(--cheese-main);
+      border-radius: 12px;
+      font-family: 'Comfortaa', cursive;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.3s;
+    }
+    .beer-form-row input:focus,
+    .beer-form-row textarea:focus {
+      border-color: var(--cheese-dark);
+    }
+    .beer-form-row textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+    .beer-rating-select {
+      padding: 10px 15px;
+      border: 2px solid var(--cheese-main);
+      border-radius: 12px;
+      font-family: 'Comfortaa', cursive;
+      font-size: 0.9rem;
+      background: white;
+      min-width: 120px;
+    }
+    .beer-submit-btn {
+      padding: 10px 25px;
+      border: none;
+      border-radius: 12px;
+      background: var(--theme-btn);
+      color: white;
+      font-family: 'Comfortaa', cursive;
+      font-weight: 700;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .beer-submit-btn:hover {
+      background: var(--theme-btn-hover);
+      transform: translateY(-1px);
+    }
+    .beer-list { display: flex; flex-direction: column; gap: 15px; }
+    .beer-card {
+      background: rgba(255,255,255,0.95);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 3px 15px rgba(0,0,0,0.08);
+      position: relative;
+    }
+    .beer-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .beer-card-name {
+      font-weight: 700;
+      font-size: 1.15rem;
+      color: var(--text);
+    }
+    .beer-card-rating {
+      background: var(--cheese-main);
+      color: var(--text);
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.95rem;
+    }
+    .beer-card-comment {
+      color: var(--text-light);
+      font-size: 0.9rem;
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+    .beer-card-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+      color: var(--text-light);
+    }
+    .beer-card-delete {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1.1rem;
+      opacity: 0.5;
+      transition: opacity 0.2s;
+    }
+    .beer-card-delete:hover { opacity: 1; }
+
     /* ========== СТРАНИЦА ИГР ========== */
     .games-page { padding: 20px; }
     .games-container { max-width: 800px; margin: 0 auto; }
@@ -1326,6 +1716,9 @@
     <div class="garland-lights" id="garland-lights"></div>
   </div>
 
+  <!-- Лепестки (для весенней темы) -->
+  <div class="petals" id="petals"></div>
+
   <!-- Кнопка админ-панели (только для Сергея) -->
   <button class="admin-btn" id="admin-btn" title="Админ-панель">⚙️</button>
 
@@ -1350,6 +1743,14 @@
           </div>
           <span class="theme-option-check">✓</span>
         </div>
+        <div class="theme-option" data-theme="spring">
+          <span class="theme-option-icon">🌸</span>
+          <div class="theme-option-info">
+            <div class="theme-option-name">Весенняя тема</div>
+            <div class="theme-option-desc">Лепестки, зелёно-розовый дизайн</div>
+          </div>
+          <span class="theme-option-check">✓</span>
+        </div>
       </div>
     </div>
   </div>
@@ -1368,19 +1769,12 @@
     <button class="auth-guest-btn" id="auth-guest-btn">👀 Войти как гость</button>
   </div>
 
+  <!-- Toast контейнер -->
+  <div class="toast-container" id="toast-container"></div>
+
   <!-- Страница колеса -->
   <div id="wheel-page" class="page wheel-page">
-    <nav class="nav">
-      <button class="nav-btn active" data-page="wheel">🎡 Колесо</button>
-      <button class="nav-btn" data-page="watched">📋 Просмотренные</button>
-      <a class="nav-btn-link" href="http://31.130.128.212:8096" target="_blank">🎬 Jellyfin</a>
-      <button class="nav-btn" data-page="games">🎮 Игры</button>
-      <div class="nav-user">
-        <span>👤</span>
-        <span class="nav-user-name" id="current-user-name"></span>
-        <button class="nav-logout" id="logout-btn" title="Выйти">🚪</button>
-      </div>
-    </nav>
+    <nav class="nav" id="nav-wheel"></nav>
 
     <div class="wheel-container">
       <div class="wheel-wrapper">
@@ -1409,20 +1803,20 @@
 
   <!-- Страница просмотренных -->
   <div id="watched-page" class="page watched-page">
-    <nav class="nav">
-      <button class="nav-btn" data-page="wheel">🎡 Колесо</button>
-      <button class="nav-btn active" data-page="watched">📋 Просмотренные</button>
-      <a class="nav-btn-link" href="http://31.130.128.212:8096" target="_blank">🎬 Jellyfin</a>
-      <button class="nav-btn" data-page="games">🎮 Игры</button>
-      <div class="nav-user">
-        <span>👤</span>
-        <span class="nav-user-name" id="current-user-name-2"></span>
-        <button class="nav-logout" id="logout-btn-2" title="Выйти">🚪</button>
-      </div>
-    </nav>
+    <nav class="nav" id="nav-watched"></nav>
 
-    <h2 class="watched-title">🎬 Просмотренные фильмы </h2>
-    
+    <h2 class="watched-title">🎬 Просмотренные фильмы</h2>
+
+    <!-- Статистика -->
+    <div class="stats-panel" id="stats-panel"></div>
+
+    <!-- Поиск -->
+    <div class="search-bar" id="search-bar">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="search-input" placeholder="Поиск фильма...">
+      <button class="search-clear" id="search-clear">✕</button>
+    </div>
+
     <div class="watched-table-wrapper">
       <div id="watched-content"></div>
     </div>
@@ -1438,17 +1832,7 @@
 
   <!-- Страница игр -->
   <div id="games-page" class="page games-page">
-    <nav class="nav">
-      <button class="nav-btn" data-page="wheel">🎡 Колесо</button>
-      <button class="nav-btn" data-page="watched">📋 Просмотренные</button>
-      <a class="nav-btn-link" href="http://31.130.128.212:8096" target="_blank">🎬 Jellyfin</a>
-      <button class="nav-btn active" data-page="games">🎮 Игры</button>
-      <div class="nav-user">
-        <span>👤</span>
-        <span class="nav-user-name" id="current-user-name-4"></span>
-        <button class="nav-logout" id="logout-btn-4" title="Выйти">🚪</button>
-      </div>
-    </nav>
+    <nav class="nav" id="nav-games"></nav>
 
     <div class="games-container">
       <h2 class="games-title">🎮 Мини-игры</h2>
@@ -1506,6 +1890,45 @@
     </div>
   </div>
 
+  <!-- Страница обзоров пива -->
+  <div id="beer-page" class="page beer-page">
+    <nav class="nav" id="nav-beer"></nav>
+
+    <div class="beer-container">
+      <h2 class="beer-title">🍺 Обзоры пива</h2>
+
+      <div class="beer-form guest-hidden">
+        <h3>🍻 Добавить обзор</h3>
+        <form id="beer-form">
+          <div class="beer-form-row">
+            <input type="text" id="beer-name-input" placeholder="Название пива..." maxlength="200" required>
+            <select class="beer-rating-select" id="beer-rating-input" required>
+              <option value="">Оценка</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+              <option value="6">6</option>
+              <option value="7">7</option>
+              <option value="8">8</option>
+              <option value="9">9</option>
+              <option value="10">10</option>
+            </select>
+          </div>
+          <div class="beer-form-row">
+            <textarea id="beer-comment-input" placeholder="Комментарий (необязательно)..." maxlength="1000"></textarea>
+          </div>
+          <div class="beer-form-row">
+            <button type="submit" class="beer-submit-btn">Добавить обзор</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="beer-list" id="beer-list"></div>
+    </div>
+  </div>
+
   <!-- Модальное окно результата -->
   <div class="modal" id="result-modal">
     <div class="modal-content">
@@ -1523,6 +1946,38 @@
   </div>
 
   <script>
+    // ========== TOAST УВЕДОМЛЕНИЯ ==========
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      const icons = { success: '✅', error: '❌', info: 'ℹ️' };
+      toast.innerHTML = `<span class="toast-icon">${icons[type] || icons.info}</span><span>${message}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    // ========== РЕНДЕР НАВИГАЦИИ (DRY) ==========
+    function renderNav(activePage) {
+      const pages = ['wheel', 'watched', 'beer', 'games'];
+      const labels = { wheel: '🎡 Колесо', watched: '📋 Просмотренные', beer: '🍺 Пиво', games: '🎮 Игры' };
+      const userName = isGuest ? 'Гость' : (currentUser ? currentUser.name : '');
+
+      pages.forEach(page => {
+        const navEl = document.getElementById(`nav-${page}`);
+        if (!navEl) return;
+        navEl.innerHTML = `
+          ${pages.map(p => `<button class="nav-btn ${activePage === p ? 'active' : ''}" data-page="${p}">${labels[p]}</button>`).join('')}
+          <a class="nav-btn-link" href="http://31.130.128.212:8096" target="_blank">🎬 Jellyfin</a>
+          <div class="nav-user">
+            <span>👤</span>
+            <span class="nav-user-name">${escapeHtml(userName)}</span>
+            <button class="nav-logout" data-action="logout" title="Выйти">🚪</button>
+          </div>
+        `;
+      });
+    }
+
     // ========== ТЕМА И УКРАШЕНИЯ ==========
     let currentTheme = 'cheese';
 
@@ -1569,14 +2024,36 @@
       }
     }
 
+    function createPetals() {
+      const container = document.getElementById('petals');
+      if (!container || container.children.length > 0) return;
+
+      const petals = ['🌸', '🌺', '🌷', '🌼', '💮', '✿', '❀'];
+
+      for (let i = 0; i < 40; i++) {
+        const petal = document.createElement('div');
+        petal.className = 'petal';
+        petal.textContent = petals[Math.floor(Math.random() * petals.length)];
+        petal.style.left = Math.random() * 100 + '%';
+        petal.style.fontSize = (Math.random() * 0.8 + 0.8) + 'rem';
+        petal.style.animationDuration = (Math.random() * 8 + 7) + 's';
+        petal.style.animationDelay = (Math.random() * 12) + 's';
+        petal.style.opacity = Math.random() * 0.4 + 0.4;
+        container.appendChild(petal);
+      }
+    }
+
     function applyTheme(theme) {
       currentTheme = theme;
-      document.body.classList.remove('theme-cheese', 'theme-newyear');
-      
+      document.body.classList.remove('theme-cheese', 'theme-newyear', 'theme-spring');
+
       if (theme === 'newyear') {
         document.body.classList.add('theme-newyear');
         createSnowflakes();
         createGarland();
+      } else if (theme === 'spring') {
+        document.body.classList.add('theme-spring');
+        createPetals();
       }
       
       // Обновляем UI админ-панели
@@ -1736,6 +2213,16 @@
       socket.on('theme-changed', (data) => {
         applyTheme(data.theme);
       });
+
+      socket.on('beer-added', (review) => {
+        beerReviews.unshift(review);
+        renderBeerList();
+      });
+
+      socket.on('beer-deleted', (data) => {
+        beerReviews = beerReviews.filter(r => r.id !== data.id);
+        renderBeerList();
+      });
     }
 
     // ========== АВТОРИЗАЦИЯ ==========
@@ -1794,15 +2281,12 @@
 
     function completeLogin() {
       // Сохраняем сессию
-      const session = isGuest 
-        ? { isGuest: true } 
+      const session = isGuest
+        ? { isGuest: true }
         : { userId: currentUser.id };
       localStorage.setItem('cheeseWheelSession', JSON.stringify(session));
-      
-      const userName = isGuest ? 'Гость' : currentUser.name;
-      document.getElementById('current-user-name').textContent = userName;
-      document.getElementById('current-user-name-2').textContent = userName;
-      document.getElementById('current-user-name-4').textContent = userName;
+
+      renderNav('wheel');
       showPage('wheel');
       loadWheelMovies();
       updateUIForRole();
@@ -1846,7 +2330,7 @@
     // ========== НАВИГАЦИЯ ==========
     function showPage(page) {
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-      
+
       if (page === 'auth') {
         document.getElementById('auth-page').classList.add('active');
       } else if (page === 'wheel') {
@@ -1855,13 +2339,67 @@
       } else if (page === 'watched') {
         document.getElementById('watched-page').classList.add('active');
         loadWatchedMovies();
+        loadStats();
+      } else if (page === 'beer') {
+        document.getElementById('beer-page').classList.add('active');
+        loadBeerReviews();
       } else if (page === 'games') {
         document.getElementById('games-page').classList.add('active');
       }
 
-      document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.page === page);
-      });
+      renderNav(page);
+    }
+
+    // ========== ПОИСК ==========
+    let searchQuery = '';
+
+    // ========== СТАТИСТИКА ==========
+    async function loadStats() {
+      try {
+        const res = await fetch('/api/stats');
+        const stats = await res.json();
+        renderStats(stats);
+      } catch (err) {
+        console.error('Ошибка загрузки статистики:', err);
+      }
+    }
+
+    function renderStats(stats) {
+      const panel = document.getElementById('stats-panel');
+      if (!panel) return;
+
+      const topTitle = stats.top_rated ? escapeHtml(stats.top_rated.title) : '—';
+      const topRating = stats.top_rated ? stats.top_rated.avg_rating : '';
+      const worstTitle = stats.lowest_rated ? escapeHtml(stats.lowest_rated.title) : '—';
+      const worstRating = stats.lowest_rated ? stats.lowest_rated.avg_rating : '';
+
+      panel.innerHTML = `
+        <div class="stat-card">
+          <div class="stat-card-value">${stats.total_watched}</div>
+          <div class="stat-card-label">Просмотрено фильмов</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value">${topRating || '—'}</div>
+          <div class="stat-card-label">Лучший фильм</div>
+          <div class="stat-card-sub">${topTitle}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-value">${worstRating || '—'}</div>
+          <div class="stat-card-label">Худший фильм</div>
+          <div class="stat-card-sub">${worstTitle}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stats-users">
+            ${stats.per_user_avg.map(u => `
+              <div class="stats-user-item">
+                <span class="stats-user-name">${escapeHtml(u.name)}</span>
+                <span class="stats-user-avg">${u.avg_rating ?? '—'}</span>
+              </div>
+            `).join('')}
+          </div>
+          <div class="stat-card-label" style="margin-top:8px">Средние оценки</div>
+        </div>
+      `;
     }
 
     // ========== КОЛЕСО ==========
@@ -1991,15 +2529,30 @@
     }
 
     async function addMovie(title) {
-      await fetch('/api/wheel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title })
-      });
+      try {
+        const res = await fetch('/api/wheel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title })
+        });
+        if (res.ok) {
+          showToast(`«${title}» добавлен в колесо`, 'success');
+        } else {
+          const data = await res.json();
+          showToast(data.error || 'Ошибка добавления', 'error');
+        }
+      } catch (err) {
+        showToast('Ошибка соединения', 'error');
+      }
     }
 
     async function removeMovie(id) {
-      await fetch(`/api/wheel/${id}`, { method: 'DELETE' });
+      try {
+        await fetch(`/api/wheel/${id}`, { method: 'DELETE' });
+        showToast('Фильм удалён из колеса', 'info');
+      } catch (err) {
+        showToast('Ошибка удаления', 'error');
+      }
     }
 
     // ========== ЗВУК КОЛЕСА ==========
@@ -2175,23 +2728,39 @@
     }
 
     async function addWatchedMovie(title) {
-      await fetch('/api/watched', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title })
-      });
+      try {
+        const res = await fetch('/api/watched', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title })
+        });
+        if (res.ok) {
+          showToast(`«${title}» добавлен в просмотренные`, 'success');
+        } else {
+          const data = await res.json();
+          showToast(data.error || 'Ошибка добавления', 'error');
+        }
+      } catch (err) {
+        showToast('Ошибка соединения', 'error');
+      }
     }
 
     async function deleteWatchedMovie(id) {
       if (confirm('Удалить этот фильм из просмотренных?')) {
-        await fetch(`/api/watched/${id}`, { method: 'DELETE' });
-        await loadWatchedMovies();
+        try {
+          await fetch(`/api/watched/${id}`, { method: 'DELETE' });
+          await loadWatchedMovies();
+          loadStats();
+          showToast('Фильм удалён', 'info');
+        } catch (err) {
+          showToast('Ошибка удаления', 'error');
+        }
       }
     }
 
     function renderWatchedTable() {
       const container = document.getElementById('watched-content');
-      
+
       if (watchedMovies.length === 0) {
         container.innerHTML = `
           <div class="watched-empty">
@@ -2201,8 +2770,25 @@
         `;
         return;
       }
-      
-      const sorted = [...watchedMovies].sort((a, b) => {
+
+      // Фильтрация по поиску
+      let filtered = watchedMovies;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        filtered = watchedMovies.filter(m => m.title.toLowerCase().includes(q));
+      }
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="watched-empty">
+            <div class="watched-empty-icon">🔍</div>
+            <div class="watched-empty-text">Ничего не найдено по запросу «${escapeHtml(searchQuery)}»</div>
+          </div>
+        `;
+        return;
+      }
+
+      const sorted = [...filtered].sort((a, b) => {
         let aVal = a[sortColumn];
         let bVal = b[sortColumn];
         
@@ -2295,11 +2881,17 @@
     }
 
     async function setRating(movieId, userId, rating) {
-      await fetch('/api/ratings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ movie_id: movieId, user_id: userId, rating: parseInt(rating) })
-      });
+      try {
+        await fetch('/api/ratings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ movie_id: movieId, user_id: userId, rating: parseInt(rating) })
+        });
+        showToast(`Оценка ${rating} сохранена`, 'success');
+        loadStats();
+      } catch (err) {
+        showToast('Ошибка сохранения оценки', 'error');
+      }
     }
 
     function setSort(column) {
@@ -2339,15 +2931,14 @@
       // Кнопка гостя
       document.getElementById('auth-guest-btn').addEventListener('click', loginAsGuest);
 
-      document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          if (btn.dataset.page) showPage(btn.dataset.page);
-        });
-      });
+      // Навигация и logout через делегирование (DRY — навбар рендерится динамически)
+      document.addEventListener('click', (e) => {
+        const navBtn = e.target.closest('.nav-btn[data-page]');
+        if (navBtn) showPage(navBtn.dataset.page);
 
-      document.getElementById('logout-btn').addEventListener('click', logout);
-      document.getElementById('logout-btn-2').addEventListener('click', logout);
-      document.getElementById('logout-btn-4').addEventListener('click', logout);
+        const logoutBtn = e.target.closest('[data-action="logout"]');
+        if (logoutBtn) logout();
+      });
 
       // Форма добавления на странице колеса
       document.getElementById('add-movie-form').addEventListener('submit', async (e) => {
@@ -2423,6 +3014,109 @@
           setTheme(opt.dataset.theme);
         });
       });
+
+      // Поиск фильмов
+      const searchInput = document.getElementById('search-input');
+      const searchClear = document.getElementById('search-clear');
+      if (searchInput) {
+        searchInput.addEventListener('input', () => {
+          searchQuery = searchInput.value.trim();
+          searchClear.classList.toggle('visible', searchQuery.length > 0);
+          renderWatchedTable();
+        });
+      }
+      if (searchClear) {
+        searchClear.addEventListener('click', () => {
+          searchInput.value = '';
+          searchQuery = '';
+          searchClear.classList.remove('visible');
+          renderWatchedTable();
+        });
+      }
+
+      // Форма обзора пива
+      document.getElementById('beer-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (isGuest) return;
+        const name = document.getElementById('beer-name-input').value.trim();
+        const rating = document.getElementById('beer-rating-input').value;
+        const comment = document.getElementById('beer-comment-input').value.trim();
+        if (name && rating) {
+          await addBeerReview(name, parseInt(rating), comment);
+          document.getElementById('beer-name-input').value = '';
+          document.getElementById('beer-rating-input').value = '';
+          document.getElementById('beer-comment-input').value = '';
+        }
+      });
+
+      // Удаление обзора пива
+      document.getElementById('beer-list').addEventListener('click', (e) => {
+        if (isGuest) return;
+        const deleteBtn = e.target.closest('.beer-card-delete');
+        if (deleteBtn) {
+          deleteBeerReview(deleteBtn.dataset.id);
+        }
+      });
+    }
+
+    // ========== ОБЗОРЫ ПИВА ==========
+    let beerReviews = [];
+
+    async function loadBeerReviews() {
+      try {
+        const res = await fetch('/api/beer');
+        beerReviews = await res.json();
+        renderBeerList();
+      } catch (err) {
+        console.error('Ошибка загрузки обзоров пива:', err);
+      }
+    }
+
+    function renderBeerList() {
+      const container = document.getElementById('beer-list');
+      if (!beerReviews.length) {
+        container.innerHTML = '<p style="text-align:center;color:var(--text-light);padding:30px;">Пока нет обзоров. Будьте первым! 🍺</p>';
+        return;
+      }
+      container.innerHTML = beerReviews.map(r => `
+        <div class="beer-card">
+          <div class="beer-card-header">
+            <span class="beer-card-name">${escapeHtml(r.name)}</span>
+            <span class="beer-card-rating">${r.rating}/10</span>
+          </div>
+          ${r.comment ? `<div class="beer-card-comment">${escapeHtml(r.comment)}</div>` : ''}
+          <div class="beer-card-footer">
+            <span>👤 ${escapeHtml(r.user_name)} · ${new Date(r.created_at).toLocaleDateString('ru-RU')}</span>
+            ${!isGuest ? `<button class="beer-card-delete" data-id="${r.id}" title="Удалить">🗑️</button>` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function addBeerReview(name, rating, comment) {
+      try {
+        const res = await fetch('/api/beer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, rating: parseInt(rating), comment, user_id: currentUser.id })
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          showToast(err.error, 'error');
+          return;
+        }
+        showToast('Обзор добавлен!', 'success');
+      } catch (err) {
+        showToast('Ошибка при добавлении', 'error');
+      }
+    }
+
+    async function deleteBeerReview(id) {
+      try {
+        await fetch(`/api/beer/${id}`, { method: 'DELETE' });
+      } catch (err) {
+        showToast('Ошибка при удалении', 'error');
+      }
     }
 
     // ========== ИГРА: 100 МИНИ-ЛОШАДЕЙ ==========
@@ -2706,7 +3400,11 @@
           }
         }
         fieldGeometry.computeVertexNormals();
-        const fieldMaterial = new THREE.MeshLambertMaterial({ color: 0x3a7a30 });
+        const floorTexture = new THREE.TextureLoader().load('https://avatars.yandex.net/get-music-content/5966316/b2d0870b.a.22958228-1/600x600');
+        floorTexture.wrapS = THREE.RepeatWrapping;
+        floorTexture.wrapT = THREE.RepeatWrapping;
+        floorTexture.repeat.set(14, 10);
+        const fieldMaterial = new THREE.MeshLambertMaterial({ map: floorTexture });
         const field = new THREE.Mesh(fieldGeometry, fieldMaterial);
         field.rotation.x = -Math.PI / 2;
         field.receiveShadow = true;
