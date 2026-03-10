@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { TOTAL_ENEMIES } from '../game/constants.js';
+import { TOTAL_ENEMIES, BOSS } from '../game/constants.js';
 import { initTopDownMode, updateTopDown, renderTopDown } from '../game/topdown.js';
-import { initScene, createPlayerHand, spawnHorses, initPlayer3D, setupInputHandlers } from '../game/scene.js';
+import { initScene, createPlayerHand, spawnHorses, initPlayer3D, setupInputHandlers, createDuckMesh, createSpearHand } from '../game/scene.js';
 import { updatePlayer3D, updatePunchAnimation } from '../game/player3d.js';
 import { updateHorseAI, updateRagdolls, triggerHorseDeath } from '../game/horseAI.js';
+import { updateBossAI, triggerBossDamage, updateBossRagdoll } from '../game/bossAI.js';
 import { spawnParticles, updateParticles } from '../game/particles.js';
 
 export default function GamesPage() {
@@ -16,6 +17,7 @@ export default function GamesPage() {
   const [maxHp, setMaxHp] = useState(100);
   const [time, setTime] = useState('0:00');
   const [nearbyEnemies, setNearbyEnemies] = useState(0);
+  const [bossHp, setBossHp] = useState(null);
 
   const canvas2dRef = useRef(null);
   const canvas3dRef = useRef(null);
@@ -24,6 +26,7 @@ export default function GamesPage() {
   const timerIntervalRef = useRef(null);
   const pointerLockMsgRef = useRef(null);
   const staminaBarRef = useRef(null);
+  const bossBarRef = useRef(null);
   const THREERef = useRef(null);
 
   const gs = useRef({
@@ -36,7 +39,8 @@ export default function GamesPage() {
     lastTime: 0, particles: [],
     cameraShake: 0, cameraShakeDecay: 0.9,
     running: false, pointerLocked: false, handMesh: null,
-    _callbacks: null
+    _callbacks: null,
+    bossPhase: false, boss: null
   });
 
   // Cleanup on unmount
@@ -92,6 +96,8 @@ export default function GamesPage() {
   function cleanupGame() {
     const g = gs.current;
     g.running = false;
+    g.bossPhase = false;
+    g.boss = null;
     if (g.animationId) { cancelAnimationFrame(g.animationId); g.animationId = null; }
     if (musicRef.current) musicRef.current.src = '';
     if (document.pointerLockElement) document.exitPointerLock();
@@ -119,7 +125,7 @@ export default function GamesPage() {
     }
   }
 
-  function endGame(victory) {
+  function endGame(victory, bossKilled = false) {
     const g = gs.current;
     g.running = false;
     if (g.animationId) { cancelAnimationFrame(g.animationId); g.animationId = null; }
@@ -129,6 +135,7 @@ export default function GamesPage() {
     const elapsed = Math.floor((Date.now() - g.startTime) / 1000);
     setGameOverData({
       victory,
+      bossKilled,
       kills: g.kills,
       time: `${Math.floor(elapsed / 60)}:${(elapsed % 60).toString().padStart(2, '0')}`
     });
@@ -140,6 +147,65 @@ export default function GamesPage() {
     setPlaying(false);
     setGameOver(false);
     setGameOverData(null);
+    setBossHp(null);
+  }
+
+  // === BOSS PHASE ===
+  function startBossPhase() {
+    const g = gs.current;
+    const THREE = THREERef.current;
+    if (!THREE) return;
+
+    g.bossPhase = true;
+
+    // Clean up dead horse meshes
+    g.enemies.forEach(e => {
+      if (e.mesh) {
+        g.scene.remove(e.mesh);
+        e.mesh.traverse(child => {
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) child.material.dispose();
+        });
+      }
+    });
+    g.enemies = [];
+    g.enemyMeshes = [];
+
+    // Heal player
+    g.player.hp = g.player.maxHp;
+    g.player.stamina = g.player.maxStamina;
+    updateGameUI();
+
+    // Spawn duck boss
+    const { mesh: duckMesh, legs, head, tail, wings, neck } = createDuckMesh(THREE);
+    duckMesh.position.set(40, 0, 0);
+    g.scene.add(duckMesh);
+
+    g.boss = {
+      x: 40, z: 0,
+      vx: 0, vz: 0,
+      hp: BOSS.hp,
+      maxHp: BOSS.hp,
+      mesh: duckMesh,
+      legs, head, tail, wings, neck,
+      state: 'ROAR',
+      stateTimer: BOSS.roarTime,
+      attackCooldown: 0,
+      animPhase: 0,
+      dead: false,
+      deathVX: 0, deathVY: 0, deathVZ: 0,
+      deathSpin: 0, deathFrame: 0, deathMaxFrames: 120
+    };
+
+    setBossHp(BOSS.hp);
+
+    // Swap weapon to spear
+    createSpearHand(g, THREE);
+
+    // Change music
+    if (musicRef.current) {
+      musicRef.current.src = BOSS.musicUrl;
+    }
   }
 
   // === 3D UPDATE ORCHESTRATOR ===
@@ -163,21 +229,57 @@ export default function GamesPage() {
         g.cameraShake = 4.0;
         updateGameUI();
       },
+      onBossHit: () => {
+        if (!g.boss || g.boss.hp <= 0) return;
+        triggerBossDamage(g, THREE);
+        // Feather particles — yellow, white, orange
+        spawnParticles(g, THREE, g.boss.x, 1.5, g.boss.z, 0xF5DEB3, 20, 0.4);
+        spawnParticles(g, THREE, g.boss.x, 1.2, g.boss.z, 0xFFFFFF, 15, 0.3);
+        spawnParticles(g, THREE, g.boss.x, 1.0, g.boss.z, 0xFF8C00, 10, 0.35);
+        setBossHp(g.boss.hp);
+        if (bossBarRef.current) {
+          bossBarRef.current.style.width = `${(g.boss.hp / g.boss.maxHp) * 100}%`;
+        }
+        updateGameUI();
+      },
       onMiss: (x, z) => {
         spawnParticles(g, THREE, x, 1.2, z, 0xcccccc, 3, 0.05);
       }
     });
 
-    updateHorseAI(g, dt);
-    updateRagdolls(g);
+    if (g.bossPhase) {
+      // Boss phase
+      if (g.boss && g.boss.hp > 0 && !g.boss.dead) {
+        updateBossAI(g, dt);
+      }
+      if (g.boss && g.boss.dead) {
+        const done = updateBossRagdoll(g);
+        if (done) {
+          endGame(true, true);
+          return;
+        }
+      }
+      // Update boss HP bar directly
+      if (bossBarRef.current && g.boss) {
+        bossBarRef.current.style.width = `${(g.boss.hp / g.boss.maxHp) * 100}%`;
+      }
+    } else {
+      // Normal phase
+      updateHorseAI(g, dt);
+      updateRagdolls(g);
+
+      // Check for boss trigger
+      if (g.kills >= TOTAL_ENEMIES) {
+        startBossPhase();
+      }
+    }
+
     updateParticles(g);
 
     if (staminaBarRef.current) {
       staminaBarRef.current.style.width = `${g.player.stamina}%`;
     }
     setNearbyEnemies(g.player.nearbyEnemies);
-
-    if (g.kills >= TOTAL_ENEMIES) endGame(true);
   }
 
   function gameLoop() {
@@ -200,6 +302,8 @@ export default function GamesPage() {
   function initGame(selectedMode) {
     const g = gs.current;
     g.mode = selectedMode;
+    g.bossPhase = false;
+    g.boss = null;
 
     // Clean up previous state
     if (g.scene) {
@@ -259,6 +363,7 @@ export default function GamesPage() {
     }
 
     updateGameUI();
+    setBossHp(null);
     g.running = true;
 
     if (musicRef.current) {
@@ -276,8 +381,8 @@ export default function GamesPage() {
     setHp(100);
     setMaxHp(100);
     setTime('0:00');
-    setStamina(100);
     setNearbyEnemies(0);
+    setBossHp(null);
 
     if (mode === 'thirdperson' && !THREERef.current) {
       const script = document.createElement('script');
@@ -303,8 +408,8 @@ export default function GamesPage() {
     setHp(100);
     setMaxHp(100);
     setTime('0:00');
-    setStamina(100);
     setNearbyEnemies(0);
+    setBossHp(null);
     initGame(gs.current.mode);
   }
 
@@ -381,7 +486,7 @@ export default function GamesPage() {
             <div className="stat-item">
               ⏱️ <span>{time}</span>
             </div>
-            {gs.current.mode === 'thirdperson' && (
+            {gs.current.mode === 'thirdperson' && !gs.current.bossPhase && (
               <div className="stat-item">
                 🐴 Рядом: <span style={{
                   color: nearbyEnemies > 10 ? '#ff4444' : nearbyEnemies > 5 ? '#ffaa00' : '#ffffff'
@@ -391,6 +496,45 @@ export default function GamesPage() {
           </div>
           <button className="game-close-btn" onClick={closeGame}>✕</button>
         </div>
+
+        {/* Boss HP bar */}
+        {bossHp !== null && (
+          <div style={{
+            position: 'absolute',
+            top: '60px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '60%',
+            maxWidth: '400px',
+            zIndex: 20,
+            textAlign: 'center'
+          }}>
+            <div style={{
+              fontFamily: "'Caveat', cursive",
+              fontSize: '1.4rem',
+              color: '#fff',
+              textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+              marginBottom: '4px'
+            }}>
+              🦆 УТКА-БОСС
+            </div>
+            <div style={{
+              background: 'rgba(0,0,0,0.6)',
+              borderRadius: '8px',
+              height: '16px',
+              border: '2px solid #FF6600',
+              overflow: 'hidden'
+            }}>
+              <div ref={bossBarRef} style={{
+                width: '100%',
+                height: '100%',
+                background: 'linear-gradient(90deg, #FF4444, #FF6600)',
+                borderRadius: 'inherit',
+                transition: 'width 0.15s'
+              }} />
+            </div>
+          </div>
+        )}
 
         <canvas
           ref={canvas2dRef}
@@ -420,7 +564,7 @@ export default function GamesPage() {
             <>
               <span>WASD движение</span>
               <span>🖱️ камера</span>
-              <span>ЛКМ удар</span>
+              <span>ЛКМ {gs.current.bossPhase ? 'копьё' : 'удар'}</span>
               <span>ПРОБЕЛ прыжок</span>
             </>
           )}
@@ -432,10 +576,15 @@ export default function GamesPage() {
       {gameOver && gameOverData && (
         <div className="game-over-screen" style={{ display: 'flex' }}>
           <div className="game-over-content">
-            <div className="game-over-icon">{gameOverData.victory ? '🏆' : '💀'}</div>
-            <div className="game-over-title">{gameOverData.victory ? 'Победа!' : 'Поражение'}</div>
+            <div className="game-over-icon">{gameOverData.victory ? (gameOverData.bossKilled ? '🦆' : '🏆') : '💀'}</div>
+            <div className="game-over-title">
+              {gameOverData.victory
+                ? (gameOverData.bossKilled ? 'УТКА-БОСС ПОВЕРЖЕНА!' : 'Победа!')
+                : 'Поражение'}
+            </div>
             <div className="game-over-stats">
-              Убито лошадей: {gameOverData.kills}/100 | Время: {gameOverData.time}
+              Убито лошадей: {gameOverData.kills}/100
+              {gameOverData.bossKilled && ' + БОСС'} | Время: {gameOverData.time}
             </div>
             <div className="game-over-buttons">
               <button className="game-btn" onClick={handleRestart}>🔄 Заново</button>

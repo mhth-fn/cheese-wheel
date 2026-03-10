@@ -1,4 +1,4 @@
-import { HORSE_COLORS, TOTAL_ENEMIES, PLAYER_3D } from './constants.js';
+import { HORSE_COLORS, TOTAL_ENEMIES, PLAYER_3D, BOSS } from './constants.js';
 
 export function initScene(gs, THREE, canvas, container) {
   const width = Math.max(container.clientWidth, 800);
@@ -331,11 +331,14 @@ export function setupInputHandlers(gs, canvas, pointerLockMsgRef) {
 
   const handleMouseDown = (e) => {
     if (e.button === 0 && gs.running && gs.mode === 'thirdperson' && gs.pointerLocked) {
-      if (gs.player.attackCooldown <= 0 && gs.player.stamina >= gs.player.staminaCostPunch) {
+      const cost = gs.bossPhase ? BOSS.staminaCostSpear : gs.player.staminaCostPunch;
+      const cooldown = gs.bossPhase ? BOSS.spearCooldown : PLAYER_3D.punchCooldown;
+      const frames = gs.bossPhase ? BOSS.spearAnimFrames : PLAYER_3D.punchAnimFrames;
+      if (gs.player.attackCooldown <= 0 && gs.player.stamina >= cost) {
         gs.player.attacking = true;
-        gs.player.attackCooldown = PLAYER_3D.punchCooldown;
-        gs.player.attackAnim = PLAYER_3D.punchAnimFrames;
-        gs.player.stamina -= gs.player.staminaCostPunch;
+        gs.player.attackCooldown = cooldown;
+        gs.player.attackAnim = frames;
+        gs.player.stamina -= cost;
       }
     }
   };
@@ -344,4 +347,137 @@ export function setupInputHandlers(gs, canvas, pointerLockMsgRef) {
 
   if (pointerLockMsgRef.current) pointerLockMsgRef.current.style.display = 'block';
   gs.pointerLocked = false;
+}
+
+export function createDuckMesh(THREE) {
+  const duck = new THREE.Group();
+  const bodyMat = new THREE.MeshLambertMaterial({ color: 0xF5DEB3 });
+  const whiteMat = new THREE.MeshLambertMaterial({ color: 0xFFFFF0 });
+  const beakMat = new THREE.MeshLambertMaterial({ color: 0xFF8C00 });
+  const eyeMat = new THREE.MeshLambertMaterial({ color: 0x880000 });
+  const legMat = new THREE.MeshLambertMaterial({ color: 0xFF6600 });
+
+  // Body — large oval
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 10), bodyMat);
+  body.scale.set(1.3, 0.9, 1.0);
+  body.position.y = 1.2;
+  body.castShadow = true;
+  duck.add(body);
+
+  // Belly — white
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.85, 10, 8), whiteMat);
+  belly.scale.set(1.1, 0.8, 0.9);
+  belly.position.set(0, 0.95, 0.15);
+  duck.add(belly);
+
+  // Neck
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 0.7, 8), bodyMat);
+  neck.position.set(0.7, 1.8, 0);
+  neck.rotation.z = -0.5;
+  duck.add(neck);
+
+  // Head
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.4, 10, 8), bodyMat);
+  head.position.set(1.0, 2.3, 0);
+  duck.add(head);
+
+  // Beak — flat wide
+  const beak = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.35), beakMat);
+  beak.position.set(1.45, 2.2, 0);
+  duck.add(beak);
+
+  // Eyes — angry red
+  const eye1 = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), eyeMat);
+  eye1.position.set(1.2, 2.45, 0.25);
+  duck.add(eye1);
+  const eye2 = eye1.clone();
+  eye2.position.z = -0.25;
+  duck.add(eye2);
+
+  // Eyebrows — angry
+  const browMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
+  const brow1 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.04, 0.06), browMat);
+  brow1.position.set(1.22, 2.55, 0.25);
+  brow1.rotation.z = 0.3;
+  duck.add(brow1);
+  const brow2 = brow1.clone();
+  brow2.position.z = -0.25;
+  brow2.rotation.z = -0.3;
+  duck.add(brow2);
+
+  // Legs
+  const legs = [];
+  const legGeom = new THREE.CylinderGeometry(0.1, 0.08, 0.8, 6);
+  [0.3, -0.3].forEach(zOff => {
+    const leg = new THREE.Mesh(legGeom, legMat);
+    leg.position.set(0, 0.4, zOff);
+    duck.add(leg);
+    legs.push(leg);
+
+    // Webbed foot
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.05, 0.3), legMat);
+    foot.position.set(0.1, 0.05, zOff);
+    duck.add(foot);
+  });
+
+  // Wings
+  const wings = [];
+  const wingMat = new THREE.MeshLambertMaterial({ color: 0xE8D5A0 });
+  [-1, 1].forEach(side => {
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.6, 0.8), wingMat);
+    wing.position.set(-0.1, 1.3, side * 0.9);
+    duck.add(wing);
+    wings.push(wing);
+  });
+
+  // Tail feathers
+  const tailMat = new THREE.MeshLambertMaterial({ color: 0xD4C490 });
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.5, 6), tailMat);
+  tail.position.set(-1.2, 1.5, 0);
+  tail.rotation.z = 1.2;
+  duck.add(tail);
+
+  return { mesh: duck, legs, head, tail, wings, neck };
+}
+
+export function createSpearHand(gs, THREE) {
+  // Remove old hand
+  if (gs.handMesh) {
+    gs.camera.remove(gs.handMesh);
+  }
+
+  const handGroup = new THREE.Group();
+
+  // Forearm
+  const arm = new THREE.Mesh(
+    new THREE.BoxGeometry(0.12, 0.45, 0.14),
+    new THREE.MeshLambertMaterial({ color: 0xFFDAB9 })
+  );
+  arm.position.set(0, -0.05, 0);
+  handGroup.add(arm);
+
+  // Grip hand
+  const gripMat = new THREE.MeshLambertMaterial({ color: 0xFFDAB9 });
+  const grip = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), gripMat);
+  grip.position.set(0, -0.3, 0);
+  handGroup.add(grip);
+
+  // Spear shaft
+  const shaftMat = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 2.0, 6), shaftMat);
+  shaft.rotation.x = Math.PI / 2;
+  shaft.position.set(0, -0.3, -0.7);
+  handGroup.add(shaft);
+
+  // Spear head
+  const headMat = new THREE.MeshLambertMaterial({ color: 0xC0C0C0 });
+  const spearHead = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.25, 6), headMat);
+  spearHead.rotation.x = -Math.PI / 2;
+  spearHead.position.set(0, -0.3, -1.7);
+  handGroup.add(spearHead);
+
+  handGroup.position.set(0.3, -0.2, -0.6);
+  handGroup.rotation.x = -0.2;
+  gs.camera.add(handGroup);
+  gs.handMesh = handGroup;
 }

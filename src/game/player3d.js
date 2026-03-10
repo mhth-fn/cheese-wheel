@@ -1,4 +1,4 @@
-import { FIELD, PLAYER_3D } from './constants.js';
+import { FIELD, PLAYER_3D, BOSS } from './constants.js';
 
 export function updatePlayer3D(gs, THREE, dt) {
   const p = gs.player;
@@ -147,47 +147,79 @@ export function updatePlayer3D(gs, THREE, dt) {
 
 export function updatePunchAnimation(gs, THREE, forward, callbacks) {
   const p = gs.player;
-  const animFrames = PLAYER_3D.punchAnimFrames;
+  const isSpear = gs.bossPhase;
+  const animFrames = isSpear ? BOSS.spearAnimFrames : PLAYER_3D.punchAnimFrames;
 
   if (p.attackAnim > 0) {
     const t = (animFrames - p.attackAnim) / animFrames;
-    const punchForward = Math.sin(t * Math.PI) * 0.6;
-    const punchUp = Math.sin(t * Math.PI) * 0.15;
-    gs.handMesh.position.z = -0.6 - punchForward;
-    gs.handMesh.position.y = -0.3 + punchUp;
-    gs.handMesh.rotation.x = -0.3 - Math.sin(t * Math.PI) * 0.5;
+
+    if (isSpear) {
+      // Spear thrust animation — forward jab
+      const thrust = Math.sin(t * Math.PI) * 1.0;
+      const lift = Math.sin(t * Math.PI) * 0.05;
+      gs.handMesh.position.z = -0.6 - thrust;
+      gs.handMesh.position.y = -0.2 + lift;
+      gs.handMesh.rotation.x = -0.2 - Math.sin(t * Math.PI) * 0.15;
+    } else {
+      // Punch animation
+      const punchForward = Math.sin(t * Math.PI) * 0.6;
+      const punchUp = Math.sin(t * Math.PI) * 0.15;
+      gs.handMesh.position.z = -0.6 - punchForward;
+      gs.handMesh.position.y = -0.3 + punchUp;
+      gs.handMesh.rotation.x = -0.3 - Math.sin(t * Math.PI) * 0.5;
+    }
     p.attackAnim--;
 
-    // Damage at mid-animation — only closest horse
+    // Damage at mid-animation
     if (p.attackAnim === Math.floor(animFrames / 2)) {
-      let closestEnemy = null;
-      let closestDist = Infinity;
-
-      gs.enemies.forEach(e => {
-        if (e.hp <= 0) return;
-        const dx = e.x - p.x;
-        const dz = e.z - p.z;
+      if (isSpear && gs.boss && gs.boss.hp > 0) {
+        // Boss hit check
+        const dx = gs.boss.x - p.x;
+        const dz = gs.boss.z - p.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
         const toEnemy = new THREE.Vector3(dx, 0, dz).normalize();
         const dot = forward.dot(toEnemy);
-        const verticalOk = p.y < 2.0;
-
-        if (dist < 3.5 && dot > 0.2 && verticalOk && dist < closestDist) {
-          closestDist = dist;
-          closestEnemy = e;
+        if (dist < BOSS.spearReach && dot > 0.2) {
+          callbacks.onBossHit();
+        } else {
+          callbacks.onMiss(p.x + forward.x * 2.0, p.z + forward.z * 2.0);
         }
-      });
+      } else if (!isSpear) {
+        // Horse hit check
+        let closestEnemy = null;
+        let closestDist = Infinity;
 
-      if (closestEnemy) {
-        callbacks.onHit(closestEnemy);
-      } else {
-        callbacks.onMiss(p.x + forward.x * 1.5, p.z + forward.z * 1.5);
+        gs.enemies.forEach(e => {
+          if (e.hp <= 0) return;
+          const dx = e.x - p.x;
+          const dz = e.z - p.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          const toEnemy = new THREE.Vector3(dx, 0, dz).normalize();
+          const dot = forward.dot(toEnemy);
+          const verticalOk = p.y < 2.0;
+
+          if (dist < 3.5 && dot > 0.2 && verticalOk && dist < closestDist) {
+            closestDist = dist;
+            closestEnemy = e;
+          }
+        });
+
+        if (closestEnemy) {
+          callbacks.onHit(closestEnemy);
+        } else {
+          callbacks.onMiss(p.x + forward.x * 1.5, p.z + forward.z * 1.5);
+        }
       }
     }
   } else {
-    // Idle hand sway
+    // Idle sway
     const sway = Math.sin(Date.now() * 0.002) * 0.01;
-    gs.handMesh.position.set(0.4, -0.3 + sway, -0.6);
-    gs.handMesh.rotation.x = -0.3;
+    if (isSpear) {
+      gs.handMesh.position.set(0.3, -0.2 + sway, -0.6);
+      gs.handMesh.rotation.x = -0.2;
+    } else {
+      gs.handMesh.position.set(0.4, -0.3 + sway, -0.6);
+      gs.handMesh.rotation.x = -0.3;
+    }
   }
 }
