@@ -153,7 +153,6 @@ export default function WatchedPage() {
 
   return (
     <>
-      <h2 className="watched-title">🎬 Просмотренные фильмы</h2>
       <StatsPanel refreshKey={statsKey} />
 
       <div className="search-bar">

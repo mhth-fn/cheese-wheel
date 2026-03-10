@@ -251,20 +251,18 @@ export default function App() {
       )}
 
       {isLoggedIn && (
-        <>
-          <div id="wheel-page" className={`page wheel-page ${page === 'wheel' ? 'active' : ''}`}
+        <div className="app-container">
+          <Nav activePage={page} onNavigate={navigate} onLogout={logout}
+               userName={isGuest ? 'Гость' : currentUser?.name} />
+          <div id="wheel-page" className={`page ${page === 'wheel' ? 'active' : ''}`}
                style={{ display: page === 'wheel' ? '' : 'none' }}>
-            <Nav activePage={page} onNavigate={navigate} onLogout={logout}
-                 userName={isGuest ? 'Гость' : currentUser?.name} />
             <WheelPage />
           </div>
-          <div id="watched-page" className={`page watched-page ${page === 'watched' ? 'active' : ''}`}
+          <div id="watched-page" className={`page ${page === 'watched' ? 'active' : ''}`}
                style={{ display: page === 'watched' ? '' : 'none' }}>
-            <Nav activePage={page} onNavigate={navigate} onLogout={logout}
-                 userName={isGuest ? 'Гость' : currentUser?.name} />
             <WatchedPage />
           </div>
-        </>
+        </div>
       )}
 
       {winner && (

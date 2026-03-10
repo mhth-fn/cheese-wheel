@@ -1,8 +1,4 @@
 /* ========== КОЛЕСО ========== */
-.wheel-page {
-  max-width: 900px;
-  margin: 0 auto;
-}
 
 .wheel-container {
   display: flex;
