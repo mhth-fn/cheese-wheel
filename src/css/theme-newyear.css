@@ -157,7 +157,14 @@ body.theme-newyear .watched-add-movie,
 body.theme-newyear .stat-card,
 body.theme-newyear .search-bar,
 body.theme-newyear .rating-select,
-body.theme-newyear .movie-tag {
+body.theme-newyear .movie-tag,
+body.theme-newyear .drawer,
+body.theme-newyear .drawer-add-input,
+body.theme-newyear .drawer-header,
+body.theme-newyear .drawer-add-form,
+body.theme-newyear .drawer-movie-item,
+body.theme-newyear .drawer-footer,
+body.theme-newyear .drawer-center-section {
   border-color: #ffd700;
 }
 

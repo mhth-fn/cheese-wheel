@@ -21,6 +21,9 @@ app.use(express.json({ limit: '16kb' }));
 const fs = require('fs');
 const distPath = path.join(__dirname, 'dist');
 const publicPath = path.join(__dirname, 'public');
+const uploadsPath = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsPath)) fs.mkdirSync(uploadsPath);
+app.use('/uploads', express.static(uploadsPath));
 app.use(express.static(fs.existsSync(distPath) ? distPath : publicPath));
 
 // База данных
@@ -66,6 +69,13 @@ try {
   // колонка уже существует
 }
 
+// Миграция: добавляем колонку added_by для фильмов
+try {
+  db.exec('ALTER TABLE movies ADD COLUMN added_by INTEGER REFERENCES users(id)');
+} catch (e) {
+  // колонка уже существует
+}
+
 // Хеширование пароля
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -104,8 +114,12 @@ const stmts = {
   getUserById: db.prepare('SELECT id FROM users WHERE id = ?'),
   getUserWithPassword: db.prepare('SELECT id, name, password_hash FROM users WHERE id = ?'),
   setUserPassword: db.prepare('UPDATE users SET password_hash = ? WHERE id = ?'),
-  getUnwatched: db.prepare('SELECT * FROM movies WHERE is_watched = 0 ORDER BY id'),
-  insertMovie: db.prepare('INSERT INTO movies (title) VALUES (?)'),
+  getUnwatched: db.prepare(`
+    SELECT m.*, u.name as added_by_name
+    FROM movies m LEFT JOIN users u ON m.added_by = u.id
+    WHERE m.is_watched = 0 ORDER BY m.id
+  `),
+  insertMovie: db.prepare('INSERT INTO movies (title, added_by) VALUES (?, ?)'),
   getMovieById: db.prepare('SELECT * FROM movies WHERE id = ?'),
   deleteUnwatched: db.prepare('DELETE FROM movies WHERE id = ? AND is_watched = 0'),
   markWatched: db.prepare("UPDATE movies SET is_watched = 1, watched_at = datetime('now') WHERE id = ?"),
@@ -234,9 +248,13 @@ app.post('/api/wheel', (req, res) => {
   if (!title) {
     return res.status(400).json({ error: 'Введите название фильма (до 200 символов)' });
   }
+  const userId = parseIntStrict(req.body.user_id);
+  const addedBy = isNaN(userId) ? null : userId;
   try {
-    const result = stmts.insertMovie.run(title);
-    const movie = { id: Number(result.lastInsertRowid), title };
+    const result = stmts.insertMovie.run(title, addedBy);
+    const user = addedBy ? stmts.getUserById.get(addedBy) : null;
+    const addedByName = user ? stmts.getUsers.all().find(u => u.id === addedBy)?.name : null;
+    const movie = { id: Number(result.lastInsertRowid), title, added_by: addedBy, added_by_name: addedByName };
     io.emit('movie-added', movie);
     res.json(movie);
   } catch (err) {
@@ -370,10 +388,135 @@ app.post('/api/settings/spin-duration', (req, res) => {
   res.json({ success: true });
 });
 
+// Center image
+app.get('/api/center-image', (req, res) => {
+  const row = db.prepare("SELECT value FROM settings WHERE key = 'center_image'").get();
+  res.json({ url: row?.value || null });
+});
+
+app.post('/api/center-image', (req, res) => {
+  const contentType = req.headers['content-type'] || '';
+  if (!contentType.startsWith('multipart/form-data') && !contentType.startsWith('application/octet-stream')) {
+    return res.status(400).json({ error: 'Нужен файл' });
+  }
+
+  const chunks = [];
+  let size = 0;
+  const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+
+  req.on('data', (chunk) => {
+    size += chunk.length;
+    if (size > MAX_SIZE) {
+      res.status(413).json({ error: 'Файл слишком большой (макс 5МБ)' });
+      req.destroy();
+      return;
+    }
+    chunks.push(chunk);
+  });
+
+  req.on('end', () => {
+    if (res.writableEnded) return;
+    const buf = Buffer.concat(chunks);
+
+    // Parse multipart boundary
+    const boundary = contentType.split('boundary=')[1];
+    if (!boundary) {
+      return res.status(400).json({ error: 'Неверный формат' });
+    }
+
+    const parts = buf.toString('binary').split('--' + boundary);
+    let fileData = null;
+    let fileName = null;
+
+    for (const part of parts) {
+      const headerEnd = part.indexOf('\r\n\r\n');
+      if (headerEnd === -1) continue;
+      const headers = part.slice(0, headerEnd);
+      const fnMatch = headers.match(/filename="([^"]+)"/);
+      if (fnMatch) {
+        fileName = fnMatch[1];
+        // Get raw binary data after headers, remove trailing \r\n
+        const bodyStart = headerEnd + 4;
+        const bodyEnd = part.lastIndexOf('\r\n');
+        fileData = Buffer.from(part.slice(bodyStart, bodyEnd), 'binary');
+        break;
+      }
+    }
+
+    if (!fileData || !fileName) {
+      return res.status(400).json({ error: 'Файл не найден в запросе' });
+    }
+
+    const ext = path.extname(fileName).toLowerCase();
+    const allowed = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+    if (!allowed.includes(ext)) {
+      return res.status(400).json({ error: 'Допустимые форматы: png, jpg, gif, webp, svg' });
+    }
+
+    const newName = 'center' + ext;
+    // Remove old center images
+    for (const f of fs.readdirSync(uploadsPath)) {
+      if (f.startsWith('center.')) {
+        fs.unlinkSync(path.join(uploadsPath, f));
+      }
+    }
+    fs.writeFileSync(path.join(uploadsPath, newName), fileData);
+    const url = '/uploads/' + newName + '?t=' + Date.now();
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('center_image', ?)").run(url);
+    io.emit('center-image-changed', { url });
+    res.json({ url });
+  });
+});
+
+app.delete('/api/center-image', (req, res) => {
+  for (const f of fs.readdirSync(uploadsPath)) {
+    if (f.startsWith('center.')) {
+      fs.unlinkSync(path.join(uploadsPath, f));
+    }
+  }
+  db.prepare("DELETE FROM settings WHERE key = 'center_image'").run();
+  io.emit('center-image-changed', { url: null });
+  res.json({ success: true });
+});
+
 // ============ SOCKET.IO ============
+
+const onlineUsers = new Map(); // socketId -> { userId, userName }
+
+function broadcastOnlineUsers() {
+  const users = [];
+  const seen = new Set();
+  for (const [, info] of onlineUsers) {
+    if (info.userId && !seen.has(info.userId)) {
+      seen.add(info.userId);
+      users.push({ id: info.userId, name: info.userName });
+    }
+  }
+  io.emit('online-users', users);
+}
 
 io.on('connection', (socket) => {
   console.log('Пользователь подключился');
+
+  // Send current online list to newly connected socket
+  const currentUsers = [];
+  const currentSeen = new Set();
+  for (const [, info] of onlineUsers) {
+    if (info.userId && !currentSeen.has(info.userId)) {
+      currentSeen.add(info.userId);
+      currentUsers.push({ id: info.userId, name: info.userName });
+    }
+  }
+  socket.emit('online-users', currentUsers);
+
+  socket.on('set-user', (data) => {
+    const userId = parseIntStrict(data?.userId);
+    const userName = typeof data?.userName === 'string' ? data.userName.slice(0, 50) : null;
+    if (!isNaN(userId) && userName) {
+      onlineUsers.set(socket.id, { userId, userName });
+      broadcastOnlineUsers();
+    }
+  });
 
   socket.on('spin-wheel', (data) => {
     // Валидация данных от клиента
@@ -385,10 +528,12 @@ io.on('connection', (socket) => {
     if (isNaN(spinDuration) || spinDuration < MIN_SPIN_DURATION || spinDuration > MAX_SPIN_DURATION) return;
     if (isNaN(randomOffset) || randomOffset < 0 || randomOffset > 1) return;
 
-    io.emit('wheel-spinning', { winnerIndex, spinDuration, randomOffset });
+    socket.broadcast.emit('wheel-spinning', { winnerIndex, spinDuration, randomOffset });
   });
 
   socket.on('disconnect', () => {
+    onlineUsers.delete(socket.id);
+    broadcastOnlineUsers();
     console.log('Пользователь отключился');
   });
 });

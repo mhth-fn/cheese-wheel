@@ -171,53 +171,54 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete, th
       ctx.restore();
     });
 
-    /* labels */
+    /* labels — curved along arc */
     ctx.shadowColor = "transparent";
     ctx.shadowBlur = 0;
-    movies.forEach((m, i) => {
-      const midAngle = rot + i * sliceAngle + sliceAngle / 2;
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(midAngle);
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      const fontSize = Math.min(15, 160 / n);
-      ctx.font = `bold ${fontSize}px 'Nunito', sans-serif`;
-      ctx.strokeStyle = i % 2 === 0 ? "#FFE552" : "#F5D838";
-      ctx.lineWidth = 4;
-      ctx.lineJoin = "round";
-      const label = m.title.length > 16 ? m.title.slice(0, 14) + "\u2026" : m.title;
-      ctx.strokeText(label, r * 0.58, 0);
-      ctx.fillStyle = "#6B4400";
-      ctx.fillText(label, r * 0.58, 0);
-      ctx.restore();
-    });
-
-    /* center red hub */
-    ctx.beginPath();
-    ctx.arc(cx, cy + 2, 22, 0, 2 * Math.PI);
-    ctx.fillStyle = "rgba(100,20,20,0.2)";
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.arc(cx, cy, 22, 0, 2 * Math.PI);
-    ctx.fillStyle = "#C02828";
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.arc(cx, cy, 18, 0, 2 * Math.PI);
-    ctx.fillStyle = "#D43838";
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.arc(cx - 4, cy - 5, 8, 0, 2 * Math.PI);
-    ctx.fillStyle = "rgba(255,140,140,0.35)";
-    ctx.fill();
-
-    ctx.font = "18px serif";
+    const fontSize = Math.min(14, 150 / n);
+    ctx.font = `bold ${fontSize}px 'Nunito', sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("\ud83e\uddc0", cx, cy + 1);
+
+    movies.forEach((m, i) => {
+      const midAngle = rot + i * sliceAngle + sliceAngle / 2;
+      const label = m.title.length > 18 ? m.title.slice(0, 16) + "\u2026" : m.title;
+      const textR = r * 0.68;
+
+      /* measure char widths to compute angular span */
+      const chars = [...label];
+      const widths = chars.map(c => ctx.measureText(c).width);
+      const totalW = widths.reduce((a, b) => a + b, 0);
+      const totalArc = totalW / textR;
+
+      /* clamp text to sector (leave 10% margin each side) */
+      const maxArc = sliceAngle * 0.8;
+      const scale = totalArc > maxArc ? maxArc / totalArc : 1;
+
+      /* starting angle — center the text in the sector, always same direction */
+      let angle = midAngle - (totalArc * scale) / 2;
+
+      chars.forEach((ch, ci) => {
+        const halfArc = ((widths[ci] * scale) / 2) / textR;
+        angle += halfArc;
+
+        const x = cx + textR * Math.cos(angle);
+        const y = cy + textR * Math.sin(angle);
+
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle + Math.PI / 2);
+
+        ctx.strokeStyle = i % 2 === 0 ? "#FFE552" : "#F5D838";
+        ctx.lineWidth = 4;
+        ctx.lineJoin = "round";
+        ctx.strokeText(ch, 0, 0);
+        ctx.fillStyle = "#6B4400";
+        ctx.fillText(ch, 0, 0);
+        ctx.restore();
+
+        angle += halfArc;
+      });
+    });
 
     /* pointer at top */
     const py = cy - rindOuter - 6;
@@ -257,7 +258,8 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete, th
     const n = movies.length;
     const sliceAngle = (2 * Math.PI) / n;
     const targetSlice = winnerIndex * sliceAngle + sliceAngle * randomOffset;
-    const totalRotation = rotRef.current + Math.PI * 2 * (8 + Math.random() * 4) +
+    const extraSpins = 8 + Math.floor(Math.random() * 5);
+    const totalRotation = rotRef.current + Math.PI * 2 * extraSpins +
       (2 * Math.PI - targetSlice - (rotRef.current % (2 * Math.PI)));
 
     const startRot = rotRef.current;

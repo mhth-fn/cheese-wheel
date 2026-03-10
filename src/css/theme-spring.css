@@ -125,7 +125,14 @@ body.theme-spring .watched-add-movie,
 body.theme-spring .stat-card,
 body.theme-spring .search-bar,
 body.theme-spring .rating-select,
-body.theme-spring .movie-tag {
+body.theme-spring .movie-tag,
+body.theme-spring .drawer,
+body.theme-spring .drawer-add-input,
+body.theme-spring .drawer-header,
+body.theme-spring .drawer-add-form,
+body.theme-spring .drawer-movie-item,
+body.theme-spring .drawer-footer,
+body.theme-spring .drawer-center-section {
   border-color: #66bb6a;
 }
 

@@ -98,6 +98,10 @@
   justify-content: center;
 }
 
+.admin-btn.with-drawer {
+  left: 80px;
+}
+
 .admin-modal {
   display: none;
   position: fixed;
@@ -190,3 +194,80 @@
 }
 
 .theme-option.active .theme-option-check { display: block; }
+
+/* ========== ADMIN SECTIONS ========== */
+.admin-section {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 2px solid var(--cheese-dark);
+}
+
+.admin-section-title {
+  font-family: 'Caveat', cursive;
+  font-size: 1.4rem;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+.admin-center-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px;
+  background: #fff;
+  border: 2px solid var(--cheese-dark);
+  border-radius: 12px;
+}
+
+.admin-center-img {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--cheese-dark);
+}
+
+.admin-center-delete {
+  margin-left: auto;
+  background: none;
+  border: 2px solid #c0392b;
+  border-radius: 10px;
+  padding: 6px 14px;
+  font-family: 'Comfortaa', cursive;
+  font-size: 0.8rem;
+  color: #c0392b;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.admin-center-delete:hover {
+  background: #c0392b;
+  color: #fff;
+}
+
+.admin-upload-btn {
+  display: block;
+  background: var(--theme-btn);
+  border: 2px solid var(--theme-btn-border);
+  border-radius: 12px;
+  padding: 10px 20px;
+  font-family: 'Comfortaa', cursive;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.2s;
+}
+
+.admin-upload-btn:hover {
+  background: var(--theme-btn-hover);
+}
+
+.admin-upload-hint {
+  font-size: 0.75rem;
+  color: var(--text-light);
+  margin-top: 6px;
+  text-align: center;
+}

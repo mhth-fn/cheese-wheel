@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react';
 import { io } from 'socket.io-client';
-import { fetchUsers, fetchSettings, fetchTheme } from './api';
+import { fetchUsers, fetchSettings, fetchTheme, fetchCenterImage, postMovie, deleteMovie } from './api';
 import AuthPage from './components/AuthPage';
 import Nav from './components/Nav';
 import WheelPage from './components/WheelPage';
@@ -9,6 +9,7 @@ import ResultModal from './components/ResultModal';
 import AdminModal from './components/AdminModal';
 import Toast from './components/Toast';
 import ConnectionStatus from './components/ConnectionStatus';
+import DrawerPanel from './components/DrawerPanel';
 import ThemeDecorations from './components/ThemeDecorations';
 
 export const AppContext = createContext(null);
@@ -24,7 +25,11 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
   const [winner, setWinner] = useState(null);
   const [connected, setConnected] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState([]);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [wheelMovies, setWheelMovies] = useState([]);
+  const [centerImage, setCenterImage] = useState(null);
   const socketRef = useRef(null);
   const toastIdRef = useRef(0);
 
@@ -49,9 +54,18 @@ export default function App() {
     socket.on('theme-changed', (data) => setThemeState(data.theme));
     socket.on('settings-changed', (settings) => setSpinDuration(settings.spin_duration));
     socket.on('wheel-spinning', (data) => setRemoteSpin(data));
+    socket.on('online-users', (users) => setOnlineUsers(users));
+    socket.on('center-image-changed', (data) => setCenterImage(data.url));
 
     return () => socket.disconnect();
   }, []);
+
+  // Emit user identity to socket for online tracking
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket || !currentUser || !connected) return;
+    socket.emit('set-user', { userId: currentUser.id, userName: currentUser.name });
+  }, [currentUser, connected]);
 
   // Initial data load
   useEffect(() => {
@@ -67,6 +81,10 @@ export default function App() {
       try {
         const t = await fetchTheme();
         setThemeState(t.theme || 'cheese');
+      } catch (e) { console.error(e); }
+      try {
+        const c = await fetchCenterImage();
+        setCenterImage(c.url || null);
       } catch (e) { console.error(e); }
     })();
   }, []);
@@ -138,20 +156,50 @@ export default function App() {
     setIsGuest(false);
     setPage('auth');
     setAdminOpen(false);
+    setDrawerOpen(false);
     history.replaceState(null, '', '/');
   }, []);
 
   const navigate = useCallback((p) => {
     setPage(p);
+    setDrawerOpen(false);
     history.pushState({ page: p }, '', p === 'watched' ? '/watched' : '/');
   }, []);
+
+  // Drawer handlers
+  const handleDrawerAdd = useCallback(async (title) => {
+    try {
+      const res = await postMovie(title, currentUser?.id);
+      if (res.ok) {
+        showToast(`\u00AB${title}\u00BB добавлен в колесо`, 'success');
+        return true;
+      } else {
+        const data = await res.json();
+        showToast(data.error || 'Ошибка добавления', 'error');
+      }
+    } catch {
+      showToast('Ошибка соединения', 'error');
+    }
+    return false;
+  }, [currentUser, showToast]);
+
+  const handleDrawerRemove = useCallback(async (id) => {
+    try {
+      await deleteMovie(id);
+      showToast('Фильм удалён из колеса', 'info');
+    } catch {
+      showToast('Ошибка удаления', 'error');
+    }
+  }, [showToast]);
 
   const ctx = {
     currentUser, isGuest, users, page, theme, spinDuration,
     socket: socketRef.current, showToast, isLoggedIn,
     setSpinDuration, setThemeState,
     remoteSpin, setRemoteSpin,
-    winner, setWinner,
+    winner, setWinner, onlineUsers,
+    drawerOpen, setDrawerOpen, wheelMovies, setWheelMovies,
+    centerImage, setCenterImage,
   };
 
   return (
@@ -159,13 +207,42 @@ export default function App() {
       <ThemeDecorations theme={theme} />
 
       {currentUser?.id === 2 && (
-        <button className="admin-btn visible" onClick={() => setAdminOpen(true)}>
+        <button
+          className={`admin-btn visible ${page === 'wheel' ? 'with-drawer' : ''}`}
+          onClick={() => setAdminOpen(true)}
+        >
           ⚙️
         </button>
       )}
 
       {adminOpen && (
         <AdminModal theme={theme} onClose={() => setAdminOpen(false)} />
+      )}
+
+      {isLoggedIn && !isGuest && page === 'wheel' && (
+        <button
+          className="drawer-toggle"
+          onClick={() => setDrawerOpen(true)}
+          title="Фильмы в колесе"
+        >
+          <span className="drawer-toggle-cheese">🧀</span>
+        </button>
+      )}
+
+      {isLoggedIn && !isGuest && (
+        <>
+          <div
+            className={`drawer-backdrop ${drawerOpen ? 'visible' : ''}`}
+            onClick={() => setDrawerOpen(false)}
+          />
+          <DrawerPanel
+            movies={wheelMovies}
+            open={drawerOpen}
+            onClose={() => setDrawerOpen(false)}
+            onAdd={handleDrawerAdd}
+            onRemove={handleDrawerRemove}
+          />
+        </>
       )}
 
       {!isLoggedIn && (
@@ -194,7 +271,7 @@ export default function App() {
       )}
 
       <Toast toasts={toasts} />
-      <ConnectionStatus connected={connected} />
+      <ConnectionStatus connected={connected} onlineUsers={onlineUsers} />
     </AppContext.Provider>
   );
 }

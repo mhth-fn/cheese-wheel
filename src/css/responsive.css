@@ -8,6 +8,9 @@
   .wheel-empty { width: 300px; height: 300px; }
   .wheel-peg { width: 8px; height: 8px; }
   .add-movie-form { flex-direction: column; }
+  .drawer { width: 280px; }
+  .drawer-toggle { width: 46px; height: 46px; bottom: 16px; left: 16px; }
+  .admin-btn { left: 70px; }
   .nav { gap: 8px; }
   .nav-btn { padding: 10px 18px; font-size: 0.9rem; }
   .nav-user { margin-left: 0; width: 100%; justify-content: center; }

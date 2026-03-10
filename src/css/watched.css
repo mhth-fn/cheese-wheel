@@ -202,3 +202,38 @@
   gap: 10px;
   color: var(--text);
 }
+
+.add-movie-form {
+  display: flex;
+  gap: 10px;
+}
+
+.add-movie-input {
+  flex: 1;
+  padding: 12px 20px;
+  border: 3px solid var(--cheese-dark);
+  border-radius: 15px;
+  font-family: 'Comfortaa', cursive;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.add-movie-input:focus { border-color: var(--crust); }
+
+.add-movie-btn {
+  background: linear-gradient(135deg, #FF8C00 0%, #D2691E 100%);
+  border: 3px solid #8B4513;
+  border-radius: 15px;
+  padding: 12px 25px;
+  font-family: 'Comfortaa', cursive;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--white);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.add-movie-btn:hover {
+  background: linear-gradient(135deg, #FFA500 0%, #FF8C00 100%);
+}

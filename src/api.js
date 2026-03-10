@@ -26,11 +26,11 @@ export async function fetchWheelMovies() {
   return res.json();
 }
 
-export async function postMovie(title) {
+export async function postMovie(title, userId) {
   return fetch('/api/wheel', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title })
+    body: JSON.stringify({ title, user_id: userId })
   });
 }
 
@@ -94,4 +94,19 @@ export async function postSpinDuration(duration) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ duration })
   });
+}
+
+export async function fetchCenterImage() {
+  const res = await fetch('/api/center-image');
+  return res.json();
+}
+
+export async function uploadCenterImage(file) {
+  const form = new FormData();
+  form.append('file', file);
+  return fetch('/api/center-image', { method: 'POST', body: form });
+}
+
+export async function deleteCenterImage() {
+  return fetch('/api/center-image', { method: 'DELETE' });
 }
