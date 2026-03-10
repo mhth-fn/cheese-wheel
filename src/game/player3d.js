@@ -96,10 +96,9 @@ export function updatePlayer3D(gs, THREE, dt) {
   p.z = Math.max(-FIELD.z, Math.min(FIELD.z, newZ));
 
   // Jump
-  if (gs.keys['Space'] && p.onGround && p.stamina >= p.staminaCostJump) {
+  if (gs.keys['Space'] && p.onGround) {
     p.vy = p.jumpForce;
     p.onGround = false;
-    p.stamina -= p.staminaCostJump;
   }
 
   // Gravity
@@ -112,10 +111,6 @@ export function updatePlayer3D(gs, THREE, dt) {
       p.onGround = true;
     }
   }
-
-  // Stamina regen
-  const regenMult = p.attackAnim > 0 ? 0.2 : 1.0;
-  p.stamina = Math.min(p.maxStamina, p.stamina + p.staminaRegen * regenMult * dt);
 
   // Camera position with head bob
   let bobY = 0, bobX = 0;

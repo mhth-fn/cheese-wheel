@@ -277,8 +277,6 @@ export function initPlayer3D(gs) {
     vx: 0, vz: 0,
     hp: PLAYER_3D.hp,
     maxHp: PLAYER_3D.maxHp,
-    stamina: PLAYER_3D.stamina,
-    maxStamina: PLAYER_3D.maxStamina,
     speed: PLAYER_3D.speed,
     friction: PLAYER_3D.friction,
     yaw: 0, pitch: 0,
@@ -294,10 +292,7 @@ export function initPlayer3D(gs) {
     isMoving: false,
     surroundSlowdown: 1.0,
     nearbyEnemies: 0,
-    damageFlash: 0,
-    staminaRegen: PLAYER_3D.staminaRegen,
-    staminaCostPunch: PLAYER_3D.staminaCostPunch,
-    staminaCostJump: PLAYER_3D.staminaCostJump
+    damageFlash: 0
   };
   gs.camera.position.set(-45, 1.7, 0);
 }
@@ -331,14 +326,12 @@ export function setupInputHandlers(gs, canvas, pointerLockMsgRef) {
 
   const handleMouseDown = (e) => {
     if (e.button === 0 && gs.running && gs.mode === 'thirdperson' && gs.pointerLocked) {
-      const cost = gs.bossPhase ? BOSS.staminaCostSpear : gs.player.staminaCostPunch;
       const cooldown = gs.bossPhase ? BOSS.spearCooldown : PLAYER_3D.punchCooldown;
       const frames = gs.bossPhase ? BOSS.spearAnimFrames : PLAYER_3D.punchAnimFrames;
-      if (gs.player.attackCooldown <= 0 && gs.player.stamina >= cost) {
+      if (gs.player.attackCooldown <= 0) {
         gs.player.attacking = true;
         gs.player.attackCooldown = cooldown;
         gs.player.attackAnim = frames;
-        gs.player.stamina -= cost;
       }
     }
   };

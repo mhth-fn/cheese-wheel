@@ -25,7 +25,6 @@ export default function GamesPage() {
   const musicRef = useRef(null);
   const timerIntervalRef = useRef(null);
   const pointerLockMsgRef = useRef(null);
-  const staminaBarRef = useRef(null);
   const bossBarRef = useRef(null);
   const THREERef = useRef(null);
 
@@ -56,6 +55,22 @@ export default function GamesPage() {
       gs.current.keys[e.code] = true;
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
         e.preventDefault();
+      }
+      // P — kill all horses (debug/cheat)
+      if (e.code === 'KeyP' && !gs.current.bossPhase) {
+        gs.current.enemies.forEach(en => {
+          if (en.hp > 0) {
+            en.hp = 0;
+            en.dead = true;
+            en.deathVX = (Math.random() - 0.5) * 0.3;
+            en.deathVY = 0.15 + Math.random() * 0.1;
+            en.deathVZ = (Math.random() - 0.5) * 0.3;
+            en.deathSpin = (Math.random() - 0.5) * 0.3;
+            en.deathFrame = 0;
+            en.deathMaxFrames = 60;
+            gs.current.kills++;
+          }
+        });
       }
     };
     const handleKeyUp = (e) => { gs.current.keys[e.code] = false; };
@@ -276,9 +291,6 @@ export default function GamesPage() {
 
     updateParticles(g);
 
-    if (staminaBarRef.current) {
-      staminaBarRef.current.style.width = `${g.player.stamina}%`;
-    }
     setNearbyEnemies(g.player.nearbyEnemies);
   }
 
@@ -467,19 +479,6 @@ export default function GamesPage() {
               </div>
               <span>{hp}</span>
             </div>
-            {gs.current.mode === 'thirdperson' && (
-              <div className="stat-item">
-                ⚡ <div className="hp-bar" style={{ background: '#333' }}>
-                  <div ref={staminaBarRef} style={{
-                    width: '100%',
-                    height: '100%',
-                    background: 'linear-gradient(90deg, #FFD700, #FFA500)',
-                    borderRadius: 'inherit',
-                    transition: 'width 0.1s'
-                  }} />
-                </div>
-              </div>
-            )}
             <div className="stat-item">
               🗡️ Убито: <span>{kills}</span>/100
             </div>
