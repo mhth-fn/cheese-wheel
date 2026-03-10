@@ -1,0 +1,18 @@
+/* ========== RESPONSIVE ========== */
+@media (max-width: 768px) {
+  .auth-title { font-size: 2.2rem; }
+  .auth-users { grid-template-columns: 1fr; max-width: 250px; }
+  .wheel-outer { width: 320px; height: 320px; }
+  .wheel-canvas-wrap { width: 300px; height: 300px; }
+  #wheel-canvas { width: 300px; height: 300px; }
+  .wheel-empty { width: 300px; height: 300px; }
+  .wheel-peg { width: 8px; height: 8px; }
+  .add-movie-form { flex-direction: column; }
+  .nav { gap: 8px; }
+  .nav-btn { padding: 10px 18px; font-size: 0.9rem; }
+  .nav-user { margin-left: 0; width: 100%; justify-content: center; }
+  .spin-controls { flex-direction: column; }
+  .watched-table-wrapper { overflow-x: auto; }
+  .watched-table { min-width: 700px; }
+  .light { width: 8px; height: 12px; }
+}

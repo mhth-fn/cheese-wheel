@@ -1,0 +1,84 @@
+/* Добавление фильмов */
+.add-movie {
+  background: rgba(255,255,255,0.95);
+  border-radius: 20px;
+  padding: 25px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  border: 3px solid var(--cheese-dark);
+}
+
+.add-movie h3 {
+  font-family: 'Caveat', cursive;
+  font-size: 1.8rem;
+  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+}
+
+.add-movie-form {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.add-movie-input {
+  flex: 1;
+  padding: 12px 20px;
+  border: 3px solid var(--cheese-dark);
+  border-radius: 15px;
+  font-family: 'Comfortaa', cursive;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.add-movie-input:focus { border-color: var(--crust); }
+
+.add-movie-btn {
+  background: linear-gradient(135deg, #FF8C00 0%, #D2691E 100%);
+  border: 3px solid #8B4513;
+  border-radius: 15px;
+  padding: 12px 25px;
+  font-family: 'Comfortaa', cursive;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--white);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.add-movie-btn:hover {
+  background: linear-gradient(135deg, #FFA500 0%, #FF8C00 100%);
+}
+
+.movie-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.movie-tag {
+  background: linear-gradient(135deg, var(--cheese-cream) 0%, #fff5cc 100%);
+  border: 2px solid var(--cheese-dark);
+  border-radius: 20px;
+  padding: 8px 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.movie-tag-remove {
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.movie-tag-remove:hover { opacity: 1; }
+.movie-tag-remove:disabled { opacity: 0.3; cursor: not-allowed; }

@@ -20,12 +20,30 @@ No build step, test suite, or linter is configured.
 
 **Backend** (`server.js`): Express server + SQLite (better-sqlite3) + Socket.io for real-time sync.
 
-**Frontend** (split into separate files):
+**Frontend** — vanilla JS with ES modules (`type="module"`), no framework or bundler:
 - `public/index.html` — HTML structure only
-- `public/css/styles.css` — all styles (themes, components, responsive)
-- `public/js/app.js` — all client-side JavaScript (state, API calls, rendering, events)
-
-Uses vanilla JS with no framework.
+- `public/css/` — styles split by component:
+  - `base.css` — CSS variables, reset, body, page containers
+  - `theme-newyear.css` — New Year theme + snowflakes + garland
+  - `theme-spring.css` — Spring theme + petals
+  - `toast.css`, `nav.css`, `auth.css`, `wheel.css`, `movies.css`, `modal.css`, `watched.css`, `stats.css`, `connection.css`, `responsive.css`
+- `public/js/` — ES modules:
+  - `app.js` — entry point (imports + init)
+  - `state.js` — shared mutable state object
+  - `api.js` — all fetch() calls to the backend
+  - `utils.js` — showToast, escapeHtml, formatDate
+  - `audio.js` — Web Audio API (click, win sound)
+  - `socket.js` — Socket.IO instance + event listeners
+  - `theme.js` — theme loading/applying, decorations (snowflakes, garland, petals)
+  - `nav.js` — navigation bar rendering
+  - `auth.js` — auth page, login/logout flow
+  - `router.js` — client-side routing (showPage, popstate)
+  - `wheel.js` — canvas wheel rendering, movie list, add/remove
+  - `spin.js` — wheel spin animation, result modal, easing
+  - `watched.js` — watched movies table
+  - `ratings.js` — rating cells, average rating, sorting
+  - `stats.js` — statistics panel
+  - `events.js` — all DOM event listeners
 
 **Database** (`cheese_wheel.db`): Auto-created SQLite file with 4 tables:
 - `users` — 4 hardcoded users (Антон, Сергей, Пётр, Митя)
