@@ -112,6 +112,8 @@ usersWithoutPassword.forEach(u => setPassword.run(hashPassword(DEFAULT_PASSWORD)
 // Дефолтные настройки
 db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('spin_duration', '5')").run();
 db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('theme', 'cheese')").run();
+db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('spin_enabled', '1')").run();
+db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('add_enabled', '1')").run();
 
 // Подготовленные выражения (кешируем для производительности)
 const stmts = {
@@ -252,6 +254,10 @@ app.get('/api/wheel', (req, res) => {
 });
 
 app.post('/api/wheel', (req, res) => {
+  const addEnabledRow = db.prepare("SELECT value FROM settings WHERE key = 'add_enabled'").get();
+  if (addEnabledRow?.value === '0') {
+    return res.status(403).json({ error: 'Добавление фильмов отключено' });
+  }
   const title = sanitizeTitle(req.body.title);
   if (!title) {
     return res.status(400).json({ error: 'Введите название фильма (до 200 символов)' });
@@ -349,7 +355,13 @@ app.patch('/api/movies/:id', (req, res) => {
   const title = req.body.title !== undefined ? sanitizeTitle(req.body.title) : movie.title;
   if (!title) return res.status(400).json({ error: 'Название не может быть пустым' });
 
-  const addedAt = req.body.added_at !== undefined ? (req.body.added_at || null) : (movie.added_at || null);
+  let addedAt = movie.added_at || null;
+  if (req.body.added_at !== undefined) {
+    if (req.body.added_at && !/^\d{4}-\d{2}-\d{2}$/.test(req.body.added_at)) {
+      return res.status(400).json({ error: 'Неверный формат даты (YYYY-MM-DD)' });
+    }
+    addedAt = req.body.added_at || null;
+  }
 
   try {
     stmts.updateMovie.run(title, addedAt, id);
@@ -404,7 +416,13 @@ app.get('/api/stats', (req, res) => {
 
 app.get('/api/settings', (req, res) => {
   const spinDuration = stmts.getSpinDuration.get();
-  res.json({ spin_duration: parseInt(spinDuration?.value || '5') });
+  const spinEnabled = db.prepare("SELECT value FROM settings WHERE key = 'spin_enabled'").get();
+  const addEnabled = db.prepare("SELECT value FROM settings WHERE key = 'add_enabled'").get();
+  res.json({
+    spin_duration: parseInt(spinDuration?.value || '5'),
+    spin_enabled: spinEnabled?.value !== '0',
+    add_enabled: addEnabled?.value !== '0',
+  });
 });
 
 app.post('/api/settings/spin-duration', (req, res) => {
@@ -415,6 +433,20 @@ app.post('/api/settings/spin-duration', (req, res) => {
 
   stmts.setSpinDuration.run(duration.toString());
   io.emit('settings-changed', { spin_duration: duration });
+  res.json({ success: true });
+});
+
+app.post('/api/settings/spin-enabled', (req, res) => {
+  const val = req.body.enabled ? '1' : '0';
+  db.prepare("UPDATE settings SET value = ? WHERE key = 'spin_enabled'").run(val);
+  io.emit('settings-changed', { spin_enabled: val === '1' });
+  res.json({ success: true });
+});
+
+app.post('/api/settings/add-enabled', (req, res) => {
+  const val = req.body.enabled ? '1' : '0';
+  db.prepare("UPDATE settings SET value = ? WHERE key = 'add_enabled'").run(val);
+  io.emit('settings-changed', { add_enabled: val === '1' });
   res.json({ success: true });
 });
 
@@ -478,7 +510,7 @@ app.post('/api/center-image', (req, res) => {
     }
 
     const ext = path.extname(fileName).toLowerCase();
-    const allowed = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+    const allowed = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
     if (!allowed.includes(ext)) {
       return res.status(400).json({ error: 'Допустимые форматы: png, jpg, gif, webp, svg' });
     }
@@ -549,6 +581,8 @@ io.on('connection', (socket) => {
   });
 
   socket.on('spin-wheel', (data) => {
+    const spinEnabledRow = db.prepare("SELECT value FROM settings WHERE key = 'spin_enabled'").get();
+    if (spinEnabledRow?.value === '0') return;
     // Валидация данных от клиента
     const winnerIndex = parseIntStrict(data?.winnerIndex);
     const spinDuration = parseIntStrict(data?.spinDuration);

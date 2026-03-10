@@ -4,7 +4,7 @@ import { fetchWheelMovies, markWatched } from '../api';
 import CheeseWheel from './CheeseWheel';
 
 export default function WheelPage() {
-  const { isGuest, socket, showToast, spinDuration,
+  const { isGuest, socket, showToast, spinDuration, spinEnabled,
           remoteSpin, setRemoteSpin, setWinner, theme,
           wheelMovies: movies, setWheelMovies: setMovies, centerImage } = useApp();
   const [isSpinning, setIsSpinning] = useState(false);
@@ -61,7 +61,7 @@ export default function WheelPage() {
   }, [remoteSpin, setRemoteSpin]);
 
   const handleSpin = () => {
-    if (isGuest || movies.length === 0 || isSpinning) return;
+    if (isGuest || movies.length === 0 || isSpinning || !spinEnabled) return;
     if (!wheelRef.current || wheelRef.current.isSpinning) return;
 
     const winnerIndex = Math.floor(Math.random() * movies.length);
@@ -98,8 +98,8 @@ export default function WheelPage() {
           <button
             className="wheel-center-btn"
             onClick={handleSpin}
-            disabled={isGuest || isSpinning || movies.length === 0}
-            title={isGuest ? 'Только для участников' : 'Крутить!'}
+            disabled={isGuest || isSpinning || movies.length === 0 || !spinEnabled}
+            title={!spinEnabled ? 'Прокрутка отключена' : isGuest ? 'Только для участников' : 'Крутить!'}
           >
             <img src={centerImage} alt="" className="wheel-center-img" />
           </button>

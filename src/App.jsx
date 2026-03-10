@@ -22,6 +22,8 @@ export default function App() {
   const [page, setPage] = useState('auth');
   const [theme, setThemeState] = useState(() => localStorage.getItem('theme') || 'cheese');
   const [spinDuration, setSpinDuration] = useState(5);
+  const [spinEnabled, setSpinEnabled] = useState(true);
+  const [addEnabled, setAddEnabled] = useState(true);
   const [toasts, setToasts] = useState([]);
   const [winner, setWinner] = useState(null);
   const [connected, setConnected] = useState(false);
@@ -52,7 +54,11 @@ export default function App() {
     socket.on('connect', () => setConnected(true));
     socket.on('disconnect', () => setConnected(false));
     socket.on('theme-changed', (data) => setThemeState(data.theme));
-    socket.on('settings-changed', (settings) => setSpinDuration(settings.spin_duration));
+    socket.on('settings-changed', (settings) => {
+      if (settings.spin_duration !== undefined) setSpinDuration(settings.spin_duration);
+      if (settings.spin_enabled !== undefined) setSpinEnabled(settings.spin_enabled);
+      if (settings.add_enabled !== undefined) setAddEnabled(settings.add_enabled);
+    });
     socket.on('wheel-spinning', (data) => setRemoteSpin(data));
     socket.on('online-users', (users) => setOnlineUsers(users));
     socket.on('center-image-changed', (data) => setCenterImage(data.url));
@@ -77,6 +83,8 @@ export default function App() {
       try {
         const s = await fetchSettings();
         setSpinDuration(s.spin_duration || 5);
+        if (s.spin_enabled !== undefined) setSpinEnabled(s.spin_enabled);
+        if (s.add_enabled !== undefined) setAddEnabled(s.add_enabled);
       } catch (e) { console.error(e); }
       try {
         const t = await fetchTheme();
@@ -195,8 +203,9 @@ export default function App() {
 
   const ctx = {
     currentUser, isGuest, users, page, theme, spinDuration,
+    spinEnabled, addEnabled,
     socket: socketRef.current, showToast, isLoggedIn,
-    setSpinDuration, setThemeState,
+    setSpinDuration, setSpinEnabled, setAddEnabled, setThemeState,
     remoteSpin, setRemoteSpin,
     winner, setWinner, onlineUsers,
     drawerOpen, setDrawerOpen, wheelMovies, setWheelMovies,

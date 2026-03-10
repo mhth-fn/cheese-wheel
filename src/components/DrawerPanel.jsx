@@ -3,7 +3,7 @@ import { useApp } from '../App';
 import { postSpinDuration, uploadCenterImage, deleteCenterImage } from '../api';
 
 export default function DrawerPanel({ movies, open, onClose, onAdd, onRemove }) {
-  const { spinDuration, setSpinDuration, isGuest, currentUser, centerImage, setCenterImage, showToast } = useApp();
+  const { spinDuration, setSpinDuration, addEnabled, isGuest, currentUser, centerImage, setCenterImage, showToast } = useApp();
   const [input, setInput] = useState('');
   const [duration, setDuration] = useState(spinDuration);
   const fileRef = useRef(null);
@@ -31,19 +31,24 @@ export default function DrawerPanel({ movies, open, onClose, onAdd, onRemove }) 
         <h3>🎬 Фильмы в колесе</h3>
         <button className="drawer-close" onClick={onClose}>✕</button>
       </div>
-      <form className="drawer-add-form" onSubmit={handleSubmit}>
-        <input
-          type="text"
-          className="drawer-add-input"
-          placeholder="Название фильма..."
-          maxLength={100}
-          value={input}
-          onChange={e => setInput(e.target.value)}
-        />
-        <button type="submit" className="drawer-add-btn">
-          Добавить
-        </button>
-      </form>
+      {addEnabled && (
+        <form className="drawer-add-form" onSubmit={handleSubmit}>
+          <input
+            type="text"
+            className="drawer-add-input"
+            placeholder="Название фильма..."
+            maxLength={100}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+          />
+          <button type="submit" className="drawer-add-btn">
+            Добавить
+          </button>
+        </form>
+      )}
+      {!addEnabled && (
+        <div className="drawer-disabled-msg">Добавление фильмов отключено</div>
+      )}
       <div className="drawer-movie-list">
         {movies.length === 0 && (
           <div className="drawer-empty">Добавьте фильмы для колеса</div>
@@ -94,7 +99,7 @@ export default function DrawerPanel({ movies, open, onClose, onAdd, onRemove }) 
                 <input
                   ref={fileRef}
                   type="file"
-                  accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+                  accept="image/png,image/jpeg,image/gif,image/webp"
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;

@@ -1,4 +1,4 @@
-import { postTheme } from '../api';
+import { postTheme, postSpinEnabled, postAddEnabled } from '../api';
 import { useApp } from '../App';
 
 const themes = [
@@ -8,7 +8,7 @@ const themes = [
 ];
 
 export default function AdminModal({ theme, onClose }) {
-  const { setThemeState } = useApp();
+  const { setThemeState, spinEnabled, setSpinEnabled, addEnabled, setAddEnabled } = useApp();
 
   const handleSetTheme = async (t) => {
     try {
@@ -17,6 +17,18 @@ export default function AdminModal({ theme, onClose }) {
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const toggleSpin = async () => {
+    const val = !spinEnabled;
+    setSpinEnabled(val);
+    await postSpinEnabled(val);
+  };
+
+  const toggleAdd = async () => {
+    const val = !addEnabled;
+    setAddEnabled(val);
+    await postAddEnabled(val);
   };
 
   return (
@@ -38,6 +50,20 @@ export default function AdminModal({ theme, onClose }) {
               <span className="theme-option-check">✓</span>
             </div>
           ))}
+        </div>
+
+        <div className="admin-section">
+          <div className="admin-section-title">Управление</div>
+          <label className="admin-toggle">
+            <input type="checkbox" checked={spinEnabled} onChange={toggleSpin} />
+            <span className="admin-toggle-slider"></span>
+            <span className="admin-toggle-label">Прокрутка колеса</span>
+          </label>
+          <label className="admin-toggle">
+            <input type="checkbox" checked={addEnabled} onChange={toggleAdd} />
+            <span className="admin-toggle-slider"></span>
+            <span className="admin-toggle-label">Добавление фильмов</span>
+          </label>
         </div>
       </div>
     </div>

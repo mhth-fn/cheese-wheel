@@ -104,6 +104,22 @@ export async function postSpinDuration(duration) {
   });
 }
 
+export async function postSpinEnabled(enabled) {
+  return fetch('/api/settings/spin-enabled', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled })
+  });
+}
+
+export async function postAddEnabled(enabled) {
+  return fetch('/api/settings/add-enabled', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled })
+  });
+}
+
 export async function fetchCenterImage() {
   const res = await fetch('/api/center-image');
   return res.json();
