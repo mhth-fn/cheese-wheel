@@ -58,7 +58,14 @@ export default function GamesPage() {
   }, []);
 
   function playMusic(videoId) {
-    stopMusic();
+    // If player exists, just switch video
+    if (ytPlayerRef.current) {
+      try {
+        ytPlayerRef.current.loadVideoById({ videoId, startSeconds: 0 });
+        return;
+      } catch {}
+    }
+    // Create new player
     const tryCreate = () => {
       if (!ytReadyRef.current || !musicDivRef.current) {
         setTimeout(tryCreate, 200);
@@ -78,21 +85,19 @@ export default function GamesPage() {
 
   function stopMusic() {
     if (ytPlayerRef.current) {
-      try { ytPlayerRef.current.destroy(); } catch {}
-      ytPlayerRef.current = null;
-    }
-    // Recreate the div for next player
-    if (musicDivRef.current && musicDivRef.current.parentNode) {
-      const parent = musicDivRef.current.parentNode;
-      const newDiv = document.createElement('div');
-      parent.replaceChild(newDiv, musicDivRef.current);
-      musicDivRef.current = newDiv;
+      try { ytPlayerRef.current.stopVideo(); } catch {}
     }
   }
 
   // Cleanup on unmount
   useEffect(() => {
-    return () => { stopMusic(); cleanupGame(); };
+    return () => {
+      if (ytPlayerRef.current) {
+        try { ytPlayerRef.current.destroy(); } catch {}
+        ytPlayerRef.current = null;
+      }
+      cleanupGame();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
