@@ -22,7 +22,9 @@ export default function GamesPage() {
   const canvas2dRef = useRef(null);
   const canvas3dRef = useRef(null);
   const gameScreenRef = useRef(null);
-  const musicRef = useRef(null);
+  const ytPlayerRef = useRef(null);
+  const ytReadyRef = useRef(false);
+  const musicDivRef = useRef(null);
   const timerIntervalRef = useRef(null);
   const pointerLockMsgRef = useRef(null);
   const bossBarRef = useRef(null);
@@ -42,9 +44,55 @@ export default function GamesPage() {
     bossPhase: false, boss: null
   });
 
+  // Load YouTube IFrame API
+  useEffect(() => {
+    if (window.YT && window.YT.Player) {
+      ytReadyRef.current = true;
+      return;
+    }
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(tag);
+    window.onYouTubeIframeAPIReady = () => { ytReadyRef.current = true; };
+    return () => { window.onYouTubeIframeAPIReady = null; };
+  }, []);
+
+  function playMusic(videoId) {
+    stopMusic();
+    const tryCreate = () => {
+      if (!ytReadyRef.current || !musicDivRef.current) {
+        setTimeout(tryCreate, 200);
+        return;
+      }
+      ytPlayerRef.current = new window.YT.Player(musicDivRef.current, {
+        height: '1', width: '1',
+        videoId,
+        playerVars: { autoplay: 1, loop: 1, playlist: videoId, controls: 0 },
+        events: {
+          onReady: (e) => e.target.playVideo()
+        }
+      });
+    };
+    tryCreate();
+  }
+
+  function stopMusic() {
+    if (ytPlayerRef.current) {
+      try { ytPlayerRef.current.destroy(); } catch {}
+      ytPlayerRef.current = null;
+    }
+    // Recreate the div for next player
+    if (musicDivRef.current && musicDivRef.current.parentNode) {
+      const parent = musicDivRef.current.parentNode;
+      const newDiv = document.createElement('div');
+      parent.replaceChild(newDiv, musicDivRef.current);
+      musicDivRef.current = newDiv;
+    }
+  }
+
   // Cleanup on unmount
   useEffect(() => {
-    return () => cleanupGame();
+    return () => { stopMusic(); cleanupGame(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -114,7 +162,7 @@ export default function GamesPage() {
     g.bossPhase = false;
     g.boss = null;
     if (g.animationId) { cancelAnimationFrame(g.animationId); g.animationId = null; }
-    if (musicRef.current) musicRef.current.src = '';
+    stopMusic();
     if (document.pointerLockElement) document.exitPointerLock();
     if (g.renderer) { g.renderer.dispose(); g.renderer = null; }
     if (g.scene) {
@@ -144,7 +192,7 @@ export default function GamesPage() {
     const g = gs.current;
     g.running = false;
     if (g.animationId) { cancelAnimationFrame(g.animationId); g.animationId = null; }
-    if (musicRef.current) musicRef.current.src = '';
+    stopMusic();
     if (g.renderer) g.renderer.dispose();
 
     const elapsed = Math.floor((Date.now() - g.startTime) / 1000);
@@ -217,10 +265,8 @@ export default function GamesPage() {
     // Swap weapon to spear
     createSpearHand(g, THREE);
 
-    // Change music
-    if (musicRef.current) {
-      musicRef.current.src = BOSS.musicUrl;
-    }
+    // Change music to boss track
+    playMusic('5qRHrA4wUQQ');
   }
 
   // === 3D UPDATE ORCHESTRATOR ===
@@ -378,9 +424,7 @@ export default function GamesPage() {
     setBossHp(null);
     g.running = true;
 
-    if (musicRef.current) {
-      musicRef.current.src = 'https://www.youtube.com/embed/JAk4TDW4kf8?autoplay=1&loop=1&playlist=JAk4TDW4kf8';
-    }
+    playMusic('JAk4TDW4kf8');
 
     gameLoop();
   }
@@ -569,8 +613,8 @@ export default function GamesPage() {
           )}
         </div>
 
-        <iframe ref={musicRef} title="game-music" allow="autoplay; encrypted-media" style={{
-          position: 'absolute', width: '1px', height: '1px', opacity: 0, pointerEvents: 'none'
+        <div ref={musicDivRef} style={{
+          position: 'absolute', width: '1px', height: '1px', opacity: 0, pointerEvents: 'none', overflow: 'hidden'
         }} />
       </div>
 

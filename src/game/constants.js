@@ -33,6 +33,5 @@ export const BOSS = {
   stunTime: 20,
   spearReach: 5.5,
   spearCooldown: 18,
-  spearAnimFrames: 16,
-  musicUrl: 'https://www.youtube.com/embed/5qRHrA4wUQQ?autoplay=1&loop=1&playlist=5qRHrA4wUQQ'
+  spearAnimFrames: 16
 };
