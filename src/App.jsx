@@ -20,6 +20,7 @@ export default function App() {
   const [isGuest, setIsGuest] = useState(false);
   const [users, setUsers] = useState([]);
   const [page, setPage] = useState('auth');
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [theme, setThemeState] = useState(() => localStorage.getItem('theme') || 'cheese');
   const [spinDuration, setSpinDuration] = useState(5);
   const [spinEnabled, setSpinEnabled] = useState(true);
@@ -118,6 +119,7 @@ export default function App() {
         localStorage.removeItem('cheeseWheelSession');
       }
     }
+    setSessionChecked(true);
   }, [users]);
 
   // Apply theme class + cache
@@ -255,7 +257,7 @@ export default function App() {
         </>
       )}
 
-      {!isLoggedIn && (
+      {!isLoggedIn && sessionChecked && (
         <AuthPage users={users} onLogin={login} onGuest={loginGuest} />
       )}
 

@@ -20,6 +20,7 @@
   border: 3px solid var(--cheese-dark);
   overflow: hidden;
   margin-bottom: 30px;
+  animation: riseUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.1s backwards;
 }
 
 .watched-table {
