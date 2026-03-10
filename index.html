@@ -9,6 +9,11 @@
   <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Comfortaa:wght@400;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body>
+  <script>
+    var t = localStorage.getItem('theme');
+    if (t === 'newyear') document.body.classList.add('theme-newyear');
+    else if (t === 'spring') document.body.classList.add('theme-spring');
+  </script>
   <div id="root"></div>
   <script type="module" src="/src/main.jsx"></script>
 </body>

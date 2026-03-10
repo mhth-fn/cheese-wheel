@@ -1,11 +1,19 @@
-export default function ResultModal({ title, onClose }) {
+export default function ResultModal({ title, addedByName, onClose }) {
   return (
     <div className="modal active" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-content">
-        <div className="modal-icon">🎉</div>
-        <h3 className="modal-title">Выпал фильм!</h3>
-        <div className="modal-movie">{title}</div>
-        <button className="modal-btn" onClick={onClose}>Отлично! 👤</button>
+      <div className="result-card">
+        <div className="result-card-header">
+          <span className="result-card-label">Сегодня смотрим</span>
+        </div>
+        <div className="result-card-body">
+          <div className="result-card-title">{title}</div>
+          {addedByName && (
+            <div className="result-card-suggested">фильм предложил {addedByName}</div>
+          )}
+        </div>
+        <div className="result-card-footer">
+          <button className="result-card-btn" onClick={onClose}>Отлично!</button>
+        </div>
       </div>
     </div>
   );

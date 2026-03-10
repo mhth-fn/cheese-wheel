@@ -103,15 +103,17 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete, th
     });
 
     /* divider lines */
-    movies.forEach((m, i) => {
-      const angle = rot + i * sliceAngle;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
-      ctx.strokeStyle = "#C89428";
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-    });
+    if (n > 1) {
+      movies.forEach((m, i) => {
+        const angle = rot + i * sliceAngle;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
+        ctx.strokeStyle = "#C89428";
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      });
+    }
 
     /* cheese holes */
     holesRef.current.forEach(({ sector, angleOff, distFrac, hr }) => {

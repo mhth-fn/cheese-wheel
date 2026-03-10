@@ -20,7 +20,7 @@ export default function App() {
   const [isGuest, setIsGuest] = useState(false);
   const [users, setUsers] = useState([]);
   const [page, setPage] = useState('auth');
-  const [theme, setThemeState] = useState('cheese');
+  const [theme, setThemeState] = useState(() => localStorage.getItem('theme') || 'cheese');
   const [spinDuration, setSpinDuration] = useState(5);
   const [toasts, setToasts] = useState([]);
   const [winner, setWinner] = useState(null);
@@ -112,11 +112,12 @@ export default function App() {
     }
   }, [users]);
 
-  // Apply theme class
+  // Apply theme class + cache
   useEffect(() => {
     document.body.classList.remove('theme-cheese', 'theme-newyear', 'theme-spring');
     if (theme === 'newyear') document.body.classList.add('theme-newyear');
     else if (theme === 'spring') document.body.classList.add('theme-spring');
+    localStorage.setItem('theme', theme);
   }, [theme]);
 
   // Browser history
@@ -267,7 +268,7 @@ export default function App() {
       )}
 
       {winner && (
-        <ResultModal title={winner.title} onClose={() => setWinner(null)} movieId={winner.id} />
+        <ResultModal title={winner.title} addedByName={winner.added_by_name} onClose={() => setWinner(null)} />
       )}
 
       <Toast toasts={toasts} />
