@@ -29,26 +29,107 @@
 }
 
 .nav-user {
+  position: relative;
+  margin-left: auto;
+}
+
+.nav-user-btn {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-left: auto;
+  justify-content: center;
+  gap: 8px;
   background: rgba(255,255,255,0.95);
-  border: 3px solid #8B4513;
+  border: 3px solid var(--theme-btn-border);
   border-radius: 30px;
-  padding: 8px 15px;
+  padding: 10px 20px;
   color: var(--text);
+  cursor: pointer;
+  font-family: 'Comfortaa', cursive;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.nav-user-btn:hover {
+  background: rgba(255,255,255,1);
 }
 
 .nav-user-name { font-weight: 700; }
 
-.nav-logout {
-  background: none;
-  border: none;
-  font-size: 1.2rem;
-  cursor: pointer;
-  opacity: 0.7;
-  transition: opacity 0.2s;
+.nav-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: rgba(255,255,255,0.97);
+  border: 3px solid var(--theme-btn-border);
+  border-radius: 15px;
+  padding: 6px;
+  min-width: 200px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.nav-logout:hover { opacity: 1; }
+.nav-dropdown-item {
+  background: none;
+  border: none;
+  padding: 10px 15px;
+  font-family: 'Comfortaa', cursive;
+  font-size: 0.9rem;
+  color: var(--text);
+  cursor: pointer;
+  border-radius: 10px;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.nav-dropdown-item:hover {
+  background: rgba(255,140,0,0.15);
+}
+
+.nav-dropdown-logout {
+  border-top: 2px solid #eee;
+  margin-top: 2px;
+  padding-top: 10px;
+  color: #c0392b;
+  font-weight: 600;
+}
+
+.nav-password-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+}
+
+.nav-password-form input {
+  padding: 8px 12px;
+  border: 2px solid #ddd;
+  border-radius: 10px;
+  font-family: 'Comfortaa', cursive;
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.nav-password-form input:focus {
+  border-color: var(--theme-btn-border);
+}
+
+.nav-pwd-error {
+  color: #c0392b;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.nav-pwd-submit {
+  background: var(--theme-btn) !important;
+  color: var(--white) !important;
+  font-weight: 700;
+  text-align: center !important;
+}
+
+.nav-pwd-submit:hover {
+  background: var(--theme-btn-hover) !important;
+}

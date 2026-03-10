@@ -1,5 +1,10 @@
 /* ========== НОВОГОДНЯЯ ТЕМА ========== */
 body.theme-newyear {
+  --theme-btn: linear-gradient(135deg, #c41e3a 0%, #8b0000 100%);
+  --theme-btn-hover: linear-gradient(135deg, #d42a4c 0%, #a00000 100%);
+  --theme-btn-active: linear-gradient(135deg, #228b22 0%, #145214 100%);
+  --theme-btn-border: #ffd700;
+  --theme-btn-shadow: #ffd700;
   background-color: #2d5a3d;
   background:
     radial-gradient(ellipse 80px 70px at 5% 10%, var(--cheese-hole) 40%, transparent 70%),
@@ -140,6 +145,8 @@ body.theme-newyear .wheel-outer {
   box-shadow: 0 0 0 4px #ffd700, 0 0 25px rgba(196,30,58,0.4), 0 15px 40px rgba(0,0,0,0.35);
 }
 
+body.theme-newyear .nav-user-btn,
+body.theme-newyear .nav-dropdown,
 body.theme-newyear .nav-user,
 body.theme-newyear .spin-duration,
 body.theme-newyear .auth-password-input,
@@ -164,6 +171,10 @@ body.theme-newyear .stats-user-avg {
 
 body.theme-newyear .connection-status {
   border-color: #ffd700;
+}
+
+body.theme-newyear .modal-content {
+  box-shadow: 0 0 50px rgba(196,30,58,0.4), 0 20px 60px rgba(0,0,0,0.3);
 }
 
 body.theme-newyear .admin-btn {

@@ -22,7 +22,7 @@
   text-align: center;
   max-width: 400px;
   width: 100%;
-  border: 5px solid var(--cheese-dark);
+  border: 5px solid var(--theme-btn-border);
   box-shadow: 0 0 50px rgba(255,215,0,0.5), 0 20px 60px rgba(0, 0, 0, 0.3);
   animation: modalPop 0.3s ease;
 }
@@ -38,23 +38,23 @@
   font-family: 'Caveat', cursive;
   font-size: 2rem;
   margin-bottom: 10px;
-  color: var(--cheese-dark);
+  color: var(--theme-btn-border);
 }
 
 .modal-movie {
   font-size: 1.5rem;
   font-weight: 700;
-  color: var(--crust);
+  color: var(--text);
   margin-bottom: 25px;
   padding: 15px;
-  background: linear-gradient(135deg, var(--cheese-cream) 0%, #fff5cc 100%);
+  background: linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(245,245,245,0.9) 100%);
   border-radius: 15px;
-  border: 3px solid var(--cheese-dark);
+  border: 3px solid var(--theme-btn-border);
 }
 
 .modal-btn {
-  background: linear-gradient(135deg, var(--crust) 0%, #b8860b 100%);
-  border: 3px solid var(--cheese-dark);
+  background: var(--theme-btn);
+  border: 3px solid var(--theme-btn-border);
   border-radius: 20px;
   padding: 15px 40px;
   font-family: 'Comfortaa', cursive;
@@ -66,7 +66,7 @@
 }
 
 .modal-btn:hover {
-  background: linear-gradient(135deg, #daa520 0%, #b8860b 100%);
+  background: var(--theme-btn-hover);
 }
 
 /* ========== АДМИН-ПАНЕЛЬ ========== */

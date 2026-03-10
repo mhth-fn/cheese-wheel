@@ -80,6 +80,14 @@ export async function postAuth(userId, password) {
   });
 }
 
+export async function changePassword(userId, oldPassword, newPassword) {
+  return fetch(`/api/users/${userId}/password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ old_password: oldPassword, new_password: newPassword })
+  });
+}
+
 export async function postSpinDuration(duration) {
   return fetch('/api/settings/spin-duration', {
     method: 'POST',
