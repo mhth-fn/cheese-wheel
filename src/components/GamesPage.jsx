@@ -15,7 +15,6 @@ export default function GamesPage() {
   const [hp, setHp] = useState(100);
   const [maxHp, setMaxHp] = useState(100);
   const [time, setTime] = useState('0:00');
-  const [stamina, setStamina] = useState(100);
   const [nearbyEnemies, setNearbyEnemies] = useState(0);
 
   const canvas2dRef = useRef(null);
@@ -24,6 +23,7 @@ export default function GamesPage() {
   const musicRef = useRef(null);
   const timerIntervalRef = useRef(null);
   const pointerLockMsgRef = useRef(null);
+  const staminaBarRef = useRef(null);
   const THREERef = useRef(null);
 
   const gs = useRef({
@@ -69,7 +69,6 @@ export default function GamesPage() {
     setKills(gs.current.kills);
     setHp(Math.max(0, Math.round(p.hp)));
     setMaxHp(p.maxHp);
-    if (p.stamina !== undefined) setStamina(p.stamina);
     if (p.nearbyEnemies !== undefined) setNearbyEnemies(p.nearbyEnemies);
   }, []);
 
@@ -173,7 +172,9 @@ export default function GamesPage() {
     updateRagdolls(g);
     updateParticles(g);
 
-    setStamina(g.player.stamina);
+    if (staminaBarRef.current) {
+      staminaBarRef.current.style.width = `${g.player.stamina}%`;
+    }
     setNearbyEnemies(g.player.nearbyEnemies);
 
     if (g.kills >= TOTAL_ENEMIES) endGame(true);
@@ -349,7 +350,6 @@ export default function GamesPage() {
   }
 
   const hpPercent = maxHp > 0 ? (hp / maxHp * 100) : 0;
-  const staminaPercent = (stamina / 100 * 100);
 
   return (
     <>
@@ -365,8 +365,8 @@ export default function GamesPage() {
             {gs.current.mode === 'thirdperson' && (
               <div className="stat-item">
                 ⚡ <div className="hp-bar" style={{ background: '#333' }}>
-                  <div style={{
-                    width: `${staminaPercent}%`,
+                  <div ref={staminaBarRef} style={{
+                    width: '100%',
                     height: '100%',
                     background: 'linear-gradient(90deg, #FFD700, #FFA500)',
                     borderRadius: 'inherit',
