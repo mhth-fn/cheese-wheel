@@ -1,1 +1,7 @@
 cheese_wheel.db
+cheese_wheel.db-shm
+cheese_wheel.db-wal
+node_modules/
+cheese-wheel@*.tgz
+cheese-wheel@*
+node
