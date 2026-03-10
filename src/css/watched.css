@@ -233,3 +233,98 @@
 .add-movie-btn:hover {
   background: linear-gradient(135deg, #FFA500 0%, #FF8C00 100%);
 }
+
+/* ========== РЕДАКТИРОВАНИЕ ФИЛЬМА ========== */
+.movie-title-cell {
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 4px 6px;
+  margin: -4px -6px;
+  transition: background 0.15s;
+}
+
+.movie-title-cell:hover {
+  background: rgba(255, 140, 0, 0.08);
+}
+
+.edit-movie-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.edit-movie-title {
+  width: 100%;
+  padding: 8px 12px;
+  border: 2px solid var(--cheese-dark);
+  border-radius: 10px;
+  font-family: 'Comfortaa', cursive;
+  font-size: 0.95rem;
+  font-weight: 600;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.edit-movie-title:focus {
+  border-color: var(--crust);
+}
+
+.edit-movie-date-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text-light);
+}
+
+.edit-movie-date-row label {
+  white-space: nowrap;
+}
+
+.edit-movie-date {
+  padding: 5px 8px;
+  border: 2px solid var(--cheese-dark);
+  border-radius: 8px;
+  font-family: 'Comfortaa', cursive;
+  font-size: 0.8rem;
+  outline: none;
+}
+
+.edit-movie-date:focus {
+  border-color: var(--crust);
+}
+
+.edit-movie-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.edit-movie-save,
+.edit-movie-cancel {
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-family: 'Comfortaa', cursive;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s;
+}
+
+.edit-movie-save {
+  background: var(--theme-btn);
+  color: #fff;
+}
+
+.edit-movie-save:hover {
+  background: var(--theme-btn-hover);
+}
+
+.edit-movie-cancel {
+  background: #eee;
+  color: var(--text);
+}
+
+.edit-movie-cancel:hover {
+  background: #ddd;
+}

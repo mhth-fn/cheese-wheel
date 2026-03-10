@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../App';
-import { fetchWatched, postWatchedMovie, deleteWatched, postRating } from '../api';
+import { fetchWatched, postWatchedMovie, deleteWatched, postRating, updateMovie } from '../api';
 import StatsPanel from './StatsPanel';
 
 function formatDate(dateStr) {
@@ -20,6 +20,9 @@ export default function WatchedPage() {
   const [sortDirection, setSortDirection] = useState('desc');
   const [movieInput, setMovieInput] = useState('');
   const [statsKey, setStatsKey] = useState(0);
+  const [editingId, setEditingId] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editAddedAt, setEditAddedAt] = useState('');
 
   const loadMovies = useCallback(async () => {
     try {
@@ -36,10 +39,12 @@ export default function WatchedPage() {
     socket.on('rating-updated', reload);
     socket.on('watched-added', reload);
     socket.on('watched-deleted', reload);
+    socket.on('movie-updated', reload);
     return () => {
       socket.off('rating-updated', reload);
       socket.off('watched-added', reload);
       socket.off('watched-deleted', reload);
+      socket.off('movie-updated', reload);
     };
   }, [socket, loadMovies]);
 
@@ -75,6 +80,47 @@ export default function WatchedPage() {
     } catch {
       showToast('Ошибка сохранения оценки', 'error');
     }
+  };
+
+  const startEditing = (movie) => {
+    if (isGuest) return;
+    setEditingId(movie.id);
+    setEditTitle(movie.title);
+    setEditAddedAt(movie.added_at || '');
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setEditTitle('');
+    setEditAddedAt('');
+  };
+
+  const saveEditing = async () => {
+    if (!editTitle.trim()) {
+      showToast('Название не может быть пустым', 'error');
+      return;
+    }
+    try {
+      const res = await updateMovie(editingId, {
+        title: editTitle.trim(),
+        added_at: editAddedAt || null
+      });
+      if (res.ok) {
+        showToast('Фильм обновлён', 'success');
+        cancelEditing();
+        await loadMovies();
+      } else {
+        const data = await res.json();
+        showToast(data.error || 'Ошибка', 'error');
+      }
+    } catch {
+      showToast('Ошибка соединения', 'error');
+    }
+  };
+
+  const handleEditKeyDown = (e) => {
+    if (e.key === 'Enter') saveEditing();
+    if (e.key === 'Escape') cancelEditing();
   };
 
   const handleAddWatched = async (e) => {
@@ -206,8 +252,37 @@ export default function WatchedPage() {
                     )}
                   </td>
                   <td>
-                    {movie.title}
-                    {movie.watched_at && <div className="watched-date">{formatDate(movie.watched_at)}</div>}
+                    {editingId === movie.id ? (
+                      <div className="edit-movie-cell">
+                        <input
+                          className="edit-movie-title"
+                          value={editTitle}
+                          onChange={e => setEditTitle(e.target.value)}
+                          onKeyDown={handleEditKeyDown}
+                          autoFocus
+                        />
+                        <div className="edit-movie-date-row">
+                          <label>Добавлен:</label>
+                          <input
+                            type="date"
+                            className="edit-movie-date"
+                            value={editAddedAt}
+                            onChange={e => setEditAddedAt(e.target.value)}
+                            onKeyDown={handleEditKeyDown}
+                          />
+                        </div>
+                        <div className="edit-movie-actions">
+                          <button className="edit-movie-save" onClick={saveEditing}>Сохранить</button>
+                          <button className="edit-movie-cancel" onClick={cancelEditing}>Отмена</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="movie-title-cell" onClick={() => startEditing(movie)}>
+                        {movie.title}
+                        {movie.added_at && <div className="watched-date">добавлен {formatDate(movie.added_at)}</div>}
+                        {movie.watched_at && <div className="watched-date">просмотрен {formatDate(movie.watched_at)}</div>}
+                      </div>
+                    )}
                   </td>
                   {[1,2,3,4].map(i => (
                     <td key={i}>{renderRatingCell(movie, i)}</td>

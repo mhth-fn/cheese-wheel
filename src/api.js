@@ -59,6 +59,14 @@ export async function deleteWatched(id) {
   return fetch(`/api/watched/${id}`, { method: 'DELETE' });
 }
 
+export async function updateMovie(id, data) {
+  return fetch(`/api/movies/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+}
+
 export async function postRating(movieId, userId, rating) {
   return fetch('/api/ratings', {
     method: 'POST',

@@ -76,6 +76,13 @@ try {
   // колонка уже существует
 }
 
+// Миграция: добавляем колонку added_at для фильмов
+try {
+  db.exec('ALTER TABLE movies ADD COLUMN added_at DATE');
+} catch (e) {
+  // колонка уже существует
+}
+
 // Хеширование пароля
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -126,7 +133,7 @@ const stmts = {
   insertWatched: db.prepare("INSERT INTO movies (title, is_watched) VALUES (?, 1)"),
   getWatched: db.prepare(`
     SELECT
-      m.id, m.title, m.watched_at,
+      m.id, m.title, m.watched_at, m.added_at,
       MAX(CASE WHEN r.user_id = 1 THEN r.rating END) as rating_1,
       MAX(CASE WHEN r.user_id = 2 THEN r.rating END) as rating_2,
       MAX(CASE WHEN r.user_id = 3 THEN r.rating END) as rating_3,
@@ -138,6 +145,7 @@ const stmts = {
     GROUP BY m.id
     ORDER BY m.watched_at DESC
   `),
+  updateMovie: db.prepare('UPDATE movies SET title = ?, added_at = ? WHERE id = ?'),
   deleteRatings: db.prepare('DELETE FROM ratings WHERE movie_id = ?'),
   deleteMovie: db.prepare('DELETE FROM movies WHERE id = ?'),
   upsertRating: db.prepare(`
@@ -328,6 +336,28 @@ app.delete('/api/watched/:id', (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Ошибка удаления' });
+  }
+});
+
+app.patch('/api/movies/:id', (req, res) => {
+  const id = parseIntStrict(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Неверный ID' });
+
+  const movie = stmts.getMovieById.get(id);
+  if (!movie) return res.status(404).json({ error: 'Фильм не найден' });
+
+  const title = req.body.title !== undefined ? sanitizeTitle(req.body.title) : movie.title;
+  if (!title) return res.status(400).json({ error: 'Название не может быть пустым' });
+
+  const addedAt = req.body.added_at !== undefined ? (req.body.added_at || null) : (movie.added_at || null);
+
+  try {
+    stmts.updateMovie.run(title, addedAt, id);
+    const updated = stmts.getMovieById.get(id);
+    io.emit('movie-updated', updated);
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: 'Ошибка обновления' });
   }
 });
 
