@@ -22,9 +22,7 @@ export default function GamesPage() {
   const canvas2dRef = useRef(null);
   const canvas3dRef = useRef(null);
   const gameScreenRef = useRef(null);
-  const ytPlayerRef = useRef(null);
-  const ytReadyRef = useRef(false);
-  const musicDivRef = useRef(null);
+  const musicBoxRef = useRef(null);
   const timerIntervalRef = useRef(null);
   const pointerLockMsgRef = useRef(null);
   const bossBarRef = useRef(null);
@@ -44,60 +42,25 @@ export default function GamesPage() {
     bossPhase: false, boss: null
   });
 
-  // Load YouTube IFrame API
-  useEffect(() => {
-    if (window.YT && window.YT.Player) {
-      ytReadyRef.current = true;
-      return;
-    }
-    const tag = document.createElement('script');
-    tag.src = 'https://www.youtube.com/iframe_api';
-    document.head.appendChild(tag);
-    window.onYouTubeIframeAPIReady = () => { ytReadyRef.current = true; };
-    return () => { window.onYouTubeIframeAPIReady = null; };
-  }, []);
-
   function playMusic(videoId) {
-    // If player exists, just switch video
-    if (ytPlayerRef.current) {
-      try {
-        ytPlayerRef.current.loadVideoById({ videoId, startSeconds: 0 });
-        return;
-      } catch {}
-    }
-    // Create new player
-    const tryCreate = () => {
-      if (!ytReadyRef.current || !musicDivRef.current) {
-        setTimeout(tryCreate, 200);
-        return;
-      }
-      ytPlayerRef.current = new window.YT.Player(musicDivRef.current, {
-        height: '1', width: '1',
-        videoId,
-        playerVars: { autoplay: 1, loop: 1, playlist: videoId, controls: 0 },
-        events: {
-          onReady: (e) => e.target.playVideo()
-        }
-      });
-    };
-    tryCreate();
+    stopMusic();
+    if (!musicBoxRef.current) return;
+    const iframe = document.createElement('iframe');
+    iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&loop=1&playlist=${videoId}`;
+    iframe.allow = 'autoplay; encrypted-media';
+    iframe.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:none;';
+    musicBoxRef.current.appendChild(iframe);
   }
 
   function stopMusic() {
-    if (ytPlayerRef.current) {
-      try { ytPlayerRef.current.stopVideo(); } catch {}
+    if (musicBoxRef.current) {
+      musicBoxRef.current.innerHTML = '';
     }
   }
 
   // Cleanup on unmount
   useEffect(() => {
-    return () => {
-      if (ytPlayerRef.current) {
-        try { ytPlayerRef.current.destroy(); } catch {}
-        ytPlayerRef.current = null;
-      }
-      cleanupGame();
-    };
+    return () => cleanupGame();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -618,9 +581,7 @@ export default function GamesPage() {
           )}
         </div>
 
-        <div ref={musicDivRef} style={{
-          position: 'absolute', width: '1px', height: '1px', opacity: 0, pointerEvents: 'none', overflow: 'hidden'
-        }} />
+        <div ref={musicBoxRef} style={{ position: 'absolute', overflow: 'hidden', width: 0, height: 0 }} />
       </div>
 
       {gameOver && gameOverData && (
