@@ -1,0 +1,143 @@
+/* ========== НОВОГОДНЯЯ ТЕМА ========== */
+body.theme-newyear {
+  background:
+    radial-gradient(ellipse 80px 70px at 5% 10%, var(--cheese-hole) 40%, transparent 70%),
+    radial-gradient(ellipse 120px 100px at 90% 5%, var(--cheese-hole) 40%, transparent 70%),
+    radial-gradient(ellipse 60px 50px at 80% 80%, var(--cheese-hole) 40%, transparent 70%),
+    radial-gradient(ellipse 100px 80px at 15% 75%, var(--cheese-hole) 40%, transparent 70%),
+    radial-gradient(ellipse 50px 60px at 50% 90%, var(--cheese-hole) 40%, transparent 70%),
+    radial-gradient(ellipse 70px 60px at 95% 45%, var(--cheese-hole) 40%, transparent 70%),
+    radial-gradient(ellipse 40px 50px at 3% 45%, var(--cheese-hole) 40%, transparent 70%),
+    linear-gradient(180deg, #1a472a 0%, #2d5a3d 50%, var(--cheese-main) 100%);
+}
+
+.snowflakes {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1000;
+  overflow: hidden;
+  display: none;
+}
+
+body.theme-newyear .snowflakes { display: block; }
+
+.snowflake {
+  position: absolute;
+  top: -10px;
+  color: white;
+  font-size: 1rem;
+  text-shadow: 0 0 5px rgba(255,255,255,0.8);
+  animation: fall linear infinite;
+  opacity: 0.9;
+}
+
+@keyframes fall {
+  0% { transform: translateY(-10px) rotate(0deg); }
+  100% { transform: translateY(100vh) rotate(360deg); }
+}
+
+.garland {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  display: none;
+}
+
+body.theme-newyear .garland { display: block; }
+
+.light {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  animation: glow 1.5s ease-in-out infinite alternate;
+  box-shadow: 0 0 15px currentColor, 0 0 30px currentColor;
+}
+
+.light:nth-child(5n+1) { color: #ff0000; background: #ff0000; animation-delay: 0s; }
+.light:nth-child(5n+2) { color: #00ff00; background: #00ff00; animation-delay: 0.3s; }
+.light:nth-child(5n+3) { color: #0080ff; background: #0080ff; animation-delay: 0.6s; }
+.light:nth-child(5n+4) { color: #ffff00; background: #ffff00; animation-delay: 0.9s; }
+.light:nth-child(5n+5) { color: #ff00ff; background: #ff00ff; animation-delay: 1.2s; }
+
+@keyframes glow {
+  0% { opacity: 0.3; transform: scale(0.8); }
+  100% { opacity: 1; transform: scale(1.2); }
+}
+
+body.theme-newyear .nav-btn,
+body.theme-newyear .auth-btn,
+body.theme-newyear .spin-btn,
+body.theme-newyear .add-movie-btn,
+body.theme-newyear .auth-password-btn {
+  background: linear-gradient(135deg, #c41e3a 0%, #8b0000 100%);
+  border-color: #ffd700;
+}
+
+body.theme-newyear .nav-btn:hover,
+body.theme-newyear .auth-btn:hover,
+body.theme-newyear .add-movie-btn:hover,
+body.theme-newyear .auth-password-btn:hover {
+  background: linear-gradient(135deg, #d42a4c 0%, #a00000 100%);
+}
+
+body.theme-newyear .nav-btn.active,
+body.theme-newyear .auth-btn.selected {
+  background: linear-gradient(135deg, #228b22 0%, #145214 100%);
+}
+
+body.theme-newyear .spin-btn {
+  box-shadow: 0 6px 0 #5c0000, 0 0 20px rgba(255,215,0,0.3);
+}
+
+body.theme-newyear .watched-table th {
+  background: linear-gradient(135deg, #c41e3a 0%, #8b0000 100%);
+  border-bottom-color: #ffd700;
+}
+
+body.theme-newyear .watched-table th:hover {
+  background: linear-gradient(135deg, #d42a4c 0%, #a00000 100%);
+}
+
+body.theme-newyear .wheel-center {
+  background: linear-gradient(135deg, #c41e3a 0%, #8b0000 100%);
+  border-color: #ffd700;
+}
+
+body.theme-newyear .wheel-outer {
+  background: conic-gradient(
+    from 0deg,
+    #c41e3a 0deg, #8b0000 10deg, #c41e3a 20deg, #8b0000 30deg,
+    #c41e3a 40deg, #8b0000 50deg, #c41e3a 60deg, #8b0000 70deg,
+    #c41e3a 80deg, #8b0000 90deg, #c41e3a 100deg, #8b0000 110deg,
+    #c41e3a 120deg, #8b0000 130deg, #c41e3a 140deg, #8b0000 150deg,
+    #c41e3a 160deg, #8b0000 170deg, #c41e3a 180deg, #8b0000 190deg,
+    #c41e3a 200deg, #8b0000 210deg, #c41e3a 220deg, #8b0000 230deg,
+    #c41e3a 240deg, #8b0000 250deg, #c41e3a 260deg, #8b0000 270deg,
+    #c41e3a 280deg, #8b0000 290deg, #c41e3a 300deg, #8b0000 310deg,
+    #c41e3a 320deg, #8b0000 330deg, #c41e3a 340deg, #8b0000 350deg, #c41e3a 360deg
+  );
+  box-shadow: 0 0 0 4px #ffd700, 0 0 25px rgba(196,30,58,0.4), 0 15px 40px rgba(0,0,0,0.35);
+}
+
+body.theme-newyear .nav-user,
+body.theme-newyear .spin-duration,
+body.theme-newyear .auth-password-input {
+  border-color: #ffd700;
+}
+
+body.theme-newyear .movie-tag { border-color: #ffd700; }
+
+body.theme-newyear .admin-btn {
+  background: linear-gradient(135deg, #c41e3a 0%, #8b0000 100%);
+  border-color: #ffd700;
+}

@@ -135,17 +135,17 @@
   font-weight: 800;
   color: #fff;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
   box-shadow: 0 4px 14px rgba(74,140,63,0.3);
 }
 
 .spin-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(74,140,63,0.45);
+  background: linear-gradient(135deg, #7abb6a, #5a9c4f);
+  box-shadow: 0 4px 20px rgba(74,140,63,0.45);
 }
 
 .spin-btn:active:not(:disabled) {
-  transform: translateY(1px);
+  background: linear-gradient(135deg, #5a9a4a, #3a7c2f);
   box-shadow: 0 2px 8px rgba(74,140,63,0.3);
 }
 

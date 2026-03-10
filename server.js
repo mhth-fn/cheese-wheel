@@ -17,7 +17,11 @@ const MAX_TITLE_LENGTH = 200;
 
 // Middleware
 app.use(express.json({ limit: '16kb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve React build output (run `npm run build` first)
+const fs = require('fs');
+const distPath = path.join(__dirname, 'dist');
+const publicPath = path.join(__dirname, 'public');
+app.use(express.static(fs.existsSync(distPath) ? distPath : publicPath));
 
 // База данных
 const db = new Database('cheese_wheel.db');
@@ -391,7 +395,8 @@ io.on('connection', (socket) => {
 
 // SPA fallback
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  const dir = fs.existsSync(distPath) ? distPath : publicPath;
+  res.sendFile(path.join(dir, 'index.html'));
 });
 
 server.listen(PORT, '0.0.0.0', () => {

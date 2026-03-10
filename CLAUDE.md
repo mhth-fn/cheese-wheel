@@ -10,40 +10,38 @@ Cheese Wheel (Сырное Колесо) is a collaborative movie selection web 
 
 ```bash
 npm install        # Install dependencies
-npm start          # Run server on port 3000
+npm run build      # Build React frontend (outputs to dist/)
+npm start          # Run server on port 3000 (serves dist/)
+npm run dev        # Run Vite dev server (proxies API to :3000)
 PORT=8080 npm start  # Run on custom port
 ```
 
-No build step, test suite, or linter is configured.
-
 ## Architecture
 
-**Backend** (`server.js`): Express server + SQLite (better-sqlite3) + Socket.io for real-time sync.
+**Backend** (`server.js`): Express server + SQLite (better-sqlite3) + Socket.io for real-time sync. Serves `dist/` (React build) or falls back to `public/` (legacy).
 
-**Frontend** — vanilla JS with ES modules (`type="module"`), no framework or bundler:
-- `public/index.html` — HTML structure only
-- `public/css/` — styles split by component:
-  - `base.css` — CSS variables, reset, body, page containers
-  - `theme-newyear.css` — New Year theme + snowflakes + garland
-  - `theme-spring.css` — Spring theme + petals
-  - `toast.css`, `nav.css`, `auth.css`, `wheel.css`, `movies.css`, `modal.css`, `watched.css`, `stats.css`, `connection.css`, `responsive.css`
-- `public/js/` — ES modules:
-  - `app.js` — entry point (imports + init)
-  - `state.js` — shared mutable state object
-  - `api.js` — all fetch() calls to the backend
-  - `utils.js` — showToast, escapeHtml, formatDate
-  - `audio.js` — Web Audio API (click, win sound)
-  - `socket.js` — Socket.IO instance + event listeners
-  - `theme.js` — theme loading/applying, decorations (snowflakes, garland, petals)
-  - `nav.js` — navigation bar rendering
-  - `auth.js` — auth page, login/logout flow
-  - `router.js` — client-side routing (showPage, popstate)
-  - `wheel.js` — canvas wheel rendering, movie list, add/remove
-  - `spin.js` — wheel spin animation, result modal, easing
-  - `watched.js` — watched movies table
-  - `ratings.js` — rating cells, average rating, sorting
-  - `stats.js` — statistics panel
-  - `events.js` — all DOM event listeners
+**Frontend** — React + Vite (`src/`):
+- `index.html` — Vite entry point (root level)
+- `src/main.jsx` — React entry, CSS imports
+- `src/App.jsx` — root component, state management (Context API), socket.io, routing, theme
+- `src/api.js` — all fetch() calls to the backend
+- `src/audio.js` — Web Audio API (click, win sound)
+- `src/css/` — styles split by component (same CSS from original):
+  - `base.css`, `theme-newyear.css`, `theme-spring.css`, `toast.css`, `nav.css`, `auth.css`, `wheel.css`, `movies.css`, `modal.css`, `watched.css`, `stats.css`, `connection.css`, `responsive.css`
+- `src/components/`:
+  - `AuthPage.jsx` — login page with user selection + password
+  - `Nav.jsx` — navigation bar
+  - `WheelPage.jsx` — wheel page (movie list, add/remove, spin controls)
+  - `CheeseWheel.jsx` — canvas wheel rendering + spin animation (forwardRef with imperative spin method)
+  - `WatchedPage.jsx` — watched movies table with ratings, sorting, search
+  - `StatsPanel.jsx` — statistics panel
+  - `ResultModal.jsx` — spin result modal
+  - `AdminModal.jsx` — theme selection (admin only)
+  - `Toast.jsx` — toast notifications
+  - `ConnectionStatus.jsx` — online/offline indicator
+  - `ThemeDecorations.jsx` — snowflakes, garland, petals
+
+**Legacy frontend** (`public/`) — original vanilla JS, kept for reference.
 
 **Database** (`cheese_wheel.db`): Auto-created SQLite file with 4 tables:
 - `users` — 4 hardcoded users (Антон, Сергей, Пётр, Митя)
@@ -53,15 +51,18 @@ No build step, test suite, or linter is configured.
 
 ## Key Patterns
 
-- **Real-time sync**: All state changes broadcast via Socket.io events so multiple browser tabs stay in sync.
-- **Theme system**: Three themes ("cheese", "newyear", "spring") controlled via CSS classes and a server-persisted setting.
-- **Admin access**: User ID 2 (Сергей) has access to the admin settings panel. This check is client-side only.
-- **Auth**: Single shared password hardcoded in `server.js` (`USER_PASSWORD`). Guest mode provides read-only access.
-- **Navigation**: Client-side tab switching via `showPage()` using `data-page` attributes (wheel, watched).
+- **State management**: React Context API (`AppContext`) in `App.jsx` provides global state to all components.
+- **Real-time sync**: Socket.io-client events trigger React state updates so multiple browser tabs stay in sync.
+- **Wheel rendering**: Canvas 2D API in `CheeseWheel.jsx` — cheese colors, green rind, cheese holes, pointer, center hub. Spin animation via `requestAnimationFrame` with canvas redraw.
+- **Theme system**: Three themes ("cheese", "newyear", "spring") controlled via CSS classes on `<body>` and a server-persisted setting.
+- **Admin access**: User ID 2 (Сергей) has access to the admin settings panel. Client-side only check.
+- **Auth**: Per-user passwords (scrypt hashed in `server.js`). Guest mode provides read-only access. Session stored in localStorage.
+- **Navigation**: Client-side page switching via React state + `history.pushState`.
 
 ## API Routes (all in server.js)
 
 - `POST /api/auth` — password verification
+- `POST /api/users/:id/password` — change password
 - `GET /api/users` — list users
 - `GET/POST /api/wheel` — unwatched movies; `DELETE /api/wheel/:id`
 - `POST /api/wheel/:id/watched` — mark as watched

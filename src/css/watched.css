@@ -1,0 +1,204 @@
+/* ========== ПРОСМОТРЕННЫЕ ========== */
+.watched-page {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.watched-title {
+  font-family: 'Caveat', cursive;
+  font-size: 2.5rem;
+  text-align: center;
+  margin-bottom: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+  color: var(--white);
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+.watched-table-wrapper {
+  background: rgba(255,255,255,0.95);
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  border: 3px solid var(--cheese-dark);
+  overflow: hidden;
+  margin-bottom: 30px;
+}
+
+.watched-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.watched-table th {
+  background: linear-gradient(135deg, #FF8C00 0%, #D2691E 100%);
+  padding: 18px 15px;
+  font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.2s;
+  border-bottom: 3px solid #8B4513;
+  white-space: nowrap;
+  color: var(--white);
+}
+
+.watched-table th:hover {
+  background: linear-gradient(135deg, #FFA500 0%, #FF8C00 100%);
+}
+
+.watched-table th:nth-child(2) {
+  text-align: left;
+  padding-left: 15px;
+}
+
+.sort-icon { margin-left: 5px; opacity: 0.7; }
+.sort-icon.active { opacity: 1; }
+
+.watched-table td {
+  padding: 15px;
+  text-align: center;
+  border-bottom: 2px solid var(--cheese-cream);
+  color: var(--text);
+}
+
+.watched-table td:first-child {
+  text-align: center;
+  padding: 15px 5px;
+  width: 40px;
+}
+
+.watched-table td:nth-child(2) {
+  text-align: left;
+  padding-left: 15px;
+  font-weight: 600;
+}
+
+.watched-date {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: #999;
+  opacity: 0.7;
+  margin-top: 2px;
+}
+
+.watched-table th:first-child {
+  width: 40px;
+  cursor: default;
+}
+
+.watched-table th:first-child:hover {
+  background: linear-gradient(135deg, #FF8C00 0%, #D2691E 100%);
+}
+
+.watched-table tr:last-child td { border-bottom: none; }
+.watched-table tr:hover { background: var(--cheese-cream); }
+
+.rating-select {
+  padding: 8px 12px;
+  border: 2px solid var(--cheese-dark);
+  border-radius: 10px;
+  font-family: 'Comfortaa', cursive;
+  font-size: 0.9rem;
+  background: var(--white);
+  cursor: pointer;
+  min-width: 60px;
+}
+
+.rating-select:focus {
+  outline: none;
+  border-color: var(--crust);
+}
+
+.rating-display {
+  font-weight: 600;
+  color: var(--text-light);
+}
+
+.rating-avg {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--white);
+  padding: 5px 12px;
+  border-radius: 10px;
+  display: inline-block;
+}
+
+.rating-avg.rating-bad {
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  box-shadow: 0 2px 8px rgba(231, 76, 60, 0.4);
+}
+
+.rating-avg.rating-mid {
+  background: linear-gradient(135deg, #f39c12 0%, #d68910 100%);
+  box-shadow: 0 2px 8px rgba(243, 156, 18, 0.4);
+}
+
+.rating-avg.rating-good {
+  background: linear-gradient(135deg, #27ae60 0%, #1e8449 100%);
+  box-shadow: 0 2px 8px rgba(39, 174, 96, 0.4);
+}
+
+.rating-avg.rating-cheese {
+  background: linear-gradient(135deg, #f4c430 0%, #d4a017 100%);
+  color: var(--text);
+  box-shadow: 0 2px 8px rgba(244, 196, 48, 0.5), 0 0 15px rgba(255, 215, 0, 0.3);
+  animation: cheesePulse 1.5s ease-in-out infinite;
+}
+
+@keyframes cheesePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.watched-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text);
+}
+
+.watched-empty-icon {
+  font-size: 60px;
+  opacity: 0.5;
+  margin-bottom: 15px;
+}
+
+.watched-empty-text {
+  font-size: 1.2rem;
+  color: var(--text-light);
+}
+
+.delete-watched-btn {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  opacity: 0.4;
+  transition: all 0.2s;
+  padding: 5px 10px;
+  color: var(--crust);
+  font-weight: bold;
+}
+
+.delete-watched-btn:hover {
+  opacity: 1;
+  transform: scale(1.3);
+}
+
+.watched-add-movie {
+  background: rgba(255,255,255,0.95);
+  border-radius: 20px;
+  padding: 25px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  border: 3px solid var(--cheese-dark);
+}
+
+.watched-add-movie h3 {
+  font-family: 'Caveat', cursive;
+  font-size: 1.6rem;
+  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+}
