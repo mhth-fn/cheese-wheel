@@ -15,6 +15,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
   const pages = [
     { key: 'wheel', label: '🎡 Колесо' },
     { key: 'watched', label: '📋 Просмотренные' },
+    { key: 'games', label: '🎮 Игры' },
   ];
 
   // Close dropdown on outside click

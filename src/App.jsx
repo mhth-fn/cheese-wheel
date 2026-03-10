@@ -10,6 +10,7 @@ import AdminModal from './components/AdminModal';
 import Toast from './components/Toast';
 import ConnectionStatus from './components/ConnectionStatus';
 import DrawerPanel from './components/DrawerPanel';
+import GamesPage from './components/GamesPage';
 import ThemeDecorations from './components/ThemeDecorations';
 
 export const AppContext = createContext(null);
@@ -133,14 +134,14 @@ export default function App() {
   // Browser history
   useEffect(() => {
     if (!isLoggedIn) return;
-    const path = page === 'watched' ? '/watched' : '/';
+    const path = page === 'watched' ? '/watched' : page === 'games' ? '/games' : '/';
     history.replaceState({ page }, '', path);
   }, [page, isLoggedIn]);
 
   useEffect(() => {
     const handler = (e) => {
       if (!isLoggedIn) return;
-      const p = e.state?.page || (location.pathname === '/watched' ? 'watched' : 'wheel');
+      const p = e.state?.page || (location.pathname === '/watched' ? 'watched' : location.pathname === '/games' ? 'games' : 'wheel');
       setPage(p);
     };
     window.addEventListener('popstate', handler);
@@ -174,7 +175,7 @@ export default function App() {
   const navigate = useCallback((p) => {
     setPage(p);
     setDrawerOpen(false);
-    history.pushState({ page: p }, '', p === 'watched' ? '/watched' : '/');
+    history.pushState({ page: p }, '', p === 'watched' ? '/watched' : p === 'games' ? '/games' : '/');
   }, []);
 
   // Drawer handlers
@@ -272,6 +273,10 @@ export default function App() {
           <div id="watched-page" className={`page ${page === 'watched' ? 'active' : ''}`}
                style={{ display: page === 'watched' ? '' : 'none' }}>
             <WatchedPage />
+          </div>
+          <div id="games-page" className={`page ${page === 'games' ? 'active' : ''}`}
+               style={{ display: page === 'games' ? '' : 'none' }}>
+            <GamesPage />
           </div>
         </div>
       )}
