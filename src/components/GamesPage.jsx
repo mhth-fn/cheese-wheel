@@ -569,7 +569,9 @@ export default function GamesPage() {
           )}
         </div>
 
-        <iframe ref={musicRef} title="game-music" style={{ display: 'none' }} allow="autoplay" />
+        <iframe ref={musicRef} title="game-music" allow="autoplay; encrypted-media" style={{
+          position: 'absolute', width: '1px', height: '1px', opacity: 0, pointerEvents: 'none'
+        }} />
       </div>
 
       {gameOver && gameOverData && (
