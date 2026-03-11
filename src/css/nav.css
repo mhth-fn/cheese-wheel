@@ -15,7 +15,7 @@
   font-family: 'Comfortaa', cursive;
   font-size: 1rem;
   font-weight: 600;
-  color: var(--white);
+  color: #fff;
   cursor: pointer;
   transition: all 0.2s ease;
   -webkit-backface-visibility: hidden;
@@ -127,7 +127,7 @@
 
 .nav-pwd-submit {
   background: var(--theme-btn) !important;
-  color: var(--white) !important;
+  color: #fff !important;
   font-weight: 700;
   text-align: center !important;
 }

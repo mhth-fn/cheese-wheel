@@ -9,7 +9,7 @@
   align-items: center;
   justify-content: center;
   gap: 15px;
-  color: var(--white);
+  color: #fff;
   text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
 }
 
@@ -38,7 +38,7 @@
   transition: background 0.2s;
   border-bottom: 3px solid #8B4513;
   white-space: nowrap;
-  color: var(--white);
+  color: #fff;
 }
 
 .watched-table th:hover {
@@ -98,7 +98,7 @@
   border-radius: 10px;
   font-family: 'Comfortaa', cursive;
   font-size: 0.9rem;
-  background: var(--white);
+  background: #fff;
   cursor: pointer;
   min-width: 60px;
 }
@@ -116,7 +116,7 @@
 .rating-avg {
   font-weight: 700;
   font-size: 1.1rem;
-  color: var(--white);
+  color: #fff;
   padding: 5px 12px;
   border-radius: 10px;
   display: inline-block;
@@ -227,7 +227,7 @@
   font-family: 'Comfortaa', cursive;
   font-size: 1rem;
   font-weight: 700;
-  color: var(--white);
+  color: #fff;
   cursor: pointer;
   transition: all 0.2s ease;
 }

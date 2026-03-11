@@ -41,7 +41,6 @@ body {
     radial-gradient(ellipse 40px 50px at 3% 45%, var(--cheese-hole) 40%, transparent 70%),
     var(--theme-bg);
   background-color: var(--cheese-main);
-  background-attachment: fixed;
   color: var(--text);
   overflow-x: hidden;
   transition: background 0.5s ease;

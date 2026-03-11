@@ -106,14 +106,15 @@ export default function App() {
     if (saved) {
       try {
         const session = JSON.parse(saved);
+        const urlPage = location.pathname === '/watched' ? 'watched' : location.pathname === '/games' ? 'games' : 'wheel';
         if (session.isGuest) {
           setIsGuest(true);
-          setPage('wheel');
+          setPage(urlPage);
         } else if (session.userId) {
           const user = users.find(u => u.id === session.userId);
           if (user) {
             setCurrentUser(user);
-            setPage('wheel');
+            setPage(urlPage);
           }
         }
       } catch (e) {
