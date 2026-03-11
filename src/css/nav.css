@@ -18,7 +18,7 @@
   color: #fff;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
-  -webkit-backface-visibility: hidden;
+  -webkit-transform: translateZ(0);
 }
 
 .nav-btn:hover {

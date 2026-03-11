@@ -80,3 +80,11 @@ body {
   85%  { transform: translateY(4px); }
   100% { transform: translateY(0); }
 }
+
+/* Safari GPU paint fix — force compositing for buttons with gradients */
+button, .nav-btn, .auth-btn, .auth-password-btn, .auth-guest-btn,
+.spin-btn, .add-movie-btn, .game-btn, .admin-btn, .drawer-add-btn,
+.drawer-upload-btn, .nav-pwd-submit {
+  -webkit-transform: translateZ(0);
+  will-change: transform;
+}
