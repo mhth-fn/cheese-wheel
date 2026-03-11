@@ -17,7 +17,7 @@
   font-weight: 600;
   color: #fff;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
   -webkit-backface-visibility: hidden;
 }
 
@@ -48,7 +48,7 @@
   cursor: pointer;
   font-family: 'Comfortaa', cursive;
   font-size: 1rem;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .nav-user-btn:hover {

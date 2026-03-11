@@ -172,7 +172,7 @@
   font-size: 1rem;
   cursor: pointer;
   opacity: 0.4;
-  transition: all 0.2s;
+  transition: opacity 0.2s;
   padding: 5px 10px;
   color: var(--crust);
   font-weight: bold;
@@ -229,7 +229,7 @@
   font-weight: 700;
   color: #fff;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .add-movie-btn:hover {

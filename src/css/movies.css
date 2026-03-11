@@ -152,7 +152,7 @@
   font-weight: 700;
   color: #fff;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
   white-space: nowrap;
 }
 
@@ -288,7 +288,7 @@
   font-weight: 700;
   color: #fff;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .drawer-upload-btn:hover {
