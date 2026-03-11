@@ -10,7 +10,7 @@
 .wheel-wrapper {
   position: relative;
   margin: 30px 0;
-  animation: riseUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
+  animation: riseUp 0.7s cubic-bezier(0.22, 1, 0.36, 1);
   -webkit-backface-visibility: hidden;
 }
 

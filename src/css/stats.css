@@ -43,7 +43,7 @@
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 15px;
   margin-bottom: 25px;
-  animation: statsAppear 0.35s ease-out both;
+  animation: statsAppear 0.35s ease-out;
 }
 
 @keyframes statsAppear {

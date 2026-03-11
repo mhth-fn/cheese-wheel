@@ -14,6 +14,19 @@ export function updateBossAI(gs, dt) {
   b.stateTimer -= dt;
   if (b.attackCooldown > 0) b.attackCooldown -= dt;
 
+  // Trigger leap at 50% HP (once)
+  if (!b.leapTriggered && b.hp <= Math.floor(BOSS.hp / 2)) {
+    b.leapTriggered = true;
+    b.state = 'LEAP_WINDUP';
+    b.stateTimer = 60;
+    // Remember player position at start of leap
+    b.leapTargetX = p.x;
+    b.leapTargetZ = p.z;
+    // Save player pos to check if they moved
+    b.leapPlayerStartX = p.x;
+    b.leapPlayerStartZ = p.z;
+  }
+
   let targetVX = 0, targetVZ = 0;
 
   switch (b.state) {
@@ -31,6 +44,94 @@ export function updateBossAI(gs, dt) {
       if (b.stateTimer <= 0) {
         b.state = 'CHARGE';
         b.stateTimer = 80;
+      }
+      break;
+    }
+
+    case 'LEAP_WINDUP': {
+      // Duck crouches and flaps wings before jumping
+      targetVX = 0;
+      targetVZ = 0;
+      b.mesh.position.y = -0.2 + Math.sin(Date.now() * 0.02) * 0.05;
+      if (b.wings) {
+        b.wings.forEach((w, i) => {
+          w.rotation.x = Math.sin(Date.now() * 0.03 + i * Math.PI) * 0.8;
+        });
+      }
+      if (b.head) {
+        b.head.rotation.x = 0.3; // Looking down, ready to pounce
+      }
+      if (b.stateTimer <= 0) {
+        b.state = 'LEAP';
+        b.stateTimer = 40;
+        // Lock onto current player position
+        b.leapTargetX = p.x;
+        b.leapTargetZ = p.z;
+        b.leapStartX = b.x;
+        b.leapStartZ = b.z;
+        b.leapStartY = 0;
+        b.leapFrame = 0;
+        b.leapTotalFrames = 40;
+      }
+      break;
+    }
+
+    case 'LEAP': {
+      // Fly through the air toward player's position
+      b.leapFrame += dt;
+      const t = Math.min(b.leapFrame / b.leapTotalFrames, 1.0);
+
+      // Lerp XZ toward target
+      b.x = b.leapStartX + (b.leapTargetX - b.leapStartX) * t;
+      b.z = b.leapStartZ + (b.leapTargetZ - b.leapStartZ) * t;
+
+      // Arc through air
+      const jumpHeight = 6.0;
+      b.mesh.position.y = Math.sin(t * Math.PI) * jumpHeight;
+
+      // Spin in air
+      b.mesh.rotation.x = t * Math.PI * 2;
+
+      // Wings spread
+      if (b.wings) {
+        b.wings.forEach((w, i) => {
+          w.rotation.x = Math.sin(Date.now() * 0.02 + i * Math.PI) * 1.0;
+        });
+      }
+
+      // Landing
+      if (t >= 1.0) {
+        b.mesh.position.y = 0;
+        b.mesh.rotation.x = 0;
+        gs.cameraShake = 8.0;
+
+        // Check if player stayed still — instant kill
+        const movedX = Math.abs(p.x - b.leapPlayerStartX);
+        const movedZ = Math.abs(p.z - b.leapPlayerStartZ);
+        const playerMoved = Math.sqrt(movedX * movedX + movedZ * movedZ) > 2.0;
+
+        const landDx = p.x - b.x;
+        const landDz = p.z - b.z;
+        const landDist = Math.sqrt(landDx * landDx + landDz * landDz);
+
+        if (!playerMoved && landDist < 3.5) {
+          // Player didn't move — instant death
+          p.hp = 0;
+          p.damageFlash = 15;
+          gs.cameraShake = 15.0;
+          if (gs._callbacks) gs._callbacks.onPlayerDamage();
+          if (gs._callbacks) gs._callbacks.endGame(false);
+        } else if (landDist < 2.5) {
+          // Player moved but still close — big damage
+          p.hp -= BOSS.damage * 2;
+          p.damageFlash = 10;
+          gs.cameraShake = 6.0;
+          if (gs._callbacks) gs._callbacks.onPlayerDamage();
+          if (p.hp <= 0 && gs._callbacks) gs._callbacks.endGame(false);
+        }
+
+        b.state = 'STUNNED';
+        b.stateTimer = BOSS.stunTime * 1.5;
       }
       break;
     }
@@ -84,12 +185,14 @@ export function updateBossAI(gs, dt) {
     }
   }
 
-  // Apply velocity
-  b.vx = b.vx * 0.85 + targetVX * 0.15;
-  b.vz = b.vz * 0.85 + targetVZ * 0.15;
+  // Apply velocity (skip during leap — position set directly)
+  if (b.state !== 'LEAP') {
+    b.vx = b.vx * 0.85 + targetVX * 0.15;
+    b.vz = b.vz * 0.85 + targetVZ * 0.15;
 
-  b.x += b.vx * dt;
-  b.z += b.vz * dt;
+    b.x += b.vx * dt;
+    b.z += b.vz * dt;
+  }
 
   // Field bounds
   b.x = Math.max(-FIELD.x, Math.min(FIELD.x, b.x));
@@ -107,16 +210,17 @@ export function updateBossAI(gs, dt) {
   b.mesh.position.z = b.z;
 
   const moveSpeed = Math.sqrt(b.vx * b.vx + b.vz * b.vz);
-  if (moveSpeed > 0.01) {
-    const targetRot = Math.atan2(-b.vx, -b.vz);
-    let diff = targetRot - b.mesh.rotation.y;
+  if (b.state !== 'LEAP') {
+    // Always face toward the player
+    const faceRot = Math.atan2(dx, dz);
+    let diff = faceRot - b.mesh.rotation.y;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
-    b.mesh.rotation.y += diff * 0.08;
+    b.mesh.rotation.y += diff * 0.12;
   }
 
-  // Leg animation — waddle
-  if (moveSpeed > 0.02 && b.legs) {
+  // Leg animation — waddle (skip during leap)
+  if (moveSpeed > 0.02 && b.legs && b.state !== 'LEAP' && b.state !== 'LEAP_WINDUP') {
     b.animPhase += moveSpeed * 6 * dt;
     b.legs[0].rotation.x = Math.sin(b.animPhase) * 0.5;
     b.legs[1].rotation.x = Math.sin(b.animPhase + Math.PI) * 0.5;

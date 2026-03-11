@@ -42,17 +42,32 @@ export default function GamesPage() {
     bossPhase: false, boss: null
   });
 
-  function playMusic(videoId) {
+  const audioRef = useRef(null);
+
+  function playMusic(src) {
     stopMusic();
-    if (!musicBoxRef.current) return;
-    const iframe = document.createElement('iframe');
-    iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&loop=1&playlist=${videoId}`;
-    iframe.allow = 'autoplay; encrypted-media';
-    iframe.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:none;';
-    musicBoxRef.current.appendChild(iframe);
+    if (src.startsWith('file:')) {
+      // Local audio file
+      const audio = new Audio(src.slice(5));
+      audio.loop = true;
+      audio.volume = 0.5;
+      audio.play().catch(() => {});
+      audioRef.current = audio;
+    } else if (musicBoxRef.current) {
+      // YouTube embed
+      const iframe = document.createElement('iframe');
+      iframe.src = `https://www.youtube.com/embed/${src}?autoplay=1&loop=1&playlist=${src}`;
+      iframe.allow = 'autoplay; encrypted-media';
+      iframe.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:none;';
+      musicBoxRef.current.appendChild(iframe);
+    }
   }
 
   function stopMusic() {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
     if (musicBoxRef.current) {
       musicBoxRef.current.innerHTML = '';
     }
@@ -72,22 +87,7 @@ export default function GamesPage() {
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
         e.preventDefault();
       }
-      // P — kill all horses (debug/cheat)
-      if (e.code === 'KeyP' && !gs.current.bossPhase) {
-        gs.current.enemies.forEach(en => {
-          if (en.hp > 0) {
-            en.hp = 0;
-            en.dead = true;
-            en.deathVX = (Math.random() - 0.5) * 0.3;
-            en.deathVY = 0.15 + Math.random() * 0.1;
-            en.deathVZ = (Math.random() - 0.5) * 0.3;
-            en.deathSpin = (Math.random() - 0.5) * 0.3;
-            en.deathFrame = 0;
-            en.deathMaxFrames = 60;
-            gs.current.kills++;
-          }
-        });
-      }
+
     };
     const handleKeyUp = (e) => { gs.current.keys[e.code] = false; };
     document.addEventListener('keydown', handleKeyDown);
@@ -234,7 +234,7 @@ export default function GamesPage() {
     createSpearHand(g, THREE);
 
     // Change music to boss track
-    playMusic('5qRHrA4wUQQ');
+    playMusic('file:/audio/boss-music.mp3');
   }
 
   // === 3D UPDATE ORCHESTRATOR ===
