@@ -1,4 +1,4 @@
-import { postTheme, postSpinEnabled, postAddEnabled } from '../api';
+import { postTheme, postSpinEnabled, postAddEnabled, postDecorationsEnabled } from '../api';
 import { useApp } from '../App';
 
 const themes = [
@@ -8,7 +8,7 @@ const themes = [
 ];
 
 export default function AdminModal({ theme, onClose }) {
-  const { setThemeState, spinEnabled, setSpinEnabled, addEnabled, setAddEnabled } = useApp();
+  const { setThemeState, spinEnabled, setSpinEnabled, addEnabled, setAddEnabled, decorationsEnabled, setDecorationsEnabled } = useApp();
 
   const handleSetTheme = async (t) => {
     try {
@@ -29,6 +29,12 @@ export default function AdminModal({ theme, onClose }) {
     const val = !addEnabled;
     setAddEnabled(val);
     await postAddEnabled(val);
+  };
+
+  const toggleDecorations = async () => {
+    const val = !decorationsEnabled;
+    setDecorationsEnabled(val);
+    await postDecorationsEnabled(val);
   };
 
   return (
@@ -63,6 +69,11 @@ export default function AdminModal({ theme, onClose }) {
             <input type="checkbox" checked={addEnabled} onChange={toggleAdd} />
             <span className="admin-toggle-slider"></span>
             <span className="admin-toggle-label">Добавление фильмов</span>
+          </label>
+          <label className="admin-toggle">
+            <input type="checkbox" checked={decorationsEnabled} onChange={toggleDecorations} />
+            <span className="admin-toggle-slider"></span>
+            <span className="admin-toggle-label">Декорации (снег / лепестки)</span>
           </label>
         </div>
       </div>

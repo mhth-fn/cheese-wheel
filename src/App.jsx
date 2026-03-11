@@ -24,8 +24,9 @@ export default function App() {
   const [sessionChecked, setSessionChecked] = useState(false);
   const [theme, setThemeState] = useState(() => localStorage.getItem('theme') || 'cheese');
   const [spinDuration, setSpinDuration] = useState(5);
-  const [spinEnabled, setSpinEnabled] = useState(true);
-  const [addEnabled, setAddEnabled] = useState(true);
+  const [spinEnabled, setSpinEnabled] = useState(null);
+  const [addEnabled, setAddEnabled] = useState(null);
+  const [decorationsEnabled, setDecorationsEnabled] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [winner, setWinner] = useState(null);
   const [connected, setConnected] = useState(false);
@@ -60,6 +61,7 @@ export default function App() {
       if (settings.spin_duration !== undefined) setSpinDuration(settings.spin_duration);
       if (settings.spin_enabled !== undefined) setSpinEnabled(settings.spin_enabled);
       if (settings.add_enabled !== undefined) setAddEnabled(settings.add_enabled);
+      if (settings.decorations_enabled !== undefined) setDecorationsEnabled(settings.decorations_enabled);
     });
     socket.on('wheel-spinning', (data) => setRemoteSpin(data));
     socket.on('online-users', (users) => setOnlineUsers(users));
@@ -87,6 +89,7 @@ export default function App() {
         setSpinDuration(s.spin_duration || 5);
         if (s.spin_enabled !== undefined) setSpinEnabled(s.spin_enabled);
         if (s.add_enabled !== undefined) setAddEnabled(s.add_enabled);
+        if (s.decorations_enabled !== undefined) setDecorationsEnabled(s.decorations_enabled);
       } catch (e) { console.error(e); }
       try {
         const t = await fetchTheme();
@@ -207,9 +210,9 @@ export default function App() {
 
   const ctx = {
     currentUser, isGuest, users, page, theme, spinDuration,
-    spinEnabled, addEnabled,
+    spinEnabled, addEnabled, decorationsEnabled,
     socket: socketRef.current, showToast, isLoggedIn,
-    setSpinDuration, setSpinEnabled, setAddEnabled, setThemeState,
+    setSpinDuration, setSpinEnabled, setAddEnabled, setDecorationsEnabled, setThemeState,
     remoteSpin, setRemoteSpin,
     winner, setWinner, onlineUsers,
     drawerOpen, setDrawerOpen, wheelMovies, setWheelMovies,
@@ -218,7 +221,7 @@ export default function App() {
 
   return (
     <AppContext.Provider value={ctx}>
-      <ThemeDecorations theme={theme} />
+      {decorationsEnabled && <ThemeDecorations theme={theme} />}
 
       {currentUser?.id === 2 && (
         <button

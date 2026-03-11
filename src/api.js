@@ -120,6 +120,14 @@ export async function postAddEnabled(enabled) {
   });
 }
 
+export async function postDecorationsEnabled(enabled) {
+  return fetch('/api/settings/decorations-enabled', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled })
+  });
+}
+
 export async function fetchCenterImage() {
   const res = await fetch('/api/center-image');
   return res.json();

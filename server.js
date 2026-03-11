@@ -114,6 +114,7 @@ db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('spin_duration',
 db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('theme', 'cheese')").run();
 db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('spin_enabled', '1')").run();
 db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('add_enabled', '1')").run();
+db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('decorations_enabled', '1')").run();
 
 // Подготовленные выражения (кешируем для производительности)
 const stmts = {
@@ -418,10 +419,12 @@ app.get('/api/settings', (req, res) => {
   const spinDuration = stmts.getSpinDuration.get();
   const spinEnabled = db.prepare("SELECT value FROM settings WHERE key = 'spin_enabled'").get();
   const addEnabled = db.prepare("SELECT value FROM settings WHERE key = 'add_enabled'").get();
+  const decorationsEnabled = db.prepare("SELECT value FROM settings WHERE key = 'decorations_enabled'").get();
   res.json({
     spin_duration: parseInt(spinDuration?.value || '5'),
     spin_enabled: spinEnabled?.value !== '0',
     add_enabled: addEnabled?.value !== '0',
+    decorations_enabled: decorationsEnabled?.value !== '0',
   });
 });
 
@@ -447,6 +450,13 @@ app.post('/api/settings/add-enabled', (req, res) => {
   const val = req.body.enabled ? '1' : '0';
   db.prepare("UPDATE settings SET value = ? WHERE key = 'add_enabled'").run(val);
   io.emit('settings-changed', { add_enabled: val === '1' });
+  res.json({ success: true });
+});
+
+app.post('/api/settings/decorations-enabled', (req, res) => {
+  const val = req.body.enabled ? '1' : '0';
+  db.prepare("UPDATE settings SET value = ? WHERE key = 'decorations_enabled'").run(val);
+  io.emit('settings-changed', { decorations_enabled: val === '1' });
   res.json({ success: true });
 });
 
