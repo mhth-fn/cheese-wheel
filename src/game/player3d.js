@@ -167,16 +167,45 @@ export function updatePunchAnimation(gs, THREE, forward, callbacks) {
 
     // Damage at mid-animation
     if (p.attackAnim === Math.floor(animFrames / 2)) {
-      if (isSpear && gs.boss && gs.boss.hp > 0) {
+      if (isSpear) {
+        let hitSomething = false;
+
         // Boss hit check
-        const dx = gs.boss.x - p.x;
-        const dz = gs.boss.z - p.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
-        const toEnemy = new THREE.Vector3(dx, 0, dz).normalize();
-        const dot = forward.dot(toEnemy);
-        if (dist < BOSS.spearReach && dot > 0.2) {
-          callbacks.onBossHit();
-        } else {
+        if (gs.boss && gs.boss.hp > 0) {
+          const dx = gs.boss.x - p.x;
+          const dz = gs.boss.z - p.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          const toEnemy = new THREE.Vector3(dx, 0, dz).normalize();
+          const dot = forward.dot(toEnemy);
+          if (dist < BOSS.spearReach && dot > 0.2) {
+            callbacks.onBossHit();
+            hitSomething = true;
+          }
+        }
+
+        // Duckling hit check
+        if (!hitSomething && gs.ducklings) {
+          let closestDuckling = null;
+          let closestDist = Infinity;
+          gs.ducklings.forEach(d => {
+            if (d.hp <= 0) return;
+            const ddx = d.x - p.x;
+            const ddz = d.z - p.z;
+            const ddist = Math.sqrt(ddx * ddx + ddz * ddz);
+            const toD = new THREE.Vector3(ddx, 0, ddz).normalize();
+            const dot = forward.dot(toD);
+            if (ddist < BOSS.spearReach && dot > 0.2 && ddist < closestDist) {
+              closestDist = ddist;
+              closestDuckling = d;
+            }
+          });
+          if (closestDuckling) {
+            callbacks.onDucklingHit(closestDuckling);
+            hitSomething = true;
+          }
+        }
+
+        if (!hitSomething) {
           callbacks.onMiss(p.x + forward.x * 2.0, p.z + forward.z * 2.0);
         }
       } else if (!isSpear) {

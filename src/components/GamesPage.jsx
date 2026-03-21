@@ -4,8 +4,9 @@ import { initTopDownMode, updateTopDown, renderTopDown } from '../game/topdown.j
 import { initScene, createPlayerHand, spawnHorses, initPlayer3D, setupInputHandlers, createDuckMesh, createSpearHand } from '../game/scene.js';
 import { updatePlayer3D, updatePunchAnimation } from '../game/player3d.js';
 import { updateHorseAI, updateRagdolls, triggerHorseDeath } from '../game/horseAI.js';
-import { updateBossAI, triggerBossDamage, updateBossRagdoll } from '../game/bossAI.js';
+import { updateBossAI, triggerBossDamage, updateBossRagdoll, updateDucklings, triggerDucklingDeath } from '../game/bossAI.js';
 import { spawnParticles, updateParticles } from '../game/particles.js';
+import { createMinigunHand, removeMinigunHand, updateMinigun, cleanupMinigun } from '../game/minigun.js';
 
 export default function GamesPage() {
   const [mode, setMode] = useState('topdown');
@@ -84,10 +85,37 @@ export default function GamesPage() {
     const handleKeyDown = (e) => {
       if (!gs.current.running) return;
       gs.current.keys[e.code] = true;
-      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft'].includes(e.code)) {
         e.preventDefault();
       }
 
+      // Left Shift — attack (spear) during boss phase
+      if (e.code === 'ShiftLeft' && gs.current.mode === 'thirdperson' && gs.current.bossPhase && gs.current.pointerLocked) {
+        const g = gs.current;
+        if (g.player.attackCooldown <= 0) {
+          g.player.attacking = true;
+          g.player.attackCooldown = BOSS.spearCooldown;
+          g.player.attackAnim = BOSS.spearAnimFrames;
+        }
+      }
+
+      // "З" key (KeyZ) — toggle minigun, only in 3D horse phase (not boss)
+      if (e.code === 'KeyZ' && gs.current.mode === 'thirdperson' && !gs.current.bossPhase) {
+        const g = gs.current;
+        const THREE = THREERef.current;
+        if (!THREE) return;
+        if (g.minigunActive) {
+          // Deactivate minigun — restore fist
+          removeMinigunHand(g);
+          g.minigunActive = false;
+          createPlayerHand(g, THREE);
+        } else {
+          // Activate minigun — swap hand model
+          if (g.handMesh) g.camera.remove(g.handMesh);
+          g.minigunActive = true;
+          createMinigunHand(g, THREE);
+        }
+      }
     };
     const handleKeyUp = (e) => { gs.current.keys[e.code] = false; };
     document.addEventListener('keydown', handleKeyDown);
@@ -145,6 +173,13 @@ export default function GamesPage() {
       document.removeEventListener('mousemove', g._handleMouseMove);
       g._handleMouseMove = null;
     }
+    g.ducklings = [];
+    g._THREE = null;
+    g.minigunActive = false;
+    if (g.minigunBullets) {
+      g.minigunBullets.forEach(b => { if (g.scene) g.scene.remove(b.mesh); });
+      g.minigunBullets = [];
+    }
     g.enemyMeshes = [];
     g.playerMesh = null;
     g.particles = [];
@@ -188,6 +223,11 @@ export default function GamesPage() {
     if (!THREE) return;
 
     g.bossPhase = true;
+
+    // Deactivate minigun for boss phase
+    if (g.minigunActive) {
+      cleanupMinigun(g);
+    }
 
     // Clean up dead horse meshes
     g.enemies.forEach(e => {
@@ -249,6 +289,11 @@ export default function GamesPage() {
 
     const { forward } = updatePlayer3D(g, THREE, dt);
 
+    // Minigun update (only in horse phase, auto-fires while active)
+    if (g.minigunActive && !g.bossPhase && g.pointerLocked) {
+      updateMinigun(g, THREE, forward, dt);
+    }
+
     updatePunchAnimation(g, THREE, forward, {
       onHit: (enemy) => {
         triggerHorseDeath(g, THREE, enemy, g.player);
@@ -257,6 +302,12 @@ export default function GamesPage() {
         spawnParticles(g, THREE, enemy.x, 0.2, enemy.z, 0x880000, 8, 0.3);
         g.cameraShake = 4.0;
         updateGameUI();
+      },
+      onDucklingHit: (duckling) => {
+        triggerDucklingDeath(g, THREE, duckling, g.player);
+        spawnParticles(g, THREE, duckling.x, 0.3, duckling.z, 0xFFE44D, 10, 0.2);
+        spawnParticles(g, THREE, duckling.x, 0.2, duckling.z, 0xFFFF00, 6, 0.15);
+        g.cameraShake = 2.0;
       },
       onBossHit: () => {
         if (!g.boss || g.boss.hp <= 0) return;
@@ -288,6 +339,8 @@ export default function GamesPage() {
           return;
         }
       }
+      // Update ducklings
+      updateDucklings(g, dt);
       // Update boss HP bar directly
       if (bossBarRef.current && g.boss) {
         bossBarRef.current.style.width = `${(g.boss.hp / g.boss.maxHp) * 100}%`;
@@ -366,6 +419,7 @@ export default function GamesPage() {
       canvas.style.display = 'block';
 
       try {
+        g._THREE = THREE;
         initScene(g, THREE, canvas, gameScreenRef.current);
         createPlayerHand(g, THREE);
         initPlayer3D(g);
@@ -377,6 +431,9 @@ export default function GamesPage() {
           onPlayerDamage: () => {
             spawnParticles(g, THREE, g.player.x, 1.2, g.player.z, 0xFF0000, 8, 0.15);
             spawnParticles(g, THREE, g.player.x, 1.5, g.player.z, 0xCC0000, 5, 0.1);
+            updateGameUI();
+          },
+          onMinigunKill: () => {
             updateGameUI();
           },
           endGame
@@ -575,8 +632,9 @@ export default function GamesPage() {
             <>
               <span>WASD движение</span>
               <span>🖱️ камера</span>
-              <span>ЛКМ {gs.current.bossPhase ? 'копьё' : 'удар'}</span>
+              <span>ЛКМ{gs.current.bossPhase ? '/SHIFT копьё' : ' удар'}</span>
               <span>ПРОБЕЛ прыжок</span>
+              {!gs.current.bossPhase && <span>З пулемёт</span>}
             </>
           )}
         </div>

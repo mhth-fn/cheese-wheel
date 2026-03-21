@@ -433,6 +433,59 @@ export function createDuckMesh(THREE) {
   return { mesh: duck, legs, head, tail, wings, neck };
 }
 
+export function createDucklingMesh(THREE) {
+  const duck = new THREE.Group();
+  const bodyMat = new THREE.MeshLambertMaterial({ color: 0xFFE44D });
+  const beakMat = new THREE.MeshLambertMaterial({ color: 0xFF8C00 });
+  const eyeMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
+  const legMat = new THREE.MeshLambertMaterial({ color: 0xFF6600 });
+
+  // Body — fluffy round
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 6), bodyMat);
+  body.scale.set(1.1, 0.9, 1.0);
+  body.position.y = 0.3;
+  body.castShadow = true;
+  duck.add(body);
+
+  // Head
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 6), bodyMat);
+  head.position.set(0.22, 0.5, 0);
+  duck.add(head);
+
+  // Beak
+  const beak = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.1), beakMat);
+  beak.position.set(0.36, 0.47, 0);
+  duck.add(beak);
+
+  // Eyes
+  const eye1 = new THREE.Mesh(new THREE.SphereGeometry(0.025, 4, 4), eyeMat);
+  eye1.position.set(0.3, 0.54, 0.08);
+  duck.add(eye1);
+  const eye2 = eye1.clone();
+  eye2.position.z = -0.08;
+  duck.add(eye2);
+
+  // Legs
+  const legs = [];
+  const legGeom = new THREE.CylinderGeometry(0.025, 0.02, 0.15, 4);
+  [0.08, -0.08].forEach(zOff => {
+    const leg = new THREE.Mesh(legGeom, legMat);
+    leg.position.set(0, 0.08, zOff);
+    duck.add(leg);
+    legs.push(leg);
+  });
+
+  // Tiny wings
+  const wingMat = new THREE.MeshLambertMaterial({ color: 0xFFD700 });
+  [-1, 1].forEach(side => {
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.12, 0.18), wingMat);
+    wing.position.set(-0.02, 0.32, side * 0.22);
+    duck.add(wing);
+  });
+
+  return { mesh: duck, legs, head };
+}
+
 export function createSpearHand(gs, THREE) {
   // Remove old hand
   if (gs.handMesh) {

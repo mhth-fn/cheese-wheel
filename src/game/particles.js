@@ -1,12 +1,45 @@
+// Shared geometry for all particles — one allocation, reused everywhere
+let PARTICLE_GEOM = null;
+
+// Pool of inactive particle meshes ready for reuse
+const particlePool = [];
+const MAX_POOL = 200;
+
+function getParticleMesh(THREE, gs, color) {
+  if (!PARTICLE_GEOM) {
+    PARTICLE_GEOM = new THREE.SphereGeometry(0.04, 4, 4);
+  }
+
+  let mesh;
+  if (particlePool.length > 0) {
+    mesh = particlePool.pop();
+    mesh.material.color.set(color);
+    mesh.material.opacity = 1;
+    mesh.visible = true;
+  } else {
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 });
+    mesh = new THREE.Mesh(PARTICLE_GEOM, mat);
+  }
+  gs.scene.add(mesh);
+  return mesh;
+}
+
+function releaseParticleMesh(gs, mesh) {
+  gs.scene.remove(mesh);
+  if (particlePool.length < MAX_POOL) {
+    mesh.visible = false;
+    particlePool.push(mesh);
+  } else {
+    mesh.material.dispose();
+  }
+}
+
 export function spawnParticles(gs, THREE, x, y, z, color, count, spread) {
   if (!THREE || !gs.scene) return;
 
   for (let i = 0; i < count; i++) {
-    const geom = new THREE.SphereGeometry(0.03 + Math.random() * 0.04, 4, 4);
-    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 });
-    const mesh = new THREE.Mesh(geom, mat);
+    const mesh = getParticleMesh(THREE, gs, color);
     mesh.position.set(x, y, z);
-    gs.scene.add(mesh);
     gs.particles.push({
       mesh,
       vx: (Math.random() - 0.5) * spread,
@@ -28,9 +61,7 @@ export function updateParticles(gs) {
     p.life--;
     p.mesh.material.opacity = p.life / p.maxLife;
     if (p.life <= 0) {
-      gs.scene.remove(p.mesh);
-      p.mesh.geometry.dispose();
-      p.mesh.material.dispose();
+      releaseParticleMesh(gs, p.mesh);
       gs.particles.splice(i, 1);
     }
   }

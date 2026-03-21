@@ -4,6 +4,15 @@ export function updateHorseAI(gs, dt) {
   const p = gs.player;
   const currentChargeGroup = Math.floor(Date.now() / 5000) % 10;
 
+  // Build spatial grid for inter-horse collision
+  const CELL = 2;
+  const grid = {};
+  gs.enemies.forEach((e, i) => {
+    if (e.hp <= 0) return;
+    const key = `${Math.floor(e.x / CELL)},${Math.floor(e.z / CELL)}`;
+    (grid[key] ||= []).push(i);
+  });
+
   gs.enemies.forEach((e, idx) => {
     if (e.hp <= 0) return;
 
@@ -184,18 +193,28 @@ export function updateHorseAI(gs, dt) {
     let newEX = e.x + e.vx * dt;
     let newEZ = e.z + e.vz * dt;
 
-    // Inter-horse collision
-    gs.enemies.forEach((other, otherIdx) => {
-      if (other.hp <= 0 || idx === otherIdx) return;
-      const odx = other.x - newEX;
-      const odz = other.z - newEZ;
-      const odist = Math.sqrt(odx * odx + odz * odz);
-      if (odist < 0.7 && odist > 0) {
-        const repel = (0.7 - odist) * 0.3;
-        newEX -= (odx / odist) * repel;
-        newEZ -= (odz / odist) * repel;
+    // Inter-horse collision (spatial grid — only check neighbors)
+    const cx = Math.floor(newEX / CELL);
+    const cz = Math.floor(newEZ / CELL);
+    for (let gdx = -1; gdx <= 1; gdx++) {
+      for (let gdz = -1; gdz <= 1; gdz++) {
+        const neighbors = grid[`${cx + gdx},${cz + gdz}`];
+        if (!neighbors) continue;
+        for (let ni = 0; ni < neighbors.length; ni++) {
+          const otherIdx = neighbors[ni];
+          if (otherIdx === idx) continue;
+          const other = gs.enemies[otherIdx];
+          const odx = other.x - newEX;
+          const odz = other.z - newEZ;
+          const odist = Math.sqrt(odx * odx + odz * odz);
+          if (odist < 0.7 && odist > 0) {
+            const repel = (0.7 - odist) * 0.3;
+            newEX -= (odx / odist) * repel;
+            newEZ -= (odz / odist) * repel;
+          }
+        }
       }
-    });
+    }
 
     // Field bounds
     e.x = Math.max(-FIELD.x, Math.min(FIELD.x, newEX));
