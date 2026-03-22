@@ -13,7 +13,8 @@
   .admin-btn { left: 70px; }
   .nav { gap: 8px; }
   .nav-btn { padding: 10px 18px; font-size: 0.9rem; }
-  .nav-user { margin-left: 0; width: 100%; justify-content: center; }
+  .nav-user { margin-left: 0; width: 100%; display: flex; justify-content: center; }
+  .nav-dropdown { right: auto; left: 50%; transform: translateX(-50%); }
   .spin-controls { flex-direction: column; }
   .watched-table-wrapper { overflow-x: auto; }
   .watched-table { min-width: 700px; }
