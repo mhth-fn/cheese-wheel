@@ -122,6 +122,22 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
                 </button>
               </form>
             )}
+            {!isGuest && !changingPassword && (
+              <>
+                <button
+                  className="nav-dropdown-item"
+                  onClick={() => { onNavigate('wine-reviews'); setDropdownOpen(false); }}
+                >
+                  🍷 Обзоры на вино
+                </button>
+                <button
+                  className="nav-dropdown-item"
+                  onClick={() => { onNavigate('movie-reviews'); setDropdownOpen(false); }}
+                >
+                  🎬 Обзоры на кино
+                </button>
+              </>
+            )}
             {!changingPassword && (
               <button className="nav-dropdown-item nav-dropdown-logout" onClick={onLogout}>
                 🚪 Выход
