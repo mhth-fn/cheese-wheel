@@ -5,3 +5,5 @@ node_modules/
 cheese-wheel@*.tgz
 cheese-wheel@*
 node
+dist/
+uploads/
