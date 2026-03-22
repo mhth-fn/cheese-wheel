@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react';
 import { io } from 'socket.io-client';
-import { fetchUsers, fetchSettings, fetchTheme, fetchCenterImage, postMovie, deleteMovie } from './api';
+import { fetchUsers, fetchSettings, fetchTheme, fetchCenterImage, postMovie, deleteMovie, postGuestAuth } from './api';
 import AuthPage from './components/AuthPage';
 import Nav from './components/Nav';
 import WheelPage from './components/WheelPage';
@@ -11,6 +11,8 @@ import Toast from './components/Toast';
 import ConnectionStatus from './components/ConnectionStatus';
 import DrawerPanel from './components/DrawerPanel';
 import GamesPage from './components/GamesPage';
+import WineReviewsPage from './components/WineReviewsPage';
+import MovieReviewsPage from './components/MovieReviewsPage';
 import ThemeDecorations from './components/ThemeDecorations';
 
 export const AppContext = createContext(null);
@@ -106,10 +108,15 @@ export default function App() {
   useEffect(() => {
     if (users.length === 0) return;
     const saved = localStorage.getItem('cheeseWheelSession');
-    if (saved) {
+    const token = localStorage.getItem('cheeseWheelToken');
+    if (saved && token) {
       try {
         const session = JSON.parse(saved);
-        const urlPage = location.pathname === '/watched' ? 'watched' : location.pathname === '/games' ? 'games' : 'wheel';
+        const urlPage = location.pathname === '/watched' ? 'watched'
+        : location.pathname === '/games' ? 'games'
+        : location.pathname === '/wine-reviews' ? 'wine-reviews'
+        : location.pathname === '/movie-reviews' ? 'movie-reviews'
+        : 'wheel';
         if (session.isGuest) {
           setIsGuest(true);
           setPage(urlPage);
@@ -122,7 +129,11 @@ export default function App() {
         }
       } catch (e) {
         localStorage.removeItem('cheeseWheelSession');
+        localStorage.removeItem('cheeseWheelToken');
       }
+    } else if (saved && !token) {
+      // Старая сессия без токена — чистим, отправляем на логин
+      localStorage.removeItem('cheeseWheelSession');
     }
     setSessionChecked(true);
   }, [users]);
@@ -138,28 +149,42 @@ export default function App() {
   // Browser history
   useEffect(() => {
     if (!isLoggedIn) return;
-    const path = page === 'watched' ? '/watched' : page === 'games' ? '/games' : '/';
+    const path = page === 'watched' ? '/watched'
+      : page === 'games' ? '/games'
+      : page === 'wine-reviews' ? '/wine-reviews'
+      : page === 'movie-reviews' ? '/movie-reviews'
+      : '/';
     history.replaceState({ page }, '', path);
   }, [page, isLoggedIn]);
 
   useEffect(() => {
     const handler = (e) => {
       if (!isLoggedIn) return;
-      const p = e.state?.page || (location.pathname === '/watched' ? 'watched' : location.pathname === '/games' ? 'games' : 'wheel');
+      const p = e.state?.page || (location.pathname === '/watched' ? 'watched'
+        : location.pathname === '/games' ? 'games'
+        : location.pathname === '/wine-reviews' ? 'wine-reviews'
+        : location.pathname === '/movie-reviews' ? 'movie-reviews'
+        : 'wheel');
       setPage(p);
     };
     window.addEventListener('popstate', handler);
     return () => window.removeEventListener('popstate', handler);
   }, [isLoggedIn]);
 
-  const login = useCallback((user) => {
+  const login = useCallback((user, token) => {
     setCurrentUser(user);
     setIsGuest(false);
     localStorage.setItem('cheeseWheelSession', JSON.stringify({ userId: user.id }));
+    if (token) localStorage.setItem('cheeseWheelToken', token);
     setPage('wheel');
   }, []);
 
-  const loginGuest = useCallback(() => {
+  const loginGuest = useCallback(async () => {
+    try {
+      const res = await postGuestAuth();
+      const data = await res.json();
+      if (data.token) localStorage.setItem('cheeseWheelToken', data.token);
+    } catch (e) { console.error(e); }
     setCurrentUser(null);
     setIsGuest(true);
     localStorage.setItem('cheeseWheelSession', JSON.stringify({ isGuest: true }));
@@ -168,6 +193,7 @@ export default function App() {
 
   const logout = useCallback(() => {
     localStorage.removeItem('cheeseWheelSession');
+    localStorage.removeItem('cheeseWheelToken');
     setCurrentUser(null);
     setIsGuest(false);
     setPage('auth');
@@ -179,7 +205,12 @@ export default function App() {
   const navigate = useCallback((p) => {
     setPage(p);
     setDrawerOpen(false);
-    history.pushState({ page: p }, '', p === 'watched' ? '/watched' : p === 'games' ? '/games' : '/');
+    const navPath = p === 'watched' ? '/watched'
+      : p === 'games' ? '/games'
+      : p === 'wine-reviews' ? '/wine-reviews'
+      : p === 'movie-reviews' ? '/movie-reviews'
+      : '/';
+    history.pushState({ page: p }, '', navPath);
   }, []);
 
   // Drawer handlers
@@ -281,6 +312,14 @@ export default function App() {
           <div id="games-page" className={`page ${page === 'games' ? 'active' : ''}`}
                style={{ display: page === 'games' ? '' : 'none' }}>
             <GamesPage />
+          </div>
+          <div id="wine-reviews-page" className={`page ${page === 'wine-reviews' ? 'active' : ''}`}
+               style={{ display: page === 'wine-reviews' ? '' : 'none' }}>
+            <WineReviewsPage />
+          </div>
+          <div id="movie-reviews-page" className={`page ${page === 'movie-reviews' ? 'active' : ''}`}
+               style={{ display: page === 'movie-reviews' ? '' : 'none' }}>
+            <MovieReviewsPage />
           </div>
         </div>
       )}

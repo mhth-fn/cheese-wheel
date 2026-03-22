@@ -1,20 +1,27 @@
+function apiFetch(url, options = {}) {
+  const token = localStorage.getItem('cheeseWheelToken');
+  const headers = { ...(options.headers || {}) };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return fetch(url, { ...options, headers });
+}
+
 export async function fetchUsers() {
   const res = await fetch('/api/users');
   return res.json();
 }
 
 export async function fetchSettings() {
-  const res = await fetch('/api/settings');
+  const res = await apiFetch('/api/settings');
   return res.json();
 }
 
 export async function fetchTheme() {
-  const res = await fetch('/api/theme');
+  const res = await apiFetch('/api/theme');
   return res.json();
 }
 
 export async function postTheme(theme) {
-  return fetch('/api/theme', {
+  return apiFetch('/api/theme', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ theme })
@@ -22,12 +29,12 @@ export async function postTheme(theme) {
 }
 
 export async function fetchWheelMovies() {
-  const res = await fetch('/api/wheel');
+  const res = await apiFetch('/api/wheel');
   return res.json();
 }
 
 export async function postMovie(title, userId) {
-  return fetch('/api/wheel', {
+  return apiFetch('/api/wheel', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title, user_id: userId })
@@ -35,20 +42,20 @@ export async function postMovie(title, userId) {
 }
 
 export async function deleteMovie(id) {
-  return fetch(`/api/wheel/${id}`, { method: 'DELETE' });
+  return apiFetch(`/api/wheel/${id}`, { method: 'DELETE' });
 }
 
 export async function markWatched(id) {
-  return fetch(`/api/wheel/${id}/watched`, { method: 'POST' });
+  return apiFetch(`/api/wheel/${id}/watched`, { method: 'POST' });
 }
 
 export async function fetchWatched() {
-  const res = await fetch('/api/watched');
+  const res = await apiFetch('/api/watched');
   return res.json();
 }
 
 export async function postWatchedMovie(title) {
-  return fetch('/api/watched', {
+  return apiFetch('/api/watched', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title })
@@ -56,11 +63,11 @@ export async function postWatchedMovie(title) {
 }
 
 export async function deleteWatched(id) {
-  return fetch(`/api/watched/${id}`, { method: 'DELETE' });
+  return apiFetch(`/api/watched/${id}`, { method: 'DELETE' });
 }
 
 export async function updateMovie(id, data) {
-  return fetch(`/api/movies/${id}`, {
+  return apiFetch(`/api/movies/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
@@ -68,7 +75,7 @@ export async function updateMovie(id, data) {
 }
 
 export async function postRating(movieId, userId, rating) {
-  return fetch('/api/ratings', {
+  return apiFetch('/api/ratings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ movie_id: movieId, user_id: userId, rating })
@@ -76,7 +83,7 @@ export async function postRating(movieId, userId, rating) {
 }
 
 export async function fetchStats() {
-  const res = await fetch('/api/stats');
+  const res = await apiFetch('/api/stats');
   return res.json();
 }
 
@@ -88,8 +95,12 @@ export async function postAuth(userId, password) {
   });
 }
 
+export async function postGuestAuth() {
+  return fetch('/api/auth/guest', { method: 'POST' });
+}
+
 export async function changePassword(userId, oldPassword, newPassword) {
-  return fetch(`/api/users/${userId}/password`, {
+  return apiFetch(`/api/users/${userId}/password`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ old_password: oldPassword, new_password: newPassword })
@@ -97,7 +108,7 @@ export async function changePassword(userId, oldPassword, newPassword) {
 }
 
 export async function postSpinDuration(duration) {
-  return fetch('/api/settings/spin-duration', {
+  return apiFetch('/api/settings/spin-duration', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ duration })
@@ -105,7 +116,7 @@ export async function postSpinDuration(duration) {
 }
 
 export async function postSpinEnabled(enabled) {
-  return fetch('/api/settings/spin-enabled', {
+  return apiFetch('/api/settings/spin-enabled', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled })
@@ -113,7 +124,7 @@ export async function postSpinEnabled(enabled) {
 }
 
 export async function postAddEnabled(enabled) {
-  return fetch('/api/settings/add-enabled', {
+  return apiFetch('/api/settings/add-enabled', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled })
@@ -121,7 +132,7 @@ export async function postAddEnabled(enabled) {
 }
 
 export async function postDecorationsEnabled(enabled) {
-  return fetch('/api/settings/decorations-enabled', {
+  return apiFetch('/api/settings/decorations-enabled', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled })
@@ -129,16 +140,74 @@ export async function postDecorationsEnabled(enabled) {
 }
 
 export async function fetchCenterImage() {
-  const res = await fetch('/api/center-image');
+  const res = await apiFetch('/api/center-image');
   return res.json();
 }
 
 export async function uploadCenterImage(file) {
   const form = new FormData();
   form.append('file', file);
-  return fetch('/api/center-image', { method: 'POST', body: form });
+  return apiFetch('/api/center-image', { method: 'POST', body: form });
 }
 
 export async function deleteCenterImage() {
-  return fetch('/api/center-image', { method: 'DELETE' });
+  return apiFetch('/api/center-image', { method: 'DELETE' });
+}
+
+export async function fetchWineReviews() {
+  const res = await apiFetch('/api/wine-reviews');
+  return res.json();
+}
+
+export async function postWineReview(userId, title, content, recommend, wine_type, grape, region, vintage, price) {
+  return apiFetch('/api/wine-reviews', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, title, content, recommend, wine_type, grape, region, vintage, price })
+  });
+}
+
+export async function patchWineReview(id, userId, title, content, recommend, wine_type, grape, region, vintage, price) {
+  return apiFetch(`/api/wine-reviews/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, title, content, recommend, wine_type, grape, region, vintage, price })
+  });
+}
+
+export async function deleteWineReview(id, userId) {
+  return apiFetch(`/api/wine-reviews/${id}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId })
+  });
+}
+
+export async function fetchMovieReviews() {
+  const res = await apiFetch('/api/movie-reviews');
+  return res.json();
+}
+
+export async function postMovieReview(userId, title, content, recommend, director, year) {
+  return apiFetch('/api/movie-reviews', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, title, content, recommend, director, year })
+  });
+}
+
+export async function patchMovieReview(id, userId, title, content, recommend, director, year) {
+  return apiFetch(`/api/movie-reviews/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, title, content, recommend, director, year })
+  });
+}
+
+export async function deleteMovieReview(id, userId) {
+  return apiFetch(`/api/movie-reviews/${id}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId })
+  });
 }

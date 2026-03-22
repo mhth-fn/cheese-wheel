@@ -11,6 +11,62 @@ const PORT = process.env.PORT || 3000;
 
 const crypto = require('crypto');
 
+// ============ RATE LIMITING ============
+const authAttempts = new Map(); // ip -> { count, resetAt }
+const RATE_LIMIT_MAX = 10;
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 минута
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const entry = authAttempts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    authAttempts.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  if (entry.count >= RATE_LIMIT_MAX) return false;
+  entry.count++;
+  return true;
+}
+
+// ============ ТОКЕНЫ ============
+const tokenStore = new Map(); // token -> { userId, isGuest, expires }
+const TOKEN_EXPIRY = 30 * 24 * 60 * 60 * 1000; // 30 дней
+
+function createToken(userId, isGuest = false) {
+  const token = crypto.randomBytes(32).toString('hex');
+  tokenStore.set(token, { userId, isGuest, expires: Date.now() + TOKEN_EXPIRY });
+  return token;
+}
+
+function getTokenData(token) {
+  if (!token) return null;
+  const data = tokenStore.get(token);
+  if (!data) return null;
+  if (Date.now() > data.expires) { tokenStore.delete(token); return null; }
+  return data;
+}
+
+// Чистим просроченные токены раз в час
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, data] of tokenStore) {
+    if (now > data.expires) tokenStore.delete(token);
+  }
+}, 60 * 60 * 1000);
+
+// ============ AUTH MIDDLEWARE ============
+function requireAuth(req, res, next) {
+  const header = req.headers['authorization'];
+  const token = header?.startsWith('Bearer ') ? header.slice(7) : null;
+  const data = getTokenData(token);
+  if (!data) return res.status(401).json({ error: 'Требуется авторизация' });
+  if (data.isGuest && req.method !== 'GET') {
+    return res.status(403).json({ error: 'Гостевой доступ только для чтения' });
+  }
+  req.tokenData = data;
+  next();
+}
+
 const MIN_SPIN_DURATION = 5;
 const MAX_SPIN_DURATION = 15;
 const MAX_TITLE_LENGTH = 200;
@@ -60,6 +116,26 @@ db.exec(`
     key TEXT PRIMARY KEY,
     value TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS wine_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    recommend INTEGER NOT NULL DEFAULT 1,
+    created_at DATETIME DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS movie_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    recommend INTEGER NOT NULL DEFAULT 1,
+    created_at DATETIME DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
 `);
 
 // Миграция: добавляем колонку password_hash если её нет
@@ -83,6 +159,16 @@ try {
   // колонка уже существует
 }
 
+// Миграции: новые поля для обзоров на вино
+['wine_type TEXT', 'grape TEXT', 'region TEXT', 'vintage INTEGER', 'price TEXT'].forEach(col => {
+  try { db.exec(`ALTER TABLE wine_reviews ADD COLUMN ${col}`); } catch (e) {}
+});
+
+// Миграции: новые поля для обзоров на кино
+['director TEXT', 'year INTEGER'].forEach(col => {
+  try { db.exec(`ALTER TABLE movie_reviews ADD COLUMN ${col}`); } catch (e) {}
+});
+
 // Хеширование пароля
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -99,7 +185,11 @@ function verifyPassword(password, stored) {
 }
 
 // Добавляем пользователей
-const DEFAULT_PASSWORD = 'Cheese$Wheel#2024!';
+let DEFAULT_PASSWORD = process.env.DEFAULT_PASSWORD;
+if (!DEFAULT_PASSWORD) {
+  DEFAULT_PASSWORD = crypto.randomBytes(12).toString('base64');
+  console.warn(`[cheese-wheel] DEFAULT_PASSWORD не задан. Сгенерирован временный пароль для новых пользователей: ${DEFAULT_PASSWORD}`);
+}
 const userNames = ['Антон', 'Сергей', 'Пётр', 'Митя'];
 const insertUser = db.prepare('INSERT OR IGNORE INTO users (name, password_hash) VALUES (?, ?)');
 userNames.forEach(name => insertUser.run(name, hashPassword(DEFAULT_PASSWORD)));
@@ -173,6 +263,24 @@ const stmts = {
     FROM users u LEFT JOIN ratings r ON u.id = r.user_id
     GROUP BY u.id ORDER BY u.id
   `),
+  getWineReviews: db.prepare(`
+    SELECT wr.*, u.name as user_name
+    FROM wine_reviews wr JOIN users u ON wr.user_id = u.id
+    ORDER BY wr.created_at DESC
+  `),
+  insertWineReview: db.prepare('INSERT INTO wine_reviews (user_id, title, content, recommend, wine_type, grape, region, vintage, price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+  getWineReviewById: db.prepare('SELECT * FROM wine_reviews WHERE id = ?'),
+  deleteWineReview: db.prepare('DELETE FROM wine_reviews WHERE id = ? AND user_id = ?'),
+  updateWineReview: db.prepare('UPDATE wine_reviews SET title=?, content=?, recommend=?, wine_type=?, grape=?, region=?, vintage=?, price=? WHERE id=? AND user_id=?'),
+  getMovieReviews: db.prepare(`
+    SELECT mr.*, u.name as user_name
+    FROM movie_reviews mr JOIN users u ON mr.user_id = u.id
+    ORDER BY mr.created_at DESC
+  `),
+  insertMovieReview: db.prepare('INSERT INTO movie_reviews (user_id, title, content, recommend, director, year) VALUES (?, ?, ?, ?, ?, ?)'),
+  getMovieReviewById: db.prepare('SELECT * FROM movie_reviews WHERE id = ?'),
+  deleteMovieReview: db.prepare('DELETE FROM movie_reviews WHERE id = ? AND user_id = ?'),
+  updateMovieReview: db.prepare('UPDATE movie_reviews SET title=?, content=?, recommend=?, director=?, year=? WHERE id=? AND user_id=?'),
 };
 
 // Хелперы валидации
@@ -193,7 +301,20 @@ const ALLOWED_THEMES = ['cheese', 'newyear', 'spring'];
 
 // ============ API ============
 
+// Публичные маршруты: /api/auth, /api/auth/guest, GET /api/users
+// Всё остальное — через requireAuth
+app.use('/api', (req, res, next) => {
+  if (req.path === '/auth' && req.method === 'POST') return next();
+  if (req.path === '/auth/guest' && req.method === 'POST') return next();
+  if (req.path === '/users' && req.method === 'GET') return next();
+  requireAuth(req, res, next);
+});
+
 app.post('/api/auth', (req, res) => {
+  const ip = req.ip || req.socket.remoteAddress;
+  if (!checkRateLimit(ip)) {
+    return res.status(429).json({ error: 'Слишком много попыток. Подождите минуту.' });
+  }
   const { user_id, password } = req.body;
   const userId = parseIntStrict(user_id);
   if (isNaN(userId) || typeof password !== 'string') {
@@ -204,10 +325,16 @@ app.post('/api/auth', (req, res) => {
     return res.status(400).json({ error: 'Пользователь не найден' });
   }
   if (verifyPassword(password, user.password_hash)) {
-    res.json({ success: true });
+    const token = createToken(user.id);
+    res.json({ success: true, token });
   } else {
     res.status(401).json({ error: 'Неверный пароль' });
   }
+});
+
+app.post('/api/auth/guest', (req, res) => {
+  const token = createToken(null, true);
+  res.json({ success: true, token });
 });
 
 // Смена пароля
@@ -548,6 +675,133 @@ app.delete('/api/center-image', (req, res) => {
   }
   db.prepare("DELETE FROM settings WHERE key = 'center_image'").run();
   io.emit('center-image-changed', { url: null });
+  res.json({ success: true });
+});
+
+// ============ REVIEWS ============
+
+const MAX_REVIEW_CONTENT_LENGTH = 5000;
+
+function validateReview(body) {
+  const title = sanitizeTitle(body.title);
+  if (!title) return { error: 'Введите название (до 200 символов)' };
+  const content = typeof body.content === 'string' ? body.content.trim() : '';
+  if (!content || content.length > MAX_REVIEW_CONTENT_LENGTH) return { error: 'Введите текст обзора (до 5000 символов)' };
+  const recommend = body.recommend ? 1 : 0;
+  return { title, content, recommend };
+}
+
+app.get('/api/wine-reviews', (req, res) => {
+  res.json(stmts.getWineReviews.all());
+});
+
+app.post('/api/wine-reviews', (req, res) => {
+  const userId = parseIntStrict(req.body.user_id);
+  if (isNaN(userId) || !stmts.getUserById.get(userId)) {
+    return res.status(400).json({ error: 'Неверный пользователь' });
+  }
+  const validated = validateReview(req.body);
+  if (validated.error) return res.status(400).json({ error: validated.error });
+  const ALLOWED_WINE_TYPES = ['red', 'white', 'rose'];
+  const wine_type = ALLOWED_WINE_TYPES.includes(req.body.wine_type) ? req.body.wine_type : null;
+  const grape = typeof req.body.grape === 'string' ? req.body.grape.trim().slice(0, 100) || null : null;
+  const region = typeof req.body.region === 'string' ? req.body.region.trim().slice(0, 100) || null : null;
+  const vintage = parseIntStrict(req.body.vintage);
+  const vintageVal = !isNaN(vintage) && vintage >= 1900 && vintage <= 2100 ? vintage : null;
+  const price = typeof req.body.price === 'string' ? req.body.price.trim().slice(0, 50) || null : null;
+  try {
+    const result = stmts.insertWineReview.run(userId, validated.title, validated.content, validated.recommend, wine_type, grape, region, vintageVal, price);
+    const review = stmts.getWineReviewById.get(result.lastInsertRowid);
+    const user = stmts.getUsers.all().find(u => u.id === userId);
+    io.emit('wine-review-added', { ...review, user_name: user?.name });
+    res.json({ ...review, user_name: user?.name });
+  } catch (err) {
+    res.status(500).json({ error: 'Ошибка сохранения' });
+  }
+});
+
+app.delete('/api/wine-reviews/:id', (req, res) => {
+  const id = parseIntStrict(req.params.id);
+  const userId = parseIntStrict(req.body.user_id);
+  if (isNaN(id) || isNaN(userId)) return res.status(400).json({ error: 'Неверный ID' });
+  const result = stmts.deleteWineReview.run(id, userId);
+  if (result.changes === 0) return res.status(403).json({ error: 'Нет доступа или обзор не найден' });
+  io.emit('wine-review-deleted', { id });
+  res.json({ success: true });
+});
+
+app.patch('/api/wine-reviews/:id', (req, res) => {
+  const id = parseIntStrict(req.params.id);
+  const userId = parseIntStrict(req.body.user_id);
+  if (isNaN(id) || isNaN(userId)) return res.status(400).json({ error: 'Неверный ID' });
+  const validated = validateReview(req.body);
+  if (validated.error) return res.status(400).json({ error: validated.error });
+  const ALLOWED_WINE_TYPES = ['red', 'white', 'rose'];
+  const wine_type = ALLOWED_WINE_TYPES.includes(req.body.wine_type) ? req.body.wine_type : null;
+  const grape = typeof req.body.grape === 'string' ? req.body.grape.trim().slice(0, 100) || null : null;
+  const region = typeof req.body.region === 'string' ? req.body.region.trim().slice(0, 100) || null : null;
+  const vintage = parseIntStrict(req.body.vintage);
+  const vintageVal = !isNaN(vintage) && vintage >= 1900 && vintage <= 2100 ? vintage : null;
+  const price = typeof req.body.price === 'string' ? req.body.price.trim().slice(0, 50) || null : null;
+  const result = stmts.updateWineReview.run(validated.title, validated.content, validated.recommend, wine_type, grape, region, vintageVal, price, id, userId);
+  if (result.changes === 0) return res.status(403).json({ error: 'Нет доступа или обзор не найден' });
+  const review = stmts.getWineReviewById.get(id);
+  const user = stmts.getUsers.all().find(u => u.id === userId);
+  const updated = { ...review, user_name: user?.name };
+  io.emit('wine-review-updated', updated);
+  res.json(updated);
+});
+
+app.get('/api/movie-reviews', (req, res) => {
+  res.json(stmts.getMovieReviews.all());
+});
+
+app.post('/api/movie-reviews', (req, res) => {
+  const userId = parseIntStrict(req.body.user_id);
+  if (isNaN(userId) || !stmts.getUserById.get(userId)) {
+    return res.status(400).json({ error: 'Неверный пользователь' });
+  }
+  const validated = validateReview(req.body);
+  if (validated.error) return res.status(400).json({ error: validated.error });
+  const director = typeof req.body.director === 'string' ? req.body.director.trim().slice(0, 100) || null : null;
+  const year = parseIntStrict(req.body.year);
+  const yearVal = !isNaN(year) && year >= 1888 && year <= 2100 ? year : null;
+  try {
+    const result = stmts.insertMovieReview.run(userId, validated.title, validated.content, validated.recommend, director, yearVal);
+    const review = stmts.getMovieReviewById.get(result.lastInsertRowid);
+    const user = stmts.getUsers.all().find(u => u.id === userId);
+    io.emit('movie-review-added', { ...review, user_name: user?.name });
+    res.json({ ...review, user_name: user?.name });
+  } catch (err) {
+    res.status(500).json({ error: 'Ошибка сохранения' });
+  }
+});
+
+app.patch('/api/movie-reviews/:id', (req, res) => {
+  const id = parseIntStrict(req.params.id);
+  const userId = parseIntStrict(req.body.user_id);
+  if (isNaN(id) || isNaN(userId)) return res.status(400).json({ error: 'Неверный ID' });
+  const validated = validateReview(req.body);
+  if (validated.error) return res.status(400).json({ error: validated.error });
+  const director = typeof req.body.director === 'string' ? req.body.director.trim().slice(0, 100) || null : null;
+  const year = parseIntStrict(req.body.year);
+  const yearVal = !isNaN(year) && year >= 1888 && year <= 2100 ? year : null;
+  const result = stmts.updateMovieReview.run(validated.title, validated.content, validated.recommend, director, yearVal, id, userId);
+  if (result.changes === 0) return res.status(403).json({ error: 'Нет доступа или обзор не найден' });
+  const review = stmts.getMovieReviewById.get(id);
+  const user = stmts.getUsers.all().find(u => u.id === userId);
+  const updated = { ...review, user_name: user?.name };
+  io.emit('movie-review-updated', updated);
+  res.json(updated);
+});
+
+app.delete('/api/movie-reviews/:id', (req, res) => {
+  const id = parseIntStrict(req.params.id);
+  const userId = parseIntStrict(req.body.user_id);
+  if (isNaN(id) || isNaN(userId)) return res.status(400).json({ error: 'Неверный ID' });
+  const result = stmts.deleteMovieReview.run(id, userId);
+  if (result.changes === 0) return res.status(403).json({ error: 'Нет доступа или обзор не найден' });
+  io.emit('movie-review-deleted', { id });
   res.json({ success: true });
 });
 

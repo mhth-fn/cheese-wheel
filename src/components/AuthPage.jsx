@@ -16,11 +16,12 @@ export default function AuthPage({ users, onLogin, onGuest }) {
     if (!selectedId) return;
     try {
       const res = await postAuth(selectedId, password);
+      const data = await res.json();
       if (res.ok) {
         const user = users.find(u => u.id === selectedId);
-        onLogin(user);
+        onLogin(user, data.token);
       } else {
-        setError('Неверный пароль');
+        setError(data.error || 'Неверный пароль');
         setPassword('');
       }
     } catch {
