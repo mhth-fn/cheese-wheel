@@ -208,21 +208,22 @@ export default function WheelPage() {
                 theme={theme}
               />
               <button
-                className="wheel-center-btn"
+                type="button"
+                className={`wheel-center-btn${spinPending ? ' is-pending' : ''}${isSpinning ? ' is-spinning' : ''}`}
                 onClick={handleSpin}
                 disabled={spinDisabled}
-                aria-label={isSpinning ? 'Колесо вращается' : 'Крутить колесо'}
-                title={!spinEnabled ? 'Прокрутка отключена' : isGuest ? 'Только для участников' : 'Крутить колесо'}
+                aria-label="Крутить колесо"
+                aria-disabled={spinDisabled}
+                aria-busy={spinPending || isSpinning}
+                title="Крутить колесо"
               >
                 {centerImage
                   ? <img src={centerImage} alt="" className="wheel-center-img" />
                   : <span className="wheel-center-fallback" aria-hidden="true">🧀</span>}
+                <span className="wheel-center-icon" aria-hidden="true">↻</span>
               </button>
             </div>
 
-            <button className="spin-btn" type="button" onClick={handleSpin} disabled={spinDisabled}>
-              {spinPending ? 'Запускаем…' : isSpinning ? `Крутим${secondsLeft ? ` · ${secondsLeft}` : ''}` : 'Крутить колесо'}
-            </button>
             {movies.length === 1 && (
               <p className="wheel-single-note">В колесе один фильм, результат уже почти решён.</p>
             )}
