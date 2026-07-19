@@ -11,17 +11,13 @@
   min-height: 132px;
   padding: var(--space-4);
   align-items: flex-start;
-  justify-content: center;
+  justify-content: flex-start;
   flex-direction: column;
   border: 1px solid var(--color-border-soft);
   border-radius: var(--radius-medium);
   background: var(--color-surface);
   box-shadow: var(--shadow-small);
-}
-
-.stat-card.total {
-  align-items: center;
-  text-align: center;
+  text-align: left;
 }
 
 .stat-card.best {
@@ -43,20 +39,15 @@
   white-space: nowrap;
 }
 
-.stat-card.total .stat-card-value {
-  margin-top: 0;
-  color: var(--color-primary);
-  font-size: 2rem;
-}
-
 .stat-card-label {
+  width: 100%;
   color: var(--color-text-muted);
   font-size: 0.72rem;
   font-weight: 700;
 }
 
 .stat-card-sub {
-  margin-top: 3px;
+  margin-top: var(--space-1);
   color: var(--color-text-muted);
   font-size: 0.68rem;
 }
