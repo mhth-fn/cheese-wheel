@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react';
 import { io } from 'socket.io-client';
-import { fetchUsers, fetchSettings, fetchTheme, fetchCenterImage, postMovie, deleteMovie, postGuestAuth } from './api';
+import { fetchUsers, fetchSettings, fetchTheme, fetchCenterImage, postMovie, deleteMovie, postGuestAuth, fetchNextWheelMovies, postNextMovie, deleteNextMovie } from './api';
 import AuthPage from './components/AuthPage';
 import Nav from './components/Nav';
 import WheelPage from './components/WheelPage';
@@ -36,6 +36,7 @@ export default function App() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [wheelMovies, setWheelMovies] = useState([]);
+  const [nextWheelMovies, setNextWheelMovies] = useState([]);
   const [centerImage, setCenterImage] = useState(null);
   const socketRef = useRef(null);
   const toastIdRef = useRef(0);
@@ -68,6 +69,12 @@ export default function App() {
     socket.on('wheel-spinning', (data) => setRemoteSpin(data));
     socket.on('online-users', (users) => setOnlineUsers(users));
     socket.on('center-image-changed', (data) => setCenterImage(data.url));
+    socket.on('next-movie-added', (movie) => setNextWheelMovies(prev => prev.find(m => m.id === movie.id) ? prev : [...prev, movie]));
+    socket.on('next-movie-removed', ({ id }) => setNextWheelMovies(prev => prev.filter(m => m.id !== id)));
+    socket.on('next-wheel-promoted', (movies) => {
+      setNextWheelMovies([]);
+      setWheelMovies(movies);
+    });
 
     return () => socket.disconnect();
   }, []);
@@ -101,6 +108,10 @@ export default function App() {
         const c = await fetchCenterImage();
         setCenterImage(c.url || null);
       } catch (e) { console.error(e); }
+      try {
+        const nw = await fetchNextWheelMovies();
+        setNextWheelMovies(nw);
+      } catch (e) { console.error(e); }
     })();
   }, []);
 
@@ -110,27 +121,41 @@ export default function App() {
     const saved = localStorage.getItem('cheeseWheelSession');
     const token = localStorage.getItem('cheeseWheelToken');
     if (saved && token) {
+      let session;
       try {
-        const session = JSON.parse(saved);
-        const urlPage = location.pathname === '/watched' ? 'watched'
+        session = JSON.parse(saved);
+      } catch (e) {
+        localStorage.removeItem('cheeseWheelSession');
+        localStorage.removeItem('cheeseWheelToken');
+        setSessionChecked(true);
+        return;
+      }
+      const urlPage = location.pathname === '/watched' ? 'watched'
         : location.pathname === '/games' ? 'games'
         : location.pathname === '/wine-reviews' ? 'wine-reviews'
         : location.pathname === '/movie-reviews' ? 'movie-reviews'
         : 'wheel';
+      const applySession = () => {
         if (session.isGuest) {
           setIsGuest(true);
           setPage(urlPage);
         } else if (session.userId) {
           const user = users.find(u => u.id === session.userId);
-          if (user) {
-            setCurrentUser(user);
-            setPage(urlPage);
-          }
+          if (user) { setCurrentUser(user); setPage(urlPage); }
         }
-      } catch (e) {
-        localStorage.removeItem('cheeseWheelSession');
-        localStorage.removeItem('cheeseWheelToken');
-      }
+      };
+      fetch('/api/settings', { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(res => {
+          if (res.status === 401) {
+            localStorage.removeItem('cheeseWheelSession');
+            localStorage.removeItem('cheeseWheelToken');
+          } else {
+            applySession();
+          }
+        })
+        .catch(() => applySession()) // сервер недоступен — всё равно восстанавливаем
+        .finally(() => setSessionChecked(true));
+      return;
     } else if (saved && !token) {
       // Старая сессия без токена — чистим, отправляем на логин
       localStorage.removeItem('cheeseWheelSession');
@@ -239,6 +264,30 @@ export default function App() {
     }
   }, [showToast]);
 
+  const handleNextAdd = useCallback(async (title) => {
+    try {
+      const res = await postNextMovie(title, currentUser?.id);
+      if (res.ok) {
+        showToast(`«${title}» добавлен в следующее колесо`, 'success');
+        return true;
+      } else {
+        const data = await res.json();
+        showToast(data.error || 'Ошибка добавления', 'error');
+      }
+    } catch {
+      showToast('Ошибка соединения', 'error');
+    }
+    return false;
+  }, [currentUser, showToast]);
+
+  const handleNextRemove = useCallback(async (id) => {
+    try {
+      await deleteNextMovie(id);
+    } catch {
+      showToast('Ошибка удаления', 'error');
+    }
+  }, [showToast]);
+
   const ctx = {
     currentUser, isGuest, users, page, theme, spinDuration,
     spinEnabled, addEnabled, decorationsEnabled,
@@ -247,6 +296,7 @@ export default function App() {
     remoteSpin, setRemoteSpin,
     winner, setWinner, onlineUsers,
     drawerOpen, setDrawerOpen, wheelMovies, setWheelMovies,
+    nextWheelMovies, setNextWheelMovies,
     centerImage, setCenterImage,
   };
 
@@ -279,16 +329,15 @@ export default function App() {
 
       {isLoggedIn && !isGuest && (
         <>
-          <div
-            className={`drawer-backdrop ${drawerOpen ? 'visible' : ''}`}
-            onClick={() => setDrawerOpen(false)}
-          />
           <DrawerPanel
             movies={wheelMovies}
+            nextMovies={nextWheelMovies}
             open={drawerOpen}
             onClose={() => setDrawerOpen(false)}
             onAdd={handleDrawerAdd}
             onRemove={handleDrawerRemove}
+            onAddNext={handleNextAdd}
+            onRemoveNext={handleNextRemove}
           />
         </>
       )}
