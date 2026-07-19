@@ -50,7 +50,6 @@ body.theme-spring .petals { display: block; }
 
 body.theme-spring .nav-btn,
 body.theme-spring .auth-btn,
-body.theme-spring .spin-btn,
 body.theme-spring .add-movie-btn,
 body.theme-spring .auth-password-btn {
   background: linear-gradient(135deg, #66bb6a 0%, #43a047 100%);
@@ -67,20 +66,6 @@ body.theme-spring .auth-password-btn:hover {
 body.theme-spring .nav-btn.active,
 body.theme-spring .auth-btn.selected {
   background: linear-gradient(135deg, #ec407a 0%, #d81b60 100%);
-}
-
-body.theme-spring .spin-btn {
-  box-shadow: 0 4px 14px rgba(27,94,32,0.4), 0 0 20px rgba(102,187,106,0.3);
-}
-
-body.theme-spring .spin-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #81c784 0%, #66bb6a 100%);
-  box-shadow: 0 4px 20px rgba(27,94,32,0.5), 0 0 20px rgba(102,187,106,0.4);
-}
-
-body.theme-spring .spin-btn:active:not(:disabled) {
-  background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%);
-  box-shadow: 0 2px 8px rgba(27,94,32,0.4);
 }
 
 body.theme-spring .watched-table th {
