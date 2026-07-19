@@ -212,6 +212,43 @@ try {
   // колонка уже существует
 }
 
+db.exec('UPDATE movies SET is_next_wheel = 0 WHERE is_next_wheel IS NULL');
+
+// Старые дубликаты оставляли одному участнику несколько активных выборов.
+// Сохраняем самый свежий выбор перед добавлением ограничений на уровне БД.
+const removeDuplicateActiveChoices = db.transaction(() => {
+  const duplicateIds = db.prepare(`
+    SELECT older.id
+    FROM movies older
+    JOIN movies newer
+      ON newer.added_by = older.added_by
+      AND newer.is_watched = 0
+      AND newer.is_next_wheel = older.is_next_wheel
+      AND newer.id > older.id
+    WHERE older.added_by IS NOT NULL
+      AND older.is_watched = 0
+    GROUP BY older.id
+  `).all();
+
+  const deleteRatings = db.prepare('DELETE FROM ratings WHERE movie_id = ?');
+  const deleteMovie = db.prepare('DELETE FROM movies WHERE id = ?');
+  duplicateIds.forEach(({ id }) => {
+    deleteRatings.run(id);
+    deleteMovie.run(id);
+  });
+});
+removeDuplicateActiveChoices();
+
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_movies_current_user
+    ON movies (added_by)
+    WHERE added_by IS NOT NULL AND is_watched = 0 AND is_next_wheel = 0;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_movies_next_user
+    ON movies (added_by)
+    WHERE added_by IS NOT NULL AND is_watched = 0 AND is_next_wheel = 1;
+`);
+
 // Миграции: новые поля для обзоров на вино
 ['wine_type TEXT', 'grape TEXT', 'region TEXT', 'vintage INTEGER', 'price TEXT'].forEach(col => {
   try { db.exec(`ALTER TABLE wine_reviews ADD COLUMN ${col}`); } catch (e) {}
@@ -295,10 +332,24 @@ const stmts = {
   `),
   countCurrentWheel: db.prepare('SELECT COUNT(*) as count FROM movies WHERE is_watched = 0 AND is_next_wheel = 0'),
   promoteNextWheel: db.prepare('UPDATE movies SET is_next_wheel = 0 WHERE is_watched = 0 AND is_next_wheel = 1'),
-  insertMovie: db.prepare('INSERT INTO movies (title, added_by) VALUES (?, ?)'),
+  insertMovie: db.prepare('INSERT INTO movies (title, added_by, is_next_wheel) VALUES (?, ?, 0)'),
   insertNextMovie: db.prepare('INSERT INTO movies (title, added_by, is_next_wheel) VALUES (?, ?, 1)'),
   getMovieById: db.prepare('SELECT * FROM movies WHERE id = ?'),
-  deleteUnwatched: db.prepare('DELETE FROM movies WHERE id = ? AND is_watched = 0'),
+  getMovieWithAuthorById: db.prepare(`
+    SELECT m.*, u.name as added_by_name
+    FROM movies m LEFT JOIN users u ON m.added_by = u.id
+    WHERE m.id = ?
+  `),
+  getCurrentMovieByUser: db.prepare(`
+    SELECT * FROM movies
+    WHERE added_by = ? AND is_watched = 0 AND is_next_wheel = 0
+  `),
+  getNextMovieByUser: db.prepare(`
+    SELECT * FROM movies
+    WHERE added_by = ? AND is_watched = 0 AND is_next_wheel = 1
+  `),
+  deleteUnwatched: db.prepare('DELETE FROM movies WHERE id = ? AND is_watched = 0 AND is_next_wheel = 0'),
+  deleteNextMovie: db.prepare('DELETE FROM movies WHERE id = ? AND is_watched = 0 AND is_next_wheel = 1'),
   markWatched: db.prepare("UPDATE movies SET is_watched = 1, watched_at = datetime('now') WHERE id = ?"),
   insertWatched: db.prepare("INSERT INTO movies (title, is_watched, added_by, watched_at) VALUES (?, 1, ?, datetime('now'))"),
   getWatched: null, // инициализируется ниже динамически
@@ -445,6 +496,15 @@ if (!stmts.getFormedWheel.get()) {
 }
 
 const ALLOWED_THEMES = ['cheese', 'newyear', 'spring'];
+const WHEEL_ADMIN_USER_IDS = new Set([2]);
+
+function canManageMovie(req, movie) {
+  const userId = Number(req.tokenData?.userId);
+  return Number.isInteger(userId) && (
+    Number(movie.added_by) === userId ||
+    WHEEL_ADMIN_USER_IDS.has(userId)
+  );
+}
 
 // ============ API ============
 
@@ -553,18 +613,30 @@ app.post('/api/wheel', rejectWheelMutationDuringSpin, (req, res) => {
   if (!title) {
     return res.status(400).json({ error: 'Введите название фильма (до 200 символов)' });
   }
-  const userId = parseIntStrict(req.body.user_id);
-  const addedBy = isNaN(userId) ? null : userId;
+  const userId = Number(req.tokenData.userId);
+  if (!Number.isInteger(userId) || !stmts.getUserById.get(userId)) {
+    return res.status(403).json({ error: 'Войдите как участник, чтобы выбрать фильм' });
+  }
+
   try {
-    const result = stmts.insertMovie.run(title, addedBy);
-    const user = addedBy ? stmts.getUserById.get(addedBy) : null;
-    const addedByName = user ? stmts.getUsers.all().find(u => u.id === addedBy)?.name : null;
-    const movie = { id: Number(result.lastInsertRowid), title, added_by: addedBy, added_by_name: addedByName };
-    io.emit('movie-added', movie);
+    const existing = stmts.getCurrentMovieByUser.get(userId);
+    let movie;
+    if (existing) {
+      stmts.updateMovie.run(title, existing.added_at || null, existing.id);
+      movie = stmts.getMovieWithAuthorById.get(existing.id);
+      io.emit('movie-updated', movie);
+    } else {
+      const result = stmts.insertMovie.run(title, userId);
+      movie = stmts.getMovieWithAuthorById.get(result.lastInsertRowid);
+      io.emit('movie-added', movie);
+    }
     broadcastWheelStatus();
-    res.json(movie);
+    res.json({ ...movie, replaced: Boolean(existing) });
   } catch (err) {
-    res.status(500).json({ error: 'Ошибка добавления фильма' });
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return res.status(409).json({ error: 'У вас уже есть фильм в текущем колесе' });
+    }
+    res.status(500).json({ error: 'Не удалось сохранить выбор' });
   }
 });
 
@@ -573,6 +645,14 @@ app.delete('/api/wheel/:id', rejectWheelMutationDuringSpin, (req, res) => {
   if (isNaN(id)) {
     return res.status(400).json({ error: 'Неверный ID' });
   }
+  const movie = stmts.getMovieById.get(id);
+  if (!movie || movie.is_watched !== 0 || movie.is_next_wheel !== 0) {
+    return res.status(404).json({ error: 'Фильм не найден в текущем колесе' });
+  }
+  if (!canManageMovie(req, movie)) {
+    return res.status(403).json({ error: 'Можно удалить только свой фильм' });
+  }
+
   try {
     stmts.deleteUnwatched.run(id);
     io.emit('movie-removed', { id });
@@ -632,16 +712,29 @@ app.post('/api/next-wheel', rejectWheelMutationDuringSpin, (req, res) => {
   if (!title) {
     return res.status(400).json({ error: 'Введите название фильма (до 200 символов)' });
   }
-  const userId = parseIntStrict(req.body.user_id);
-  const addedBy = isNaN(userId) ? null : userId;
+  const userId = Number(req.tokenData.userId);
+  if (!Number.isInteger(userId) || !stmts.getUserById.get(userId)) {
+    return res.status(403).json({ error: 'Войдите как участник, чтобы выбрать фильм' });
+  }
+
   try {
-    const result = stmts.insertNextMovie.run(title, addedBy);
-    const addedByName = addedBy ? stmts.getUsers.all().find(u => u.id === addedBy)?.name : null;
-    const movie = { id: Number(result.lastInsertRowid), title, added_by: addedBy, added_by_name: addedByName, is_next_wheel: 1 };
-    io.emit('next-movie-added', movie);
-    res.json(movie);
+    const existing = stmts.getNextMovieByUser.get(userId);
+    let movie;
+    if (existing) {
+      stmts.updateMovie.run(title, existing.added_at || null, existing.id);
+      movie = stmts.getMovieWithAuthorById.get(existing.id);
+      io.emit('next-movie-updated', movie);
+    } else {
+      const result = stmts.insertNextMovie.run(title, userId);
+      movie = stmts.getMovieWithAuthorById.get(result.lastInsertRowid);
+      io.emit('next-movie-added', movie);
+    }
+    res.json({ ...movie, replaced: Boolean(existing) });
   } catch (err) {
-    res.status(500).json({ error: 'Ошибка добавления фильма' });
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return res.status(409).json({ error: 'У вас уже есть фильм для следующего раунда' });
+    }
+    res.status(500).json({ error: 'Не удалось сохранить выбор' });
   }
 });
 
@@ -650,8 +743,16 @@ app.delete('/api/next-wheel/:id', rejectWheelMutationDuringSpin, (req, res) => {
   if (isNaN(id)) {
     return res.status(400).json({ error: 'Неверный ID' });
   }
+  const movie = stmts.getMovieById.get(id);
+  if (!movie || movie.is_watched !== 0 || movie.is_next_wheel !== 1) {
+    return res.status(404).json({ error: 'Фильм не найден в следующем раунде' });
+  }
+  if (!canManageMovie(req, movie)) {
+    return res.status(403).json({ error: 'Можно удалить только свой фильм' });
+  }
+
   try {
-    db.prepare('DELETE FROM movies WHERE id = ? AND is_next_wheel = 1').run(id);
+    stmts.deleteNextMovie.run(id);
     io.emit('next-movie-removed', { id });
     res.json({ success: true });
   } catch (err) {
@@ -706,6 +807,9 @@ app.patch('/api/movies/:id', rejectWheelMutationDuringSpin, (req, res) => {
 
   const movie = stmts.getMovieById.get(id);
   if (!movie) return res.status(404).json({ error: 'Фильм не найден' });
+  if (movie.is_watched === 0 && !canManageMovie(req, movie)) {
+    return res.status(403).json({ error: 'Можно изменить только свой фильм' });
+  }
 
   const title = req.body.title !== undefined ? sanitizeTitle(req.body.title) : movie.title;
   if (!title) return res.status(400).json({ error: 'Название не может быть пустым' });
@@ -720,8 +824,8 @@ app.patch('/api/movies/:id', rejectWheelMutationDuringSpin, (req, res) => {
 
   try {
     stmts.updateMovie.run(title, addedAt, id);
-    const updated = stmts.getMovieById.get(id);
-    io.emit('movie-updated', updated);
+    const updated = stmts.getMovieWithAuthorById.get(id);
+    io.emit(movie.is_watched === 0 && movie.is_next_wheel === 1 ? 'next-movie-updated' : 'movie-updated', updated);
     if (movie.is_watched === 0 && movie.is_next_wheel === 0) {
       broadcastWheelStatus();
     }

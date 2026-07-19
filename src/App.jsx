@@ -145,10 +145,18 @@ export default function App() {
       setConnectionState(socket.active ? 'reconnecting' : 'error');
     };
     const onReconnectAttempt = () => setConnectionState('reconnecting');
-    const onMovieAdded = movie => setWheelMovies(prev => prev.find(item => item.id === movie.id) ? prev : [...prev, movie]);
+    const onMovieAdded = movie => setWheelMovies(prev => [
+      ...prev.filter(item => item.id !== movie.id && item.added_by !== movie.added_by),
+      movie,
+    ]);
     const onMovieRemoved = ({ id }) => setWheelMovies(prev => prev.filter(movie => movie.id !== id));
     const onMovieWatched = movie => setWheelMovies(prev => prev.filter(item => item.id !== movie.id));
     const onMovieUpdated = movie => setWheelMovies(prev => prev.map(item => item.id === movie.id ? { ...item, ...movie } : item));
+    const onNextMovieAdded = movie => setNextWheelMovies(prev => [
+      ...prev.filter(item => item.id !== movie.id && item.added_by !== movie.added_by),
+      movie,
+    ]);
+    const onNextMovieUpdated = movie => setNextWheelMovies(prev => prev.map(item => item.id === movie.id ? { ...item, ...movie } : item));
     const onWheelStatusChanged = status => {
       setWheelStatus(status);
       setWheelStatusLoadState('ready');
@@ -189,7 +197,8 @@ export default function App() {
       setLastSyncedAt(Date.now());
     });
     socket.on('center-image-changed', (data) => setCenterImage(data.url));
-    socket.on('next-movie-added', (movie) => setNextWheelMovies(prev => prev.find(m => m.id === movie.id) ? prev : [...prev, movie]));
+    socket.on('next-movie-added', onNextMovieAdded);
+    socket.on('next-movie-updated', onNextMovieUpdated);
     socket.on('next-movie-removed', ({ id }) => setNextWheelMovies(prev => prev.filter(m => m.id !== id)));
     socket.on('next-wheel-promoted', (movies) => {
       setNextWheelMovies([]);
@@ -206,6 +215,8 @@ export default function App() {
       socket.off('movie-watched', onMovieWatched);
       socket.off('movie-updated', onMovieUpdated);
       socket.off('wheel-status-changed', onWheelStatusChanged);
+      socket.off('next-movie-added', onNextMovieAdded);
+      socket.off('next-movie-updated', onNextMovieUpdated);
       socket.disconnect();
     };
   }, []);
@@ -389,9 +400,10 @@ export default function App() {
       return false;
     }
     try {
-      const res = await postMovie(title, currentUser?.id);
+      const res = await postMovie(title);
       if (res.ok) {
-        showToast(`\u00AB${title}\u00BB добавлен в колесо`, 'success');
+        const data = await res.json();
+        showToast(data.replaced ? 'Ваш фильм заменён' : `\u00AB${title}\u00BB выбран для колеса`, 'success');
         return true;
       } else {
         const data = await res.json();
@@ -401,7 +413,7 @@ export default function App() {
       showToast('Ошибка соединения', 'error');
     }
     return false;
-  }, [connected, currentUser, showToast, wheelIsSpinning]);
+  }, [connected, showToast, wheelIsSpinning]);
 
   const handleDrawerRemove = useCallback(async (id) => {
     if (!connected || wheelIsSpinning) {
@@ -409,10 +421,12 @@ export default function App() {
       return;
     }
     try {
-      await deleteMovie(id);
+      const response = await deleteMovie(id);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Не удалось удалить фильм');
       showToast('Фильм удалён из колеса', 'info');
-    } catch {
-      showToast('Ошибка удаления', 'error');
+    } catch (error) {
+      showToast(error.message || 'Ошибка удаления', 'error');
     }
   }, [connected, showToast, wheelIsSpinning]);
 
@@ -444,7 +458,7 @@ export default function App() {
       if (!response.ok) throw new Error(data.error || 'Не удалось сформировать колесо');
       setWheelStatus(data);
       setWheelStatusLoadState('ready');
-      showToast('Колесо сформировано', 'success');
+      showToast('Колесо готово', 'success');
       return true;
     } catch (error) {
       showToast(error.message || 'Ошибка соединения', 'error');
@@ -458,9 +472,10 @@ export default function App() {
       return false;
     }
     try {
-      const res = await postNextMovie(title, currentUser?.id);
+      const res = await postNextMovie(title);
       if (res.ok) {
-        showToast(`«${title}» добавлен в следующее колесо`, 'success');
+        const data = await res.json();
+        showToast(data.replaced ? 'Ваш фильм для следующего раунда заменён' : `«${title}» выбран для следующего раунда`, 'success');
         return true;
       } else {
         const data = await res.json();
@@ -470,7 +485,7 @@ export default function App() {
       showToast('Ошибка соединения', 'error');
     }
     return false;
-  }, [connected, currentUser, showToast]);
+  }, [connected, showToast]);
 
   const handleNextRemove = useCallback(async (id) => {
     if (!connected) {
@@ -478,9 +493,12 @@ export default function App() {
       return;
     }
     try {
-      await deleteNextMovie(id);
-    } catch {
-      showToast('Ошибка удаления', 'error');
+      const response = await deleteNextMovie(id);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Не удалось удалить фильм');
+      showToast('Фильм удалён из следующего раунда', 'info');
+    } catch (error) {
+      showToast(error.message || 'Ошибка удаления', 'error');
     }
   }, [connected, showToast]);
 
@@ -585,7 +603,7 @@ export default function App() {
       )}
 
       {isLoggedIn && (
-        <div className="app-container">
+        <div className={`app-container${page === 'wheel' ? ' wheel-active' : ''}`}>
           <Nav activePage={page} onNavigate={navigate} onLogout={logout}
                userName={isGuest ? 'Гость' : currentUser?.name} />
           <div id="wheel-page" className={`page ${page === 'wheel' ? 'active' : ''}`}

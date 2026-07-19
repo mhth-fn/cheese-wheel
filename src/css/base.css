@@ -136,6 +136,10 @@ textarea:disabled {
   padding: var(--space-5);
 }
 
+.app-container.wheel-active .nav {
+  margin-bottom: var(--space-3);
+}
+
 .page {
   display: none;
   animation: fadeIn 0.28s ease;

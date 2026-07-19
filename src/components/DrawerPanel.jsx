@@ -55,7 +55,13 @@ export default function DrawerPanel({
   });
   const readyUsers = users.filter(user => primaryMovies.has(user.id));
   const currentUserMovie = primaryMovies.get(currentUser?.id);
+  const currentUserNextMovie = nextMovies.find(movie => movie.added_by === currentUser?.id);
   const extraMovies = movies.filter(movie => primaryMovies.get(movie.added_by)?.id !== movie.id);
+  const isAdmin = currentUser?.id === 2;
+  const canManageMovie = movie => !isGuest && Boolean(movie) && (
+    movie.added_by === currentUser?.id ||
+    isAdmin
+  );
 
   const handleCurrentAdd = async event => {
     event.preventDefault();
@@ -167,13 +173,13 @@ export default function DrawerPanel({
   const formationTitle = wheelStatus.dirty
     ? 'Состав изменился'
     : wheelStatus.formed
-      ? 'Колесо сформировано'
-      : 'Колесо не сформировано';
+      ? 'Колесо готово'
+      : 'Колесо не готово';
   const formationCopy = wheelStatus.dirty
-    ? 'Зафиксируйте обновлённый список, чтобы снова разрешить вращение.'
+    ? 'После изменений нужно заново сформировать колесо, иначе крутить его нельзя.'
     : wheelStatus.formed
-      ? 'На главной показан зафиксированный состав. Его можно вращать.'
-      : 'Проверьте фильмы участников и зафиксируйте текущий состав.';
+      ? 'Текущий состав зафиксирован для этого раунда. Теперь колесо можно крутить.'
+      : 'Сначала сформируйте состав из выбранных фильмов, после этого колесо можно будет крутить.';
 
   return (
     <div className="wheel-modal-overlay" onMouseDown={event => event.target === event.currentTarget && onClose()}>
@@ -295,7 +301,7 @@ export default function DrawerPanel({
                     <span className="wm-participant-status" aria-label={movie ? 'Готово' : 'Ожидаем фильм'}>
                       {movie ? 'Готово' : 'Ожидаем'}
                     </span>
-                    {movie && !editing && !isGuest && (
+                    {movie && !editing && canManageMovie(movie) && (
                       <div className="wm-participant-actions">
                         <button
                           className="icon-button"
@@ -348,7 +354,7 @@ export default function DrawerPanel({
                     )}
                   </div>
                   <span className="wm-participant-status">Готово</span>
-                  {!editing && !isGuest && (
+                  {!editing && canManageMovie(movie) && (
                     <div className="wm-participant-actions">
                       <button className="icon-button" type="button" onClick={() => startEditing(movie)} aria-label={`Изменить фильм ${movie.title}`}>✎</button>
                       <button className="icon-button danger" type="button" onClick={() => handleDelete(movie.id)} aria-label={`Удалить фильм ${movie.title}`}>🗑</button>
@@ -364,24 +370,33 @@ export default function DrawerPanel({
         {activeTab === 'next' && (
           <div className="wm-panel" role="tabpanel">
             {!isGuest && (
-              <form className="wm-add-row" onSubmit={handleNextAdd}>
-                <label className="sr-only" htmlFor="movie-input-next">Фильм для следующего колеса</label>
-                <input
-                  id="movie-input-next"
-                  className="wm-input"
-                  type="text"
-                  placeholder="Фильм для следующего колеса…"
-                  value={nextInput}
-                  maxLength={200}
-                  onChange={event => setNextInput(event.target.value)}
-                  disabled={wheelIsSpinning || !connected}
-                />
-                <button className="wm-add-btn button-primary" type="submit" disabled={!nextInput.trim() || wheelIsSpinning || !connected}>
-                  Добавить
-                </button>
-              </form>
+              <>
+                <form className="wm-add-row" onSubmit={handleNextAdd}>
+                  <label className="sr-only" htmlFor="movie-input-next">
+                    {currentUserNextMovie ? 'Заменить свой фильм для следующего раунда' : 'Выбрать фильм для следующего раунда'}
+                  </label>
+                  <input
+                    id="movie-input-next"
+                    className="wm-input"
+                    type="text"
+                    placeholder={currentUserNextMovie ? 'Новое название фильма…' : 'Ваш фильм для следующего раунда…'}
+                    value={nextInput}
+                    maxLength={200}
+                    onChange={event => setNextInput(event.target.value)}
+                    disabled={wheelIsSpinning || !connected}
+                  />
+                  <button className="wm-add-btn button-primary" type="submit" disabled={!nextInput.trim() || wheelIsSpinning || !connected}>
+                    {currentUserNextMovie ? 'Заменить' : 'Добавить'}
+                  </button>
+                </form>
+                {currentUserNextMovie && (
+                  <p className="wm-own-choice-note">
+                    Сейчас ваш выбор — «{currentUserNextMovie.title}». Новое название заменит его.
+                  </p>
+                )}
+              </>
             )}
-            <p className="wm-hint">Эти фильмы перейдут в текущий состав, когда колесо закончится.</p>
+            <p className="wm-hint">Здесь каждый участник выбирает один фильм для следующего раунда.</p>
 
             <div className="wm-list">
               {nextMovies.length === 0 ? (
@@ -389,28 +404,62 @@ export default function DrawerPanel({
                   <div className="empty-state-icon" aria-hidden="true">🧀</div>
                   <div className="empty-state-title">Следующий список ещё не собран</div>
                 </div>
-              ) : nextMovies.map(movie => (
-                <article key={movie.id} className={`wm-item ${deletingId === movie.id ? 'is-deleting' : ''}`}>
-                  <span className="wm-avatar" aria-hidden="true">{movie.added_by_name?.slice(0, 1) || '?'}</span>
-                  <div className="wm-item-copy">
-                    <strong title={movie.title}>{movie.title}</strong>
-                    <span>{movie.added_by_name || 'Автор не указан'}</span>
-                  </div>
-                  <span className="wm-item-status">следующий</span>
-                  {!isGuest && (
-                    <button
-                      className="wm-item-delete icon-button"
-                      type="button"
-                      onClick={() => handleDelete(movie.id, true)}
-                      disabled={wheelIsSpinning || deletingId === movie.id}
-                      aria-label={`Удалить фильм ${movie.title}`}
-                      title="Удалить фильм"
-                    >
-                      {deletingId === movie.id ? '…' : '🗑'}
-                    </button>
-                  )}
-                </article>
-              ))}
+              ) : nextMovies.map(movie => {
+                const editing = editingId === movie.id;
+                const manageable = canManageMovie(movie);
+                const isOwn = movie.added_by === currentUser?.id;
+                return (
+                  <article key={movie.id} className={`wm-item ${deletingId === movie.id ? 'is-deleting' : ''}${editing ? ' is-editing' : ''}`}>
+                    <span className="wm-avatar" aria-hidden="true">{movie.added_by_name?.slice(0, 1) || '?'}</span>
+                    <div className="wm-item-copy">
+                      {editing ? (
+                        <form className="wm-inline-edit" onSubmit={saveEditing}>
+                          <input
+                            value={editTitle}
+                            maxLength={200}
+                            onChange={event => setEditTitle(event.target.value)}
+                            onKeyDown={event => event.key === 'Escape' && cancelEditing()}
+                            aria-label={`Фильм участника ${movie.added_by_name || ''} для следующего раунда`}
+                            autoFocus
+                          />
+                          <button className="icon-button" type="submit" disabled={!editTitle.trim()} aria-label="Сохранить название">✓</button>
+                          <button className="icon-button" type="button" onClick={cancelEditing} aria-label="Отменить редактирование">✕</button>
+                        </form>
+                      ) : (
+                        <strong title={movie.title}>{movie.title}</strong>
+                      )}
+                      <span>
+                        Выбор на следующий раунд · {movie.added_by_name || 'Автор не указан'}{isOwn ? ' · вы' : ''}
+                      </span>
+                    </div>
+                    <span className="wm-item-status">Следующий раунд</span>
+                    {manageable && !editing && (
+                      <div className="wm-item-actions">
+                        <button
+                          className="icon-button"
+                          type="button"
+                          onClick={() => startEditing(movie)}
+                          disabled={wheelIsSpinning}
+                          aria-label={`Изменить фильм ${movie.title}`}
+                          title="Изменить фильм"
+                        >
+                          ✎
+                        </button>
+                        <button
+                          className="icon-button danger"
+                          type="button"
+                          onClick={() => handleDelete(movie.id, true)}
+                          disabled={wheelIsSpinning || deletingId === movie.id}
+                          aria-label={`Удалить фильм ${movie.title}`}
+                          title="Удалить фильм"
+                        >
+                          {deletingId === movie.id ? '…' : '🗑'}
+                        </button>
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
             </div>
           </div>
         )}
