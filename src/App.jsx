@@ -534,7 +534,7 @@ export default function App() {
         <AdminModal theme={theme} onClose={() => setAdminOpen(false)} />
       )}
 
-      {isLoggedIn && !isGuest && page === 'wheel' && (
+      {isLoggedIn && page === 'wheel' && (
         <button
           className="drawer-toggle"
           onClick={() => setDrawerOpen(true)}
@@ -546,7 +546,7 @@ export default function App() {
         </button>
       )}
 
-      {isLoggedIn && !isGuest && (
+      {isLoggedIn && (
         <>
           <DrawerPanel
             movies={wheelMovies}
