@@ -1,5 +1,5 @@
 /* ========== СТРАНИЦА ИГР ========== */
-.games-container { max-width: 800px; margin: 0 auto; }
+.games-container { max-width: 800px; margin: 0 auto; padding-top: 24px; }
 
 .games-title {
   font-family: 'Caveat', cursive;
@@ -72,7 +72,7 @@
 }
 
 .mode-btn:hover {
-  border-color: #FF8C00;
+  border-color: var(--theme-btn-border);
 }
 
 /* ========== GAME SCREEN ========== */

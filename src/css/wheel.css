@@ -110,6 +110,8 @@
   will-change: transform;
   border-radius: 50%;
   overflow: hidden;
+  -webkit-mask-image: -webkit-radial-gradient(white, black);
+  isolation: isolate;
 }
 
 #wheel-canvas {

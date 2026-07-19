@@ -498,7 +498,6 @@ export default function GamesPage() {
   if (!playing) {
     return (
       <div className="games-container">
-        <h2 className="games-title">🎮 Мини-игры</h2>
         <div className="game-card">
           <div className="game-card-icon">🐴</div>
           <div className="game-card-info">

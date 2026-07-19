@@ -1,7 +1,7 @@
 :root {
-  --cheese-dark: #d4a017;
-  --cheese-main: #f4c430;
-  --cheese-light: #ffe566;
+  --cheese-dark: #c9a227;
+  --cheese-main: #F2C94C;
+  --cheese-light: #f8d96e;
   --cheese-cream: #fffef0;
   --cheese-hole: rgba(180, 130, 20, 0.4);
   --crust: #c4842d;
@@ -11,11 +11,11 @@
   --shadow: rgba(92, 72, 19, 0.2);
 
   --theme-bg: linear-gradient(180deg, var(--cheese-light) 0%, var(--cheese-main) 100%);
-  --theme-btn: linear-gradient(135deg, #FF8C00 0%, #D2691E 100%);
-  --theme-btn-hover: linear-gradient(135deg, #FFA500 0%, #FF8C00 100%);
-  --theme-btn-active: linear-gradient(135deg, #D2691E 0%, #A0522D 100%);
-  --theme-btn-border: #8B4513;
-  --theme-btn-shadow: #8B4513;
+  --theme-btn: linear-gradient(135deg, #E8A030 0%, #D4893A 100%);
+  --theme-btn-hover: linear-gradient(135deg, #F0B040 0%, #E09040 100%);
+  --theme-btn-active: linear-gradient(135deg, #D4893A 0%, #C07830 100%);
+  --theme-btn-border: #C4782A;
+  --theme-btn-shadow: #C4782A;
 }
 
 * {
@@ -43,7 +43,7 @@ body {
   background-color: var(--cheese-main);
   color: var(--text);
   overflow-x: hidden;
-  transition: background 0.5s ease;
+  transition: background-color 0.5s ease;
 }
 
 /* ========== КОНТЕЙНЕР ========== */
