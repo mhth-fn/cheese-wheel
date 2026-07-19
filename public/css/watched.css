@@ -22,18 +22,25 @@
   border-radius: 20px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.2);
   border: 3px solid var(--cheese-dark);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   margin-bottom: 30px;
 }
 
+
 .watched-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
 }
 
+.watched-action-col { width: 42px; }
+.watched-user-col { width: 86px; }
+.watched-avg-col { width: 106px; }
+
 .watched-table th {
   background: linear-gradient(135deg, #FF8C00 0%, #D2691E 100%);
-  padding: 18px 15px;
+  padding: 16px 8px;
   font-weight: 700;
   text-align: center;
   cursor: pointer;
@@ -56,7 +63,7 @@
 .sort-icon.active { opacity: 1; }
 
 .watched-table td {
-  padding: 15px;
+  padding: 14px 8px;
   text-align: center;
   border-bottom: 2px solid var(--cheese-cream);
   color: var(--text);

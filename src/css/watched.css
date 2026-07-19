@@ -18,31 +18,38 @@
   border-radius: 20px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.2);
   border: 3px solid var(--cheese-dark);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   margin-bottom: 30px;
   animation: riseUp 0.6s cubic-bezier(0.22, 1, 0.36, 1);
   -webkit-backface-visibility: hidden;
 }
 
+
 .watched-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
 }
 
+.watched-action-col { width: 42px; }
+.watched-user-col { width: 86px; }
+.watched-avg-col { width: 106px; }
+
 .watched-table th {
-  background: linear-gradient(135deg, #FF8C00 0%, #D2691E 100%);
-  padding: 18px 15px;
+  background: var(--theme-btn);
+  padding: 16px 8px;
   font-weight: 700;
   text-align: center;
   cursor: pointer;
   transition: background 0.2s;
-  border-bottom: 3px solid #8B4513;
+  border-bottom: 3px solid var(--theme-btn-border);
   white-space: nowrap;
   color: #fff;
 }
 
 .watched-table th:hover {
-  background: linear-gradient(135deg, #FFA500 0%, #FF8C00 100%);
+  background: var(--theme-btn-hover);
 }
 
 .watched-table th:nth-child(2) {
@@ -54,7 +61,7 @@
 .sort-icon.active { opacity: 1; }
 
 .watched-table td {
-  padding: 15px;
+  padding: 14px 8px;
   text-align: center;
   border-bottom: 2px solid var(--cheese-cream);
   color: var(--text);
@@ -86,7 +93,7 @@
 }
 
 .watched-table th:first-child:hover {
-  background: linear-gradient(135deg, #FF8C00 0%, #D2691E 100%);
+  background: var(--theme-btn);
 }
 
 .watched-table tr:last-child td { border-bottom: none; }
@@ -220,8 +227,8 @@
 .add-movie-input:focus { border-color: var(--crust); }
 
 .add-movie-btn {
-  background: linear-gradient(135deg, #FF8C00 0%, #D2691E 100%);
-  border: 3px solid #8B4513;
+  background: var(--theme-btn);
+  border: 3px solid var(--theme-btn-border);
   border-radius: 15px;
   padding: 12px 25px;
   font-family: 'Comfortaa', cursive;
@@ -233,7 +240,7 @@
 }
 
 .add-movie-btn:hover {
-  background: linear-gradient(135deg, #FFA500 0%, #FF8C00 100%);
+  background: var(--theme-btn-hover);
 }
 
 /* ========== РЕДАКТИРОВАНИЕ ФИЛЬМА ========== */

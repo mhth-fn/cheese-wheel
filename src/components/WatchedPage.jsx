@@ -226,16 +226,22 @@ export default function WatchedPage() {
             <div className="watched-empty-text">Ничего не найдено по запросу &laquo;{searchQuery}&raquo;</div>
           </div>
         ) : (
-          <table className="watched-table">
+          <table className="watched-table" style={{ minWidth: `${360 + users.length * 86}px` }}>
+            <colgroup>
+              <col className="watched-action-col" />
+              <col className="watched-title-col" />
+              {users.map(u => <col key={u.id} className="watched-user-col" />)}
+              <col className="watched-avg-col" />
+            </colgroup>
             <thead>
               <tr>
                 <th></th>
                 <th onClick={() => handleSort('title')} data-sort="title" style={{cursor:'pointer'}}>
                   Фильм {sortIcon('title')}
                 </th>
-                {[1,2,3,4].map(i => (
-                  <th key={i} onClick={() => handleSort(`rating_${i}`)} style={{cursor:'pointer'}}>
-                    {users[i-1]?.name || `User ${i}`} {sortIcon(`rating_${i}`)}
+                {users.map(u => (
+                  <th key={u.id} onClick={() => handleSort(`rating_${u.id}`)} style={{cursor:'pointer'}}>
+                    {u.name} {sortIcon(`rating_${u.id}`)}
                   </th>
                 ))}
                 <th onClick={() => handleSort('avg_rating')} style={{cursor:'pointer'}}>
@@ -284,8 +290,8 @@ export default function WatchedPage() {
                       </div>
                     )}
                   </td>
-                  {[1,2,3,4].map(i => (
-                    <td key={i}>{renderRatingCell(movie, i)}</td>
+                  {users.map(u => (
+                    <td key={u.id}>{renderRatingCell(movie, u.id)}</td>
                   ))}
                   <td>{renderAvgRating(movie.avg_rating)}</td>
                 </tr>

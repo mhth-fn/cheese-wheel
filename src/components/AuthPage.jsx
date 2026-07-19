@@ -35,10 +35,10 @@ export default function AuthPage({ users, onLogin, onGuest }) {
       <h1 className="auth-title">Сырное Колесо</h1>
       <p className="auth-subtitle">Выбери себя</p>
       <div className="auth-users">
-        {users.map(user => (
+        {users.map((user, index) => (
           <button
             key={user.id}
-            className={`auth-btn ${selectedId === user.id ? 'selected' : ''}`}
+            className={`auth-btn ${selectedId === user.id ? 'selected' : ''}${users.length % 2 !== 0 && index === users.length - 1 ? ' auth-btn-center' : ''}`}
             onClick={() => handleSelect(user.id)}
           >
             {user.name}
