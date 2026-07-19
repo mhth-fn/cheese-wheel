@@ -276,8 +276,9 @@ export default function DrawerPanel({
               {users.map(user => {
                 const movie = primaryMovies.get(user.id);
                 const editing = movie && editingId === movie.id;
+                const manageable = canManageMovie(movie);
                 return (
-                  <article key={user.id} className={`wm-participant ${movie ? 'is-ready' : 'is-waiting'}${editing ? ' is-editing' : ''}`}>
+                  <article key={user.id} className={`wm-participant ${movie ? 'is-ready' : 'is-waiting'}${editing ? ' is-editing' : ''}${manageable ? ' has-actions' : ''}`}>
                     <span className="wm-avatar" aria-hidden="true">{user.name.slice(0, 1)}</span>
                     <div className="wm-participant-copy">
                       <strong>{user.name}{currentUser?.id === user.id ? ' · вы' : ''}</strong>
@@ -301,7 +302,7 @@ export default function DrawerPanel({
                     <span className="wm-participant-status" aria-label={movie ? 'Готово' : 'Ожидаем фильм'}>
                       {movie ? 'Готово' : 'Ожидаем'}
                     </span>
-                    {movie && !editing && canManageMovie(movie) && (
+                    {movie && !editing && manageable && (
                       <div className="wm-participant-actions">
                         <button
                           className="icon-button"
@@ -331,8 +332,9 @@ export default function DrawerPanel({
 
               {extraMovies.map(movie => {
                 const editing = editingId === movie.id;
+                const manageable = canManageMovie(movie);
                 return (
-                <article key={movie.id} className={`wm-participant is-ready${editing ? ' is-editing' : ''}`}>
+                <article key={movie.id} className={`wm-participant is-ready${editing ? ' is-editing' : ''}${manageable ? ' has-actions' : ''}`}>
                   <span className="wm-avatar" aria-hidden="true">?</span>
                   <div className="wm-participant-copy">
                     <strong>{movie.added_by_name || 'Дополнительный фильм'}</strong>
@@ -354,7 +356,7 @@ export default function DrawerPanel({
                     )}
                   </div>
                   <span className="wm-participant-status">Готово</span>
-                  {!editing && canManageMovie(movie) && (
+                  {!editing && manageable && (
                     <div className="wm-participant-actions">
                       <button className="icon-button" type="button" onClick={() => startEditing(movie)} aria-label={`Изменить фильм ${movie.title}`}>✎</button>
                       <button className="icon-button danger" type="button" onClick={() => handleDelete(movie.id)} aria-label={`Удалить фильм ${movie.title}`}>🗑</button>
@@ -409,7 +411,7 @@ export default function DrawerPanel({
                 const manageable = canManageMovie(movie);
                 const isOwn = movie.added_by === currentUser?.id;
                 return (
-                  <article key={movie.id} className={`wm-item ${deletingId === movie.id ? 'is-deleting' : ''}${editing ? ' is-editing' : ''}`}>
+                  <article key={movie.id} className={`wm-item ${deletingId === movie.id ? 'is-deleting' : ''}${editing ? ' is-editing' : ''}${manageable ? ' has-actions' : ''}`}>
                     <span className="wm-avatar" aria-hidden="true">{movie.added_by_name?.slice(0, 1) || '?'}</span>
                     <div className="wm-item-copy">
                       {editing ? (
