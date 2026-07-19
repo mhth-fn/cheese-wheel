@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../App';
-import { fetchWineReviews, postWineReview, patchWineReview, deleteWineReview } from '../api';
+import { fetchWineReviews, postWineReview, patchWineReview, deleteWineReview, postReviewReaction } from '../api';
 
 const WINE_TYPES = [
   { value: 'red',   label: '🔴 Красное' },
@@ -10,12 +10,24 @@ const WINE_TYPES = [
 
 const WINE_TYPE_LABELS = { red: '🔴 Красное', white: '🟡 Белое', rose: '🌸 Розовое' };
 
+const RECOMMEND_OPTIONS = [
+  { value: 1,  label: '✅ Рекомендую',     cls: 'yes' },
+  { value: 0,  label: '😐 Сойдёт',         cls: 'meh' },
+  { value: -1, label: '❌ Не рекомендую',  cls: 'no'  },
+];
+
+function getRecommendInfo(val) {
+  if (val === 1)  return { cls: 'yes', label: '✅ Рекомендую' };
+  if (val === -1) return { cls: 'no',  label: '❌ Не рекомендую' };
+  return { cls: 'meh', label: '😐 Сойдёт' };
+}
+
 export default function WineReviewsPage() {
   const { currentUser, isGuest, showToast, socket } = useApp();
   const [reviews, setReviews] = useState([]);
   const [formTitle, setFormTitle]   = useState('');
   const [formContent, setFormContent] = useState('');
-  const [recommend, setRecommend]   = useState(true);
+  const [recommend, setRecommend]   = useState(1);
   const [wineType, setWineType]     = useState('');
   const [grape, setGrape]           = useState('');
   const [region, setRegion]         = useState('');
@@ -34,9 +46,14 @@ export default function WineReviewsPage() {
     const onAdd    = (r) => setReviews(prev => [r, ...prev.filter(x => x.id !== r.id)]);
     const onDelete = ({ id }) => setReviews(prev => prev.filter(r => r.id !== id));
     const onUpdate = (r) => setReviews(prev => prev.map(x => x.id === r.id ? r : x));
+    const onReaction = ({ review_type, review_id, likes, dislikes, reactions }) => {
+      if (review_type !== 'wine') return;
+      setReviews(prev => prev.map(r => r.id === review_id ? { ...r, likes, dislikes, reactions } : r));
+    };
     socket.on('wine-review-added', onAdd);
     socket.on('wine-review-deleted', onDelete);
     socket.on('wine-review-updated', onUpdate);
+    socket.on('review-reaction-updated', onReaction);
     return () => {
       socket.off('wine-review-added', onAdd);
       socket.off('wine-review-deleted', onDelete);
@@ -47,7 +64,7 @@ export default function WineReviewsPage() {
   const startEdit = (r) => {
     setEditingId(r.id);
     setEditFields({
-      title: r.title, content: r.content, recommend: !!r.recommend,
+      title: r.title, content: r.content, recommend: r.recommend,
       wineType: r.wine_type || '', grape: r.grape || '',
       region: r.region || '', vintage: r.vintage || '', price: r.price || '',
     });
@@ -73,7 +90,7 @@ export default function WineReviewsPage() {
   const ef = (field) => (e) => setEditFields(prev => ({ ...prev, [field]: e.target.value }));
 
   const resetForm = () => {
-    setFormTitle(''); setFormContent(''); setRecommend(true);
+    setFormTitle(''); setFormContent(''); setRecommend(1);
     setWineType(''); setGrape(''); setRegion(''); setVintage(''); setPrice('');
   };
 
@@ -98,6 +115,14 @@ export default function WineReviewsPage() {
       showToast('Ошибка соединения', 'error');
     }
     setSubmitting(false);
+  };
+
+  const handleReaction = async (id, reaction) => {
+    try {
+      await postReviewReaction('wine', id, reaction);
+    } catch {
+      showToast('Ошибка соединения', 'error');
+    }
   };
 
   const handleDelete = async (id) => {
@@ -194,13 +219,18 @@ export default function WineReviewsPage() {
           />
 
           <div className="review-form-footer">
-            <button
-              type="button"
-              className={`review-recommend-toggle ${recommend ? 'yes' : 'no'}`}
-              onClick={() => setRecommend(prev => !prev)}
-            >
-              {recommend ? '✅ Рекомендую' : '❌ Не рекомендую'}
-            </button>
+            <div className="recommend-toggle-group">
+              {RECOMMEND_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className={`review-recommend-toggle ${opt.cls}${recommend === opt.value ? ' active' : ''}`}
+                  onClick={() => setRecommend(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
             <button
               type="submit"
               className="review-submit-btn"
@@ -240,10 +270,14 @@ export default function WineReviewsPage() {
                 </div>
                 <textarea className="review-form-textarea" value={editFields.content} onChange={ef('content')} maxLength={5000} rows={4} />
                 <div className="review-form-footer">
-                  <button type="button"
-                    className={`review-recommend-toggle ${editFields.recommend ? 'yes' : 'no'}`}
-                    onClick={() => setEditFields(prev => ({ ...prev, recommend: !prev.recommend }))}
-                  >{editFields.recommend ? '✅ Рекомендую' : '❌ Не рекомендую'}</button>
+                  <div className="recommend-toggle-group">
+                    {RECOMMEND_OPTIONS.map(opt => (
+                      <button key={opt.value} type="button"
+                        className={`review-recommend-toggle ${opt.cls}${editFields.recommend === opt.value ? ' active' : ''}`}
+                        onClick={() => setEditFields(prev => ({ ...prev, recommend: opt.value }))}
+                      >{opt.label}</button>
+                    ))}
+                  </div>
                   <button type="button" className="review-edit-cancel" onClick={() => setEditingId(null)}>Отмена</button>
                   <button type="button" className="review-submit-btn" onClick={() => handleEditSave(r.id)}>Сохранить</button>
                 </div>
@@ -253,8 +287,8 @@ export default function WineReviewsPage() {
                 <div className="review-card-header">
                   <span className="review-card-title">{r.title}</span>
                   {r.wine_type && <span className="wine-type-badge">{WINE_TYPE_LABELS[r.wine_type]}</span>}
-                  <span className={`review-badge ${r.recommend ? 'yes' : 'no'}`}>
-                    {r.recommend ? '✅ Рекомендую' : '❌ Не рекомендую'}
+                  <span className={`review-badge ${getRecommendInfo(r.recommend).cls}`}>
+                    {getRecommendInfo(r.recommend).label}
                   </span>
                   {!isGuest && currentUser?.id === r.user_id && (
                     <>
@@ -276,6 +310,22 @@ export default function WineReviewsPage() {
                   <span className="review-date">{formatDate(r.created_at)}</span>
                 </div>
                 <p className="review-content">{r.content}</p>
+                {!isGuest && currentUser && (
+                  <div className="review-reactions">
+                    <button
+                      className={`reaction-btn like ${(r.reactions || []).find(x => x.user_id === currentUser.id)?.reaction === 1 ? 'active' : ''}`}
+                      onClick={() => handleReaction(r.id, 1)}
+                      title="Нравится"
+                      disabled={currentUser.id === r.user_id}
+                    >👍 {r.likes || 0}</button>
+                    <button
+                      className={`reaction-btn dislike ${(r.reactions || []).find(x => x.user_id === currentUser.id)?.reaction === -1 ? 'active' : ''}`}
+                      onClick={() => handleReaction(r.id, -1)}
+                      title="Не нравится"
+                      disabled={currentUser.id === r.user_id}
+                    >👎 {r.dislikes || 0}</button>
+                  </div>
+                )}
               </>
             )}
           </div>
