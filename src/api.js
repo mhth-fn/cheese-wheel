@@ -99,6 +99,10 @@ export async function postRating(movieId, userId, rating) {
   });
 }
 
+export async function deleteRating(movieId) {
+  return apiFetch(`/api/ratings/${movieId}`, { method: 'DELETE' });
+}
+
 export async function fetchStats() {
   const res = await apiFetch('/api/stats');
   return res.json();

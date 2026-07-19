@@ -91,6 +91,14 @@ function requireAuth(req, res, next) {
 const MIN_SPIN_DURATION = 5;
 const MAX_SPIN_DURATION = 15;
 const MAX_TITLE_LENGTH = 200;
+let activeSpinUntil = 0;
+
+function rejectWheelMutationDuringSpin(req, res, next) {
+  if (Date.now() < activeSpinUntil) {
+    return res.status(409).json({ error: 'Дождитесь окончания прокрутки' });
+  }
+  next();
+}
 
 // Middleware
 app.use(express.json({ limit: '16kb' }));
@@ -292,7 +300,7 @@ const stmts = {
   getMovieById: db.prepare('SELECT * FROM movies WHERE id = ?'),
   deleteUnwatched: db.prepare('DELETE FROM movies WHERE id = ? AND is_watched = 0'),
   markWatched: db.prepare("UPDATE movies SET is_watched = 1, watched_at = datetime('now') WHERE id = ?"),
-  insertWatched: db.prepare("INSERT INTO movies (title, is_watched) VALUES (?, 1)"),
+  insertWatched: db.prepare("INSERT INTO movies (title, is_watched, added_by, watched_at) VALUES (?, 1, ?, datetime('now'))"),
   getWatched: null, // инициализируется ниже динамически
   updateMovie: db.prepare('UPDATE movies SET title = ?, added_at = ? WHERE id = ?'),
   deleteRatings: db.prepare('DELETE FROM ratings WHERE movie_id = ?'),
@@ -301,6 +309,7 @@ const stmts = {
     INSERT INTO ratings (movie_id, user_id, rating) VALUES (?, ?, ?)
     ON CONFLICT(movie_id, user_id) DO UPDATE SET rating = excluded.rating
   `),
+  deleteRating: db.prepare('DELETE FROM ratings WHERE movie_id = ? AND user_id = ?'),
   getSpinDuration: db.prepare("SELECT value FROM settings WHERE key = 'spin_duration'"),
   setSpinDuration: db.prepare("UPDATE settings SET value = ? WHERE key = 'spin_duration'"),
   totalWatched: db.prepare('SELECT COUNT(*) as count FROM movies WHERE is_watched = 1'),
@@ -353,11 +362,14 @@ const stmts = {
   const ratingCols = allUsers.map(u => `MAX(CASE WHEN r.user_id = ${u.id} THEN r.rating END) as rating_${u.id}`).join(',\n      ');
   stmts.getWatched = db.prepare(`
     SELECT
-      m.id, m.title, m.watched_at, m.added_at,
+      m.id, m.title, m.watched_at, m.added_at, m.added_by,
+      proposer.name as added_by_name,
       ${ratingCols},
-      ROUND(AVG(r.rating), 1) as avg_rating
+      ROUND(AVG(r.rating), 1) as avg_rating,
+      COUNT(r.rating) as ratings_count
     FROM movies m
     LEFT JOIN ratings r ON m.id = r.movie_id
+    LEFT JOIN users proposer ON m.added_by = proposer.id
     WHERE m.is_watched = 1
     GROUP BY m.id
     ORDER BY m.watched_at DESC
@@ -462,7 +474,7 @@ app.get('/api/wheel', (req, res) => {
   res.json(stmts.getUnwatched.all());
 });
 
-app.post('/api/wheel', (req, res) => {
+app.post('/api/wheel', rejectWheelMutationDuringSpin, (req, res) => {
   const addEnabledRow = db.prepare("SELECT value FROM settings WHERE key = 'add_enabled'").get();
   if (addEnabledRow?.value === '0') {
     return res.status(403).json({ error: 'Добавление фильмов отключено' });
@@ -485,7 +497,7 @@ app.post('/api/wheel', (req, res) => {
   }
 });
 
-app.delete('/api/wheel/:id', (req, res) => {
+app.delete('/api/wheel/:id', rejectWheelMutationDuringSpin, (req, res) => {
   const id = parseIntStrict(req.params.id);
   if (isNaN(id)) {
     return res.status(400).json({ error: 'Неверный ID' });
@@ -538,7 +550,7 @@ app.get('/api/next-wheel', (req, res) => {
   res.json(stmts.getNextWheel.all());
 });
 
-app.post('/api/next-wheel', (req, res) => {
+app.post('/api/next-wheel', rejectWheelMutationDuringSpin, (req, res) => {
   const title = sanitizeTitle(req.body.title);
   if (!title) {
     return res.status(400).json({ error: 'Введите название фильма (до 200 символов)' });
@@ -556,7 +568,7 @@ app.post('/api/next-wheel', (req, res) => {
   }
 });
 
-app.delete('/api/next-wheel/:id', (req, res) => {
+app.delete('/api/next-wheel/:id', rejectWheelMutationDuringSpin, (req, res) => {
   const id = parseIntStrict(req.params.id);
   if (isNaN(id)) {
     return res.status(400).json({ error: 'Неверный ID' });
@@ -576,7 +588,7 @@ app.post('/api/watched', (req, res) => {
     return res.status(400).json({ error: 'Введите название фильма (до 200 символов)' });
   }
   try {
-    const result = stmts.insertWatched.run(title);
+    const result = stmts.insertWatched.run(title, req.tokenData.userId);
     const movie = stmts.getMovieById.get(result.lastInsertRowid);
     const user = stmts.getUsers.all().find(u => u.id === req.tokenData.userId);
     io.emit('watched-added', movie);
@@ -641,11 +653,15 @@ app.patch('/api/movies/:id', (req, res) => {
 
 app.post('/api/ratings', (req, res) => {
   const movieId = parseIntStrict(req.body.movie_id);
-  const userId = parseIntStrict(req.body.user_id);
+  const requestedUserId = parseIntStrict(req.body.user_id);
+  const userId = req.tokenData.userId;
   const rating = parseIntStrict(req.body.rating);
 
-  if (isNaN(movieId) || isNaN(userId) || isNaN(rating)) {
+  if (isNaN(movieId) || isNaN(requestedUserId) || isNaN(rating)) {
     return res.status(400).json({ error: 'Неверный формат данных' });
+  }
+  if (!userId || requestedUserId !== userId) {
+    return res.status(403).json({ error: 'Можно изменять только свою оценку' });
   }
 
   if (rating < 1 || rating > 10) {
@@ -669,6 +685,18 @@ app.post('/api/ratings', (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'Ошибка сохранения оценки' });
   }
+});
+
+app.delete('/api/ratings/:movieId', (req, res) => {
+  const movieId = parseIntStrict(req.params.movieId);
+  const userId = req.tokenData.userId;
+  if (isNaN(movieId) || !userId) {
+    return res.status(400).json({ error: 'Неверный формат данных' });
+  }
+
+  stmts.deleteRating.run(movieId, userId);
+  io.emit('rating-updated', { movie_id: movieId, user_id: userId, rating: null });
+  res.json({ success: true });
 });
 
 app.get('/api/stats', (req, res) => {
@@ -1037,17 +1065,40 @@ io.on('connection', (socket) => {
 
   socket.on('spin-wheel', (data) => {
     const spinEnabledRow = db.prepare("SELECT value FROM settings WHERE key = 'spin_enabled'").get();
-    if (spinEnabledRow?.value === '0') return;
-    // Валидация данных от клиента
-    const winnerIndex = parseIntStrict(data?.winnerIndex);
+    if (spinEnabledRow?.value === '0') {
+      socket.emit('spin-rejected', { error: 'Прокрутка отключена' });
+      return;
+    }
+    if (Date.now() < activeSpinUntil) {
+      socket.emit('spin-rejected', { error: 'Колесо уже вращается' });
+      return;
+    }
+
     const spinDuration = parseIntStrict(data?.spinDuration);
-    const randomOffset = parseFloat(data?.randomOffset);
+    if (isNaN(spinDuration) || spinDuration < MIN_SPIN_DURATION || spinDuration > MAX_SPIN_DURATION) {
+      socket.emit('spin-rejected', { error: 'Неверное время прокрутки' });
+      return;
+    }
 
-    if (isNaN(winnerIndex) || winnerIndex < 0) return;
-    if (isNaN(spinDuration) || spinDuration < MIN_SPIN_DURATION || spinDuration > MAX_SPIN_DURATION) return;
-    if (isNaN(randomOffset) || randomOffset < 0 || randomOffset > 1) return;
+    const movies = stmts.getUnwatched.all();
+    if (movies.length === 0) {
+      socket.emit('spin-rejected', { error: 'В колесе нет фильмов' });
+      return;
+    }
 
-    socket.broadcast.emit('wheel-spinning', { winnerIndex, spinDuration, randomOffset });
+    const winnerIndex = crypto.randomInt(movies.length);
+    const randomOffset = 0.08 + (crypto.randomInt(8401) / 10000);
+    const turns = 8 + crypto.randomInt(5);
+    const spinId = crypto.randomUUID();
+    activeSpinUntil = Date.now() + spinDuration * 1000 + 1200;
+    io.emit('wheel-spinning', {
+      spinId,
+      winnerIndex,
+      spinDuration,
+      randomOffset,
+      turns,
+      initiatorSocketId: socket.id,
+    });
   });
 
   socket.on('disconnect', () => {

@@ -28,8 +28,10 @@ const RIND_THEMES = {
 const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete, theme = 'cheese' }, ref) {
   const canvasRef = useRef(null);
   const [spinning, setSpinning] = useState(false);
+  const [pointerTick, setPointerTick] = useState(0);
   const rotRef = useRef(0);
   const spinningRef = useRef(false);
+  const hoveredSectorRef = useRef(-1);
 
   const seeded = (s) => { let v = s; return () => { v = (v * 16807) % 2147483647; return (v - 1) / 2147483646; }; };
 
@@ -90,7 +92,7 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete, th
     ctx.fill();
 
     /* cheese sectors */
-    const wedgeColors = ["#FFE552", "#F5D838"];
+    const wedgeColors = ["#FFE56A", "#F7D94C", "#F2C94C", "#FFEA7A"];
     movies.forEach((m, i) => {
       const startAngle = rot + i * sliceAngle;
       const endAngle = startAngle + sliceAngle;
@@ -98,8 +100,12 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete, th
       ctx.moveTo(cx, cy);
       ctx.arc(cx, cy, r, startAngle, endAngle);
       ctx.closePath();
-      ctx.fillStyle = wedgeColors[i % 2];
+      ctx.fillStyle = wedgeColors[i % wedgeColors.length];
       ctx.fill();
+      if (hoveredSectorRef.current === i && !spinningRef.current) {
+        ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
+        ctx.fill();
+      }
     });
 
     /* divider lines */
@@ -173,67 +179,36 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete, th
       ctx.restore();
     });
 
-    /* labels — curved along arc */
+    /* Labels stay upright and shrink to fit their sector. */
     ctx.shadowColor = "transparent";
     ctx.shadowBlur = 0;
-    const fontSize = Math.min(14, 150 / n);
-    ctx.font = `bold ${fontSize}px 'Nunito', sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
     movies.forEach((m, i) => {
       const midAngle = rot + i * sliceAngle + sliceAngle / 2;
-      const label = m.title.length > 18 ? m.title.slice(0, 16) + "\u2026" : m.title;
-      const textR = r * 0.68;
+      const label = m.title.length > 24 ? m.title.slice(0, 22) + "\u2026" : m.title;
+      const textR = r * (n <= 4 ? 0.6 : 0.67);
+      const x = cx + textR * Math.cos(midAngle);
+      const y = cy + textR * Math.sin(midAngle);
+      const sectorWidth = Math.max(54, 2 * textR * Math.sin(Math.min(sliceAngle * 0.38, Math.PI / 3)));
+      const fontSize = Math.max(10, Math.min(16, 190 / Math.max(n, 7), 230 / Math.max(label.length, 8)));
+      let rotation = midAngle + Math.PI / 2;
+      const normalizedRotation = ((rotation % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+      if (normalizedRotation > Math.PI / 2 && normalizedRotation < Math.PI * 1.5) rotation += Math.PI;
 
-      /* measure char widths to compute angular span */
-      const chars = [...label];
-      const widths = chars.map(c => ctx.measureText(c).width);
-      const totalW = widths.reduce((a, b) => a + b, 0);
-      const totalArc = totalW / textR;
-
-      /* clamp text to sector (leave 10% margin each side) */
-      const maxArc = sliceAngle * 0.8;
-      const scale = totalArc > maxArc ? maxArc / totalArc : 1;
-
-      /* starting angle — center the text in the sector, always same direction */
-      let angle = midAngle - (totalArc * scale) / 2;
-
-      chars.forEach((ch, ci) => {
-        const halfArc = ((widths[ci] * scale) / 2) / textR;
-        angle += halfArc;
-
-        const x = cx + textR * Math.cos(angle);
-        const y = cy + textR * Math.sin(angle);
-
-        ctx.save();
-        ctx.translate(x, y);
-        ctx.rotate(angle + Math.PI / 2);
-
-        ctx.strokeStyle = i % 2 === 0 ? "#FFE552" : "#F5D838";
-        ctx.lineWidth = 4;
-        ctx.lineJoin = "round";
-        ctx.strokeText(ch, 0, 0);
-        ctx.fillStyle = "#6B4400";
-        ctx.fillText(ch, 0, 0);
-        ctx.restore();
-
-        angle += halfArc;
-      });
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rotation);
+      ctx.font = `800 ${fontSize}px 'Nunito', 'Comfortaa', sans-serif`;
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = wedgeColors[i % wedgeColors.length];
+      ctx.lineWidth = 4;
+      ctx.strokeText(label, 0, 0, sectorWidth);
+      ctx.fillStyle = "#5B3D08";
+      ctx.fillText(label, 0, 0, sectorWidth);
+      ctx.restore();
     });
-
-    /* pointer at top */
-    const py = cy - rindOuter - 6;
-    ctx.beginPath();
-    ctx.moveTo(cx, py + 26);
-    ctx.lineTo(cx - 12, py);
-    ctx.lineTo(cx + 12, py);
-    ctx.closePath();
-    ctx.fillStyle = "#D43030";
-    ctx.fill();
-    ctx.strokeStyle = "#A82020";
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
   }, [movies, theme, ensureHoles]);
 
   useEffect(() => {
@@ -244,13 +219,13 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete, th
   }, [movies, draw]);
 
   useImperativeHandle(ref, () => ({
-    spin: (winnerIndex, duration, randomOffset) => {
-      doSpin(winnerIndex, duration, randomOffset);
+    spin: (winnerIndex, duration, randomOffset, turns) => {
+      doSpin(winnerIndex, duration, randomOffset, turns);
     },
     get isSpinning() { return spinningRef.current; }
   }));
 
-  const doSpin = useCallback((winnerIndex, duration, randomOffset) => {
+  const doSpin = useCallback((winnerIndex, duration, randomOffset, turns = 10) => {
     if (spinningRef.current || movies.length === 0) return;
     spinningRef.current = true;
     setSpinning(true);
@@ -260,13 +235,14 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete, th
     const n = movies.length;
     const sliceAngle = (2 * Math.PI) / n;
     const targetSlice = winnerIndex * sliceAngle + sliceAngle * randomOffset;
-    const extraSpins = 8 + Math.floor(Math.random() * 5);
-    const totalRotation = rotRef.current + Math.PI * 2 * extraSpins +
-      (2 * Math.PI - targetSlice - (rotRef.current % (2 * Math.PI)));
-
+    const extraSpins = Math.max(6, Math.min(14, turns));
     const startRot = rotRef.current;
+    const desiredRotation = -Math.PI / 2 - targetSlice;
+    const alignment = ((desiredRotation - (startRot % (2 * Math.PI))) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+    const totalRotation = startRot + Math.PI * 2 * extraSpins + alignment;
     const startTime = performance.now();
-    const dur = duration * 1000;
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const dur = reducedMotion ? Math.min(duration * 1000, 900) : duration * 1000;
 
     const pegCount = Math.max(n, 12);
     const pegAngle = (2 * Math.PI) / pegCount;
@@ -285,6 +261,7 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete, th
       const currentPeg = Math.floor(normRot / pegAngle);
       if (currentPeg !== lastPegIndex) {
         lastPegIndex = currentPeg;
+        setPointerTick(value => value + 1);
         const vol = 0.1 + 0.25 * (1 - progress);
         playClick(vol);
       }
@@ -295,28 +272,56 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete, th
         const finalRot = currentRot % (2 * Math.PI);
         rotRef.current = finalRot;
 
-        const norm = ((-(currentRot % (2 * Math.PI)) - Math.PI / 2) % (2 * Math.PI) + 4 * Math.PI) % (2 * Math.PI);
-        const idx = Math.floor(norm / sliceAngle) % n;
-
         spinningRef.current = false;
         setSpinning(false);
 
         playWinSound();
         if (onSpinComplete) {
-          setTimeout(() => onSpinComplete(movies[idx]), 400);
+          setTimeout(() => onSpinComplete(movies[winnerIndex]), reducedMotion ? 80 : 400);
         }
       }
     };
     requestAnimationFrame(animate);
   }, [movies, draw, onSpinComplete]);
 
+  const updateHoveredSector = (event) => {
+    if (spinningRef.current || movies.length === 0) return;
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const x = (event.clientX - rect.left) * (canvas.width / rect.width);
+    const y = (event.clientY - rect.top) * (canvas.height / rect.height);
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const radius = Math.min(cx, cy) - 44;
+    if (Math.hypot(x - cx, y - cy) > radius) {
+      hoveredSectorRef.current = -1;
+    } else {
+      const angle = Math.atan2(y - cy, x - cx);
+      const sliceAngle = (2 * Math.PI) / movies.length;
+      const relative = ((angle - rotRef.current) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+      hoveredSectorRef.current = Math.floor(relative / sliceAngle);
+    }
+    draw(canvas.getContext('2d'), canvas.width, canvas.height, rotRef.current);
+  };
+
+  const clearHoveredSector = () => {
+    hoveredSectorRef.current = -1;
+    const canvas = canvasRef.current;
+    if (canvas) draw(canvas.getContext('2d'), canvas.width, canvas.height, rotRef.current);
+  };
+
   return (
-    <canvas
-      ref={canvasRef}
-      width={500}
-      height={500}
-      style={{ maxWidth: "100%", filter: "drop-shadow(0 8px 28px rgba(100,60,0,0.25))" }}
-    />
+    <div className={`cheese-wheel-stage ${spinning ? 'is-spinning' : ''}`}>
+      <canvas
+        ref={canvasRef}
+        width={500}
+        height={500}
+        onMouseMove={updateHoveredSector}
+        onMouseLeave={clearHoveredSector}
+        aria-label={`Сырное колесо. Фильмы: ${movies.map(movie => movie.title).join(', ')}`}
+      />
+      <div key={pointerTick} className="wheel-pointer bounce" aria-hidden="true" />
+    </div>
   );
 });
 

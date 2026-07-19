@@ -13,14 +13,20 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
   const dropdownRef = useRef(null);
 
   const pages = [
-    { key: 'wheel', label: '🎡 Колесо' },
-    { key: 'watched', label: '📋 Просмотренные' },
-    { key: 'games', label: '🎮 Игры' },
+    { key: 'wheel', icon: '🎡', label: 'Колесо' },
+    { key: 'watched', icon: '📋', label: 'Просмотренные' },
+    { key: 'games', icon: '🎮', label: 'Игры' },
   ];
 
   // Close dropdown on outside click
   useEffect(() => {
     const handler = (e) => {
+      if (e.key === 'Escape') {
+        setDropdownOpen(false);
+        setChangingPassword(false);
+        setPwdError('');
+        return;
+      }
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setDropdownOpen(false);
         setChangingPassword(false);
@@ -28,7 +34,11 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
       }
     };
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener('keydown', handler);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('keydown', handler);
+    };
   }, []);
 
   const handlePasswordSubmit = async (e) => {
@@ -61,16 +71,20 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
   };
 
   return (
-    <nav className="nav">
-      {pages.map(p => (
-        <button
-          key={p.key}
-          className={`nav-btn ${activePage === p.key ? 'active' : ''}`}
-          onClick={() => onNavigate(p.key)}
-        >
-          {p.label}
-        </button>
-      ))}
+    <nav className="nav" aria-label="Основные разделы">
+      <div className="nav-pages">
+        {pages.map(p => (
+          <button
+            key={p.key}
+            className={`nav-btn ${activePage === p.key ? 'active' : ''}`}
+            onClick={() => onNavigate(p.key)}
+            aria-current={activePage === p.key ? 'page' : undefined}
+          >
+            <span aria-hidden="true">{p.icon}</span>
+            <span>{p.label}</span>
+          </button>
+        ))}
+      </div>
       <div className="nav-user" ref={dropdownRef}>
         <button
           className="nav-user-btn"
@@ -81,16 +95,21 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
               setPwdError('');
             }
           }}
+          aria-expanded={dropdownOpen}
+          aria-haspopup="menu"
+          aria-label={`Меню пользователя ${userName}`}
         >
-          <span>👤</span>
+          <span className="nav-user-avatar" aria-hidden="true">{userName?.slice(0, 1) || 'Г'}</span>
           <span className="nav-user-name">{userName}</span>
+          <span className="nav-user-caret" aria-hidden="true">⌄</span>
         </button>
         {dropdownOpen && (
-          <div className="nav-dropdown">
+          <div className="nav-dropdown" role="menu">
             {!isGuest && !changingPassword && (
               <button
                 className="nav-dropdown-item"
                 onClick={() => setChangingPassword(true)}
+                role="menuitem"
               >
                 🔑 Поменять пароль
               </button>
@@ -127,19 +146,21 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
                 <button
                   className="nav-dropdown-item"
                   onClick={() => { onNavigate('wine-reviews'); setDropdownOpen(false); }}
+                  role="menuitem"
                 >
                   🍷 Обзоры на вино
                 </button>
                 <button
                   className="nav-dropdown-item"
                   onClick={() => { onNavigate('movie-reviews'); setDropdownOpen(false); }}
+                  role="menuitem"
                 >
                   🎬 Обзоры на кино
                 </button>
               </>
             )}
             {!changingPassword && (
-              <button className="nav-dropdown-item nav-dropdown-logout" onClick={onLogout}>
+              <button className="nav-dropdown-item nav-dropdown-logout" onClick={onLogout} role="menuitem">
                 🚪 Выход
               </button>
             )}

@@ -5,6 +5,7 @@ export default function AuthPage({ users, onLogin, onGuest }) {
   const [selectedId, setSelectedId] = useState(null);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
 
   const handleSelect = (userId) => {
     setSelectedId(userId);
@@ -13,7 +14,8 @@ export default function AuthPage({ users, onLogin, onGuest }) {
   };
 
   const handleLogin = async () => {
-    if (!selectedId) return;
+    if (!selectedId || loggingIn) return;
+    setLoggingIn(true);
     try {
       const res = await postAuth(selectedId, password);
       const data = await res.json();
@@ -26,6 +28,8 @@ export default function AuthPage({ users, onLogin, onGuest }) {
       }
     } catch {
       setError('Ошибка соединения');
+    } finally {
+      setLoggingIn(false);
     }
   };
 
@@ -40,6 +44,7 @@ export default function AuthPage({ users, onLogin, onGuest }) {
             key={user.id}
             className={`auth-btn ${selectedId === user.id ? 'selected' : ''}${users.length % 2 !== 0 && index === users.length - 1 ? ' auth-btn-center' : ''}`}
             onClick={() => handleSelect(user.id)}
+            aria-pressed={selectedId === user.id}
           >
             {user.name}
           </button>
@@ -53,11 +58,14 @@ export default function AuthPage({ users, onLogin, onGuest }) {
             placeholder="Введите пароль..."
             value={password}
             onChange={e => setPassword(e.target.value)}
-            onKeyPress={e => e.key === 'Enter' && handleLogin()}
+            onKeyDown={e => e.key === 'Enter' && handleLogin()}
+            disabled={loggingIn}
             autoFocus
           />
-          <button className="auth-password-btn" onClick={handleLogin}>Войти</button>
-          {error && <p className="auth-error">{error}</p>}
+          <button className="auth-password-btn" onClick={handleLogin} disabled={loggingIn || !password}>
+            {loggingIn ? 'Входим…' : 'Войти'}
+          </button>
+          {error && <p className="auth-error" role="alert">{error}</p>}
         </div>
       )}
       <button className="auth-guest-btn" onClick={onGuest}>

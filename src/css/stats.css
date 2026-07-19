@@ -1,112 +1,133 @@
-/* ========== ПОИСК ========== */
-.search-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(255,255,255,0.95);
-  border: 3px solid var(--cheese-dark);
-  border-radius: 16px;
-  padding: 10px 18px;
-  margin-bottom: 20px;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-}
-
-.search-bar input {
-  flex: 1;
-  border: none;
-  outline: none;
-  font-family: 'Comfortaa', cursive;
-  font-size: 1rem;
-  background: transparent;
-  color: var(--text);
-}
-
-.search-bar input::placeholder { color: var(--text-light); }
-.search-icon { font-size: 1.2rem; opacity: 0.5; }
-
-.search-clear {
-  background: none;
-  border: none;
-  font-size: 1.1rem;
-  cursor: pointer;
-  opacity: 0.4;
-  transition: opacity 0.2s;
-  display: none;
-}
-
-.search-clear.visible { display: block; }
-.search-clear:hover { opacity: 1; }
-
-/* ========== СТАТИСТИКА ========== */
 .stats-panel {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 15px;
-  margin-bottom: 25px;
-  animation: statsAppear 0.35s ease-out;
-}
-
-@keyframes statsAppear {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
+  grid-template-columns: 0.8fr 1fr 1fr 1.45fr;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
 }
 
 .stat-card {
-  background: rgba(255,255,255,0.95);
-  border-radius: 16px;
-  padding: 20px;
-  text-align: center;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-  border: 2px solid var(--cheese-dark);
-  transition: transform 0.2s;
   display: flex;
-  flex-direction: column;
+  min-width: 0;
+  min-height: 132px;
+  padding: var(--space-4);
+  align-items: flex-start;
   justify-content: center;
+  flex-direction: column;
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-medium);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-small);
 }
 
-.stat-card:hover { transform: translateY(-2px); }
+.stat-card.total {
+  align-items: center;
+  text-align: center;
+}
+
+.stat-card.best {
+  border-top: 3px solid var(--color-success);
+}
+
+.stat-card.lowest {
+  border-top: 3px solid var(--color-warning);
+}
 
 .stat-card-value {
-  font-size: 1.4rem;
-  font-weight: 700;
-  color: var(--crust);
-  margin-bottom: 4px;
+  max-width: 100%;
+  margin-top: var(--space-2);
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: 1.25rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stat-card.total .stat-card-value {
+  margin-top: 0;
+  color: var(--color-primary);
+  font-size: 2rem;
 }
 
 .stat-card-label {
-  font-size: 0.85rem;
-  color: var(--text-light);
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
 .stat-card-sub {
-  font-size: 0.8rem;
-  color: var(--text-light);
-  margin-top: 4px;
-  opacity: 0.7;
+  margin-top: 3px;
+  color: var(--color-text-muted);
+  font-size: 0.68rem;
 }
 
 .stats-users {
-  display: flex;
-  justify-content: center;
-  gap: 20px;
-  flex-wrap: wrap;
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 
 .stats-user-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
+  display: grid;
+  min-width: 0;
+  justify-items: center;
+  gap: 2px;
 }
 
 .stats-user-name {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text);
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 0.65rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stats-user-avg {
-  font-size: 1.3rem;
-  font-weight: 700;
-  color: var(--crust);
+  color: var(--color-primary);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.stats-loading .skeleton {
+  min-height: 132px;
+}
+
+.stats-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-danger);
+  font-size: 0.82rem;
+}
+
+@media (max-width: 900px) {
+  .stats-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .stats-panel {
+    gap: var(--space-2);
+  }
+
+  .stat-card {
+    min-height: 118px;
+    padding: var(--space-3);
+  }
+
+  .stat-card.averages {
+    grid-column: 1 / -1;
+    min-height: 112px;
+  }
+
+  .stat-card-value {
+    font-size: 1rem;
+  }
 }
