@@ -1,3 +1,4 @@
+//TODO: декомпозировать файл
 const express = require('express');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
@@ -8,6 +9,7 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server);
 const PORT = process.env.PORT || 3000;
+const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 
 const crypto = require('crypto');
 
@@ -16,6 +18,7 @@ const authAttempts = new Map(); // ip -> { count, resetAt }
 const RATE_LIMIT_MAX = 10;
 const RATE_LIMIT_WINDOW = 60 * 1000; // 1 минута
 
+//TODO: нужно чистить мапу от старых айпишников
 function checkRateLimit(ip) {
   const now = Date.now();
   const entry = authAttempts.get(ip);
@@ -28,30 +31,48 @@ function checkRateLimit(ip) {
   return true;
 }
 
+function escapeDiscordMarkdown(text) {
+  return String(text).replace(/([\\_*~`>|])/g, '\\$1');
+}
+
+async function notifyDiscord(content) {
+  if (!DISCORD_WEBHOOK_URL) return;
+  try {
+    const res = await fetch(DISCORD_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content })
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.warn('[cheese-wheel] Discord webhook failed: ' + res.status + ' ' + body.slice(0, 200));
+    }
+  } catch (err) {
+    console.warn('[cheese-wheel] Discord webhook failed:', err.message);
+  }
+}
+
 // ============ ТОКЕНЫ ============
-const tokenStore = new Map(); // token -> { userId, isGuest, expires }
 const TOKEN_EXPIRY = 30 * 24 * 60 * 60 * 1000; // 30 дней
 
 function createToken(userId, isGuest = false) {
   const token = crypto.randomBytes(32).toString('hex');
-  tokenStore.set(token, { userId, isGuest, expires: Date.now() + TOKEN_EXPIRY });
+  const expires = Date.now() + TOKEN_EXPIRY;
+  db.prepare('INSERT OR REPLACE INTO tokens (token, user_id, is_guest, expires) VALUES (?,?,?,?)').run(token, userId ?? null, isGuest ? 1 : 0, expires);
   return token;
 }
 
 function getTokenData(token) {
   if (!token) return null;
-  const data = tokenStore.get(token);
-  if (!data) return null;
-  if (Date.now() > data.expires) { tokenStore.delete(token); return null; }
-  return data;
+  const row = db.prepare('SELECT user_id, is_guest, expires FROM tokens WHERE token=?').get(token);
+  if (!row) return null;
+  if (Date.now() > row.expires) { db.prepare('DELETE FROM tokens WHERE token=?').run(token); return null; }
+  return { userId: row.user_id, isGuest: !!row.is_guest, expires: row.expires };
 }
 
 // Чистим просроченные токены раз в час
 setInterval(() => {
-  const now = Date.now();
-  for (const [token, data] of tokenStore) {
-    if (now > data.expires) tokenStore.delete(token);
-  }
+  db.prepare('DELETE FROM tokens WHERE expires < ?').run(Date.now());
 }, 60 * 60 * 1000);
 
 // ============ AUTH MIDDLEWARE ============
@@ -117,6 +138,23 @@ db.exec(`
     value TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS tokens (
+    token TEXT PRIMARY KEY,
+    user_id INTEGER,
+    is_guest INTEGER DEFAULT 0,
+    expires INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS review_reactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    review_type TEXT NOT NULL CHECK(review_type IN ('movie', 'wine')),
+    review_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    reaction INTEGER NOT NULL CHECK(reaction IN (-1, 1)),
+    UNIQUE(review_type, review_id, user_id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
   CREATE TABLE IF NOT EXISTS wine_reviews (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -159,6 +197,13 @@ try {
   // колонка уже существует
 }
 
+// Миграция: следующее колесо
+try {
+  db.exec('ALTER TABLE movies ADD COLUMN is_next_wheel INTEGER DEFAULT 0');
+} catch (e) {
+  // колонка уже существует
+}
+
 // Миграции: новые поля для обзоров на вино
 ['wine_type TEXT', 'grape TEXT', 'region TEXT', 'vintage INTEGER', 'price TEXT'].forEach(col => {
   try { db.exec(`ALTER TABLE wine_reviews ADD COLUMN ${col}`); } catch (e) {}
@@ -168,6 +213,15 @@ try {
 ['director TEXT', 'year INTEGER'].forEach(col => {
   try { db.exec(`ALTER TABLE movie_reviews ADD COLUMN ${col}`); } catch (e) {}
 });
+
+// Разовая миграция: перевод старого recommend=0 (Не рекомендую) в recommend=-1,
+// чтобы освободить 0 для нового состояния "Сойдёт"
+const migrationDone = db.prepare("SELECT value FROM settings WHERE key='migration_recommend_three_way'").get();
+if (!migrationDone) {
+  db.exec('UPDATE wine_reviews SET recommend = -1 WHERE recommend = 0');
+  db.exec('UPDATE movie_reviews SET recommend = -1 WHERE recommend = 0');
+  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('migration_recommend_three_way', '1')").run();
+}
 
 // Хеширование пароля
 function hashPassword(password) {
@@ -190,9 +244,16 @@ if (!DEFAULT_PASSWORD) {
   DEFAULT_PASSWORD = crypto.randomBytes(12).toString('base64');
   console.warn(`[cheese-wheel] DEFAULT_PASSWORD не задан. Сгенерирован временный пароль для новых пользователей: ${DEFAULT_PASSWORD}`);
 }
-const userNames = ['Антон', 'Сергей', 'Пётр', 'Митя'];
-const insertUser = db.prepare('INSERT OR IGNORE INTO users (name, password_hash) VALUES (?, ?)');
-userNames.forEach(name => insertUser.run(name, hashPassword(DEFAULT_PASSWORD)));
+const seedUsers = [
+  { id: 1, name: 'Антон' },
+  { id: 2, name: 'Сергей' },
+  { id: 3, name: 'Пётр' },
+  { id: 4, name: 'Митя' },
+  { id: 5, name: 'Егор' },
+  { id: 6, name: 'Женя' },
+];
+const insertUser = db.prepare('INSERT OR IGNORE INTO users (id, name, password_hash) VALUES (?, ?, ?)');
+seedUsers.forEach(u => insertUser.run(u.id, u.name, hashPassword(DEFAULT_PASSWORD)));
 
 // Устанавливаем пароль тем, у кого его нет (после миграции)
 const usersWithoutPassword = db.prepare('SELECT id FROM users WHERE password_hash IS NULL').all();
@@ -217,27 +278,22 @@ const stmts = {
   getUnwatched: db.prepare(`
     SELECT m.*, u.name as added_by_name
     FROM movies m LEFT JOIN users u ON m.added_by = u.id
-    WHERE m.is_watched = 0 ORDER BY m.id
+    WHERE m.is_watched = 0 AND m.is_next_wheel = 0 ORDER BY m.id
   `),
+  getNextWheel: db.prepare(`
+    SELECT m.*, u.name as added_by_name
+    FROM movies m LEFT JOIN users u ON m.added_by = u.id
+    WHERE m.is_watched = 0 AND m.is_next_wheel = 1 ORDER BY m.id
+  `),
+  countCurrentWheel: db.prepare('SELECT COUNT(*) as count FROM movies WHERE is_watched = 0 AND is_next_wheel = 0'),
+  promoteNextWheel: db.prepare('UPDATE movies SET is_next_wheel = 0 WHERE is_watched = 0 AND is_next_wheel = 1'),
   insertMovie: db.prepare('INSERT INTO movies (title, added_by) VALUES (?, ?)'),
+  insertNextMovie: db.prepare('INSERT INTO movies (title, added_by, is_next_wheel) VALUES (?, ?, 1)'),
   getMovieById: db.prepare('SELECT * FROM movies WHERE id = ?'),
   deleteUnwatched: db.prepare('DELETE FROM movies WHERE id = ? AND is_watched = 0'),
   markWatched: db.prepare("UPDATE movies SET is_watched = 1, watched_at = datetime('now') WHERE id = ?"),
   insertWatched: db.prepare("INSERT INTO movies (title, is_watched) VALUES (?, 1)"),
-  getWatched: db.prepare(`
-    SELECT
-      m.id, m.title, m.watched_at, m.added_at,
-      MAX(CASE WHEN r.user_id = 1 THEN r.rating END) as rating_1,
-      MAX(CASE WHEN r.user_id = 2 THEN r.rating END) as rating_2,
-      MAX(CASE WHEN r.user_id = 3 THEN r.rating END) as rating_3,
-      MAX(CASE WHEN r.user_id = 4 THEN r.rating END) as rating_4,
-      ROUND(AVG(r.rating), 1) as avg_rating
-    FROM movies m
-    LEFT JOIN ratings r ON m.id = r.movie_id
-    WHERE m.is_watched = 1
-    GROUP BY m.id
-    ORDER BY m.watched_at DESC
-  `),
+  getWatched: null, // инициализируется ниже динамически
   updateMovie: db.prepare('UPDATE movies SET title = ?, added_at = ? WHERE id = ?'),
   deleteRatings: db.prepare('DELETE FROM ratings WHERE movie_id = ?'),
   deleteMovie: db.prepare('DELETE FROM movies WHERE id = ?'),
@@ -264,7 +320,10 @@ const stmts = {
     GROUP BY u.id ORDER BY u.id
   `),
   getWineReviews: db.prepare(`
-    SELECT wr.*, u.name as user_name
+    SELECT wr.*, u.name as user_name,
+      COALESCE((SELECT COUNT(*) FROM review_reactions WHERE review_type='wine' AND review_id=wr.id AND reaction=1), 0) as likes,
+      COALESCE((SELECT COUNT(*) FROM review_reactions WHERE review_type='wine' AND review_id=wr.id AND reaction=-1), 0) as dislikes,
+      COALESCE((SELECT json_group_array(json_object('user_id', user_id, 'reaction', reaction)) FROM review_reactions WHERE review_type='wine' AND review_id=wr.id), '[]') as reactions_json
     FROM wine_reviews wr JOIN users u ON wr.user_id = u.id
     ORDER BY wr.created_at DESC
   `),
@@ -273,7 +332,10 @@ const stmts = {
   deleteWineReview: db.prepare('DELETE FROM wine_reviews WHERE id = ? AND user_id = ?'),
   updateWineReview: db.prepare('UPDATE wine_reviews SET title=?, content=?, recommend=?, wine_type=?, grape=?, region=?, vintage=?, price=? WHERE id=? AND user_id=?'),
   getMovieReviews: db.prepare(`
-    SELECT mr.*, u.name as user_name
+    SELECT mr.*, u.name as user_name,
+      COALESCE((SELECT COUNT(*) FROM review_reactions WHERE review_type='movie' AND review_id=mr.id AND reaction=1), 0) as likes,
+      COALESCE((SELECT COUNT(*) FROM review_reactions WHERE review_type='movie' AND review_id=mr.id AND reaction=-1), 0) as dislikes,
+      COALESCE((SELECT json_group_array(json_object('user_id', user_id, 'reaction', reaction)) FROM review_reactions WHERE review_type='movie' AND review_id=mr.id), '[]') as reactions_json
     FROM movie_reviews mr JOIN users u ON mr.user_id = u.id
     ORDER BY mr.created_at DESC
   `),
@@ -282,6 +344,23 @@ const stmts = {
   deleteMovieReview: db.prepare('DELETE FROM movie_reviews WHERE id = ? AND user_id = ?'),
   updateMovieReview: db.prepare('UPDATE movie_reviews SET title=?, content=?, recommend=?, director=?, year=? WHERE id=? AND user_id=?'),
 };
+
+// Динамический запрос getWatched — строится по реальным user_id из БД
+{
+  const allUsers = db.prepare('SELECT id FROM users ORDER BY id').all();
+  const ratingCols = allUsers.map(u => `MAX(CASE WHEN r.user_id = ${u.id} THEN r.rating END) as rating_${u.id}`).join(',\n      ');
+  stmts.getWatched = db.prepare(`
+    SELECT
+      m.id, m.title, m.watched_at, m.added_at,
+      ${ratingCols},
+      ROUND(AVG(r.rating), 1) as avg_rating
+    FROM movies m
+    LEFT JOIN ratings r ON m.id = r.movie_id
+    WHERE m.is_watched = 1
+    GROUP BY m.id
+    ORDER BY m.watched_at DESC
+  `);
+}
 
 // Хелперы валидации
 function parseIntStrict(value) {
@@ -424,15 +503,68 @@ app.post('/api/wheel/:id/watched', (req, res) => {
     return res.status(400).json({ error: 'Неверный ID' });
   }
   try {
-    stmts.markWatched.run(id);
-    const movie = stmts.getMovieById.get(id);
-    if (!movie) {
+    const currentMovie = stmts.getMovieById.get(id);
+    if (!currentMovie) {
       return res.status(404).json({ error: 'Фильм не найден' });
     }
+    const wasWatched = currentMovie.is_watched === 1;
+    stmts.markWatched.run(id);
+    const movie = stmts.getMovieById.get(id);
     io.emit('movie-watched', movie);
+    if (!wasWatched) {
+      void notifyDiscord('Сегодня смотрим *' + escapeDiscordMarkdown(movie.title) + '*');
+    }
+
+    // Авто-промоция: если текущее колесо пусто — переносим следующее
+    const remaining = stmts.countCurrentWheel.get();
+    if (remaining.count === 0) {
+      const nextMovies = stmts.getNextWheel.all();
+      if (nextMovies.length > 0) {
+        stmts.promoteNextWheel.run();
+        const promoted = stmts.getUnwatched.all();
+        io.emit('next-wheel-promoted', promoted);
+      }
+    }
+
     res.json(movie);
   } catch (err) {
     res.status(500).json({ error: 'Ошибка обновления' });
+  }
+});
+
+app.get('/api/next-wheel', (req, res) => {
+  res.json(stmts.getNextWheel.all());
+});
+
+app.post('/api/next-wheel', (req, res) => {
+  const title = sanitizeTitle(req.body.title);
+  if (!title) {
+    return res.status(400).json({ error: 'Введите название фильма (до 200 символов)' });
+  }
+  const userId = parseIntStrict(req.body.user_id);
+  const addedBy = isNaN(userId) ? null : userId;
+  try {
+    const result = stmts.insertNextMovie.run(title, addedBy);
+    const addedByName = addedBy ? stmts.getUsers.all().find(u => u.id === addedBy)?.name : null;
+    const movie = { id: Number(result.lastInsertRowid), title, added_by: addedBy, added_by_name: addedByName, is_next_wheel: 1 };
+    io.emit('next-movie-added', movie);
+    res.json(movie);
+  } catch (err) {
+    res.status(500).json({ error: 'Ошибка добавления фильма' });
+  }
+});
+
+app.delete('/api/next-wheel/:id', (req, res) => {
+  const id = parseIntStrict(req.params.id);
+  if (isNaN(id)) {
+    return res.status(400).json({ error: 'Неверный ID' });
+  }
+  try {
+    db.prepare('DELETE FROM movies WHERE id = ? AND is_next_wheel = 1').run(id);
+    io.emit('next-movie-removed', { id });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Ошибка удаления' });
   }
 });
 
@@ -687,12 +819,16 @@ function validateReview(body) {
   if (!title) return { error: 'Введите название (до 200 символов)' };
   const content = typeof body.content === 'string' ? body.content.trim() : '';
   if (!content || content.length > MAX_REVIEW_CONTENT_LENGTH) return { error: 'Введите текст обзора (до 5000 символов)' };
-  const recommend = body.recommend ? 1 : 0;
+  const recommendRaw = parseInt(body.recommend, 10);
+  const recommend = [-1, 0, 1].includes(recommendRaw) ? recommendRaw : 1;
   return { title, content, recommend };
 }
 
 app.get('/api/wine-reviews', (req, res) => {
-  res.json(stmts.getWineReviews.all());
+  const reviews = stmts.getWineReviews.all().map(({ reactions_json, ...r }) => ({
+    ...r, reactions: JSON.parse(reactions_json || '[]')
+  }));
+  res.json(reviews);
 });
 
 app.post('/api/wine-reviews', (req, res) => {
@@ -713,8 +849,9 @@ app.post('/api/wine-reviews', (req, res) => {
     const result = stmts.insertWineReview.run(userId, validated.title, validated.content, validated.recommend, wine_type, grape, region, vintageVal, price);
     const review = stmts.getWineReviewById.get(result.lastInsertRowid);
     const user = stmts.getUsers.all().find(u => u.id === userId);
-    io.emit('wine-review-added', { ...review, user_name: user?.name });
-    res.json({ ...review, user_name: user?.name });
+    const reviewOut = { ...review, user_name: user?.name, likes: 0, dislikes: 0, reactions: [] };
+    io.emit('wine-review-added', reviewOut);
+    res.json(reviewOut);
   } catch (err) {
     res.status(500).json({ error: 'Ошибка сохранения' });
   }
@@ -753,7 +890,10 @@ app.patch('/api/wine-reviews/:id', (req, res) => {
 });
 
 app.get('/api/movie-reviews', (req, res) => {
-  res.json(stmts.getMovieReviews.all());
+  const reviews = stmts.getMovieReviews.all().map(({ reactions_json, ...r }) => ({
+    ...r, reactions: JSON.parse(reactions_json || '[]')
+  }));
+  res.json(reviews);
 });
 
 app.post('/api/movie-reviews', (req, res) => {
@@ -770,8 +910,9 @@ app.post('/api/movie-reviews', (req, res) => {
     const result = stmts.insertMovieReview.run(userId, validated.title, validated.content, validated.recommend, director, yearVal);
     const review = stmts.getMovieReviewById.get(result.lastInsertRowid);
     const user = stmts.getUsers.all().find(u => u.id === userId);
-    io.emit('movie-review-added', { ...review, user_name: user?.name });
-    res.json({ ...review, user_name: user?.name });
+    const reviewOut = { ...review, user_name: user?.name, likes: 0, dislikes: 0, reactions: [] };
+    io.emit('movie-review-added', reviewOut);
+    res.json(reviewOut);
   } catch (err) {
     res.status(500).json({ error: 'Ошибка сохранения' });
   }
@@ -803,6 +944,33 @@ app.delete('/api/movie-reviews/:id', (req, res) => {
   if (result.changes === 0) return res.status(403).json({ error: 'Нет доступа или обзор не найден' });
   io.emit('movie-review-deleted', { id });
   res.json({ success: true });
+});
+
+// ============ REVIEW REACTIONS ============
+
+app.post('/api/review-reactions', (req, res) => {
+  const userId = req.tokenData.userId;
+  if (!userId) return res.status(403).json({ error: 'Требуется авторизация' });
+  const { review_type, review_id, reaction } = req.body;
+  if (!['movie', 'wine'].includes(review_type)) return res.status(400).json({ error: 'Неверный тип обзора' });
+  const reviewId = parseIntStrict(review_id);
+  if (isNaN(reviewId)) return res.status(400).json({ error: 'Неверный ID обзора' });
+  if (reaction !== 1 && reaction !== -1) return res.status(400).json({ error: 'Неверная реакция' });
+
+  const existing = db.prepare('SELECT reaction FROM review_reactions WHERE review_type=? AND review_id=? AND user_id=?').get(review_type, reviewId, userId);
+  if (existing && existing.reaction === reaction) {
+    db.prepare('DELETE FROM review_reactions WHERE review_type=? AND review_id=? AND user_id=?').run(review_type, reviewId, userId);
+  } else {
+    db.prepare('INSERT INTO review_reactions (review_type, review_id, user_id, reaction) VALUES (?,?,?,?) ON CONFLICT(review_type, review_id, user_id) DO UPDATE SET reaction=excluded.reaction').run(review_type, reviewId, userId, reaction);
+  }
+
+  const likes = db.prepare("SELECT COUNT(*) as c FROM review_reactions WHERE review_type=? AND review_id=? AND reaction=1").get(review_type, reviewId).c;
+  const dislikes = db.prepare("SELECT COUNT(*) as c FROM review_reactions WHERE review_type=? AND review_id=? AND reaction=-1").get(review_type, reviewId).c;
+  const reactions = db.prepare("SELECT user_id, reaction FROM review_reactions WHERE review_type=? AND review_id=?").all(review_type, reviewId);
+
+  const payload = { review_type, review_id: reviewId, likes, dislikes, reactions };
+  io.emit('review-reaction-updated', payload);
+  res.json(payload);
 });
 
 // ============ SOCKET.IO ============

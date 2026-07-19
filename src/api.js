@@ -49,6 +49,23 @@ export async function markWatched(id) {
   return apiFetch(`/api/wheel/${id}/watched`, { method: 'POST' });
 }
 
+export async function fetchNextWheelMovies() {
+  const res = await apiFetch('/api/next-wheel');
+  return res.json();
+}
+
+export async function postNextMovie(title, userId) {
+  return apiFetch('/api/next-wheel', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, user_id: userId })
+  });
+}
+
+export async function deleteNextMovie(id) {
+  return apiFetch(`/api/next-wheel/${id}`, { method: 'DELETE' });
+}
+
 export async function fetchWatched() {
   const res = await apiFetch('/api/watched');
   return res.json();
@@ -209,5 +226,13 @@ export async function deleteMovieReview(id, userId) {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_id: userId })
+  });
+}
+
+export async function postReviewReaction(reviewType, reviewId, reaction) {
+  return apiFetch('/api/review-reactions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ review_type: reviewType, review_id: reviewId, reaction })
   });
 }
