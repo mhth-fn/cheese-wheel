@@ -33,6 +33,15 @@ export async function fetchWheelMovies() {
   return res.json();
 }
 
+export async function fetchWheelStatus() {
+  const res = await apiFetch('/api/wheel/status');
+  return res.json();
+}
+
+export async function formWheel() {
+  return apiFetch('/api/wheel/form', { method: 'POST' });
+}
+
 export async function postMovie(title, userId) {
   return apiFetch('/api/wheel', {
     method: 'POST',
