@@ -296,6 +296,7 @@ const seedUsers = [
   { id: 4, name: 'Митя' },
   { id: 5, name: 'Егор' },
   { id: 6, name: 'Женя' },
+  { id: 7, name: 'Юлий' },
 ];
 const insertUser = db.prepare('INSERT OR IGNORE INTO users (id, name, password_hash) VALUES (?, ?, ?)');
 seedUsers.forEach(u => insertUser.run(u.id, u.name, hashPassword(DEFAULT_PASSWORD)));
