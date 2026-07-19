@@ -578,7 +578,11 @@ app.post('/api/watched', (req, res) => {
   try {
     const result = stmts.insertWatched.run(title);
     const movie = stmts.getMovieById.get(result.lastInsertRowid);
+    const user = stmts.getUsers.all().find(u => u.id === req.tokenData.userId);
     io.emit('watched-added', movie);
+    void notifyDiscord(
+      '*' + escapeDiscordMarkdown(user?.name || 'Пользователь') + '* добавил *' + escapeDiscordMarkdown(movie.title) + '* в историю просмотренных'
+    );
     res.json(movie);
   } catch (err) {
     res.status(500).json({ error: 'Ошибка добавления' });
