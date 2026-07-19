@@ -168,7 +168,6 @@ export default function WheelPage() {
               {centerImage
                 ? <img src={centerImage} alt="" className="wheel-center-img" />
                 : <span className="wheel-center-fallback" aria-hidden="true">🧀</span>}
-              <span className="wheel-center-icon" aria-hidden="true">↻</span>
             </button>
           </div>
         </div>

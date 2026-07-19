@@ -42,11 +42,11 @@ export async function formWheel() {
   return apiFetch('/api/wheel/form', { method: 'POST' });
 }
 
-export async function postMovie(title, userId) {
+export async function postMovie(title) {
   return apiFetch('/api/wheel', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, user_id: userId })
+    body: JSON.stringify({ title })
   });
 }
 
@@ -63,11 +63,11 @@ export async function fetchNextWheelMovies() {
   return res.json();
 }
 
-export async function postNextMovie(title, userId) {
+export async function postNextMovie(title) {
   return apiFetch('/api/next-wheel', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, user_id: userId })
+    body: JSON.stringify({ title })
   });
 }
 
