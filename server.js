@@ -312,6 +312,8 @@ const stmts = {
   deleteRating: db.prepare('DELETE FROM ratings WHERE movie_id = ? AND user_id = ?'),
   getSpinDuration: db.prepare("SELECT value FROM settings WHERE key = 'spin_duration'"),
   setSpinDuration: db.prepare("UPDATE settings SET value = ? WHERE key = 'spin_duration'"),
+  getFormedWheel: db.prepare("SELECT value FROM settings WHERE key = 'formed_wheel_snapshot'"),
+  setFormedWheel: db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('formed_wheel_snapshot', ?)"),
   totalWatched: db.prepare('SELECT COUNT(*) as count FROM movies WHERE is_watched = 1'),
   topRated: db.prepare(`
     SELECT m.title, ROUND(AVG(r.rating), 1) as avg_rating
@@ -388,6 +390,58 @@ function sanitizeTitle(title) {
   const trimmed = title.trim();
   if (trimmed.length === 0 || trimmed.length > MAX_TITLE_LENGTH) return null;
   return trimmed;
+}
+
+function toWheelSnapshotMovie(movie) {
+  return {
+    id: Number(movie.id),
+    title: movie.title,
+    added_by: movie.added_by ?? null,
+    added_by_name: movie.added_by_name ?? null,
+  };
+}
+
+function wheelSignature(movies) {
+  return JSON.stringify(movies.map(movie => [
+    Number(movie.id),
+    movie.title,
+    movie.added_by ?? null,
+  ]));
+}
+
+function readFormedWheel() {
+  const row = stmts.getFormedWheel.get();
+  if (!row?.value) return [];
+  try {
+    const parsed = JSON.parse(row.value);
+    return Array.isArray(parsed)
+      ? parsed.filter(movie => movie && Number.isInteger(Number(movie.id)) && typeof movie.title === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function getWheelStatus() {
+  const currentMovies = stmts.getUnwatched.all().map(toWheelSnapshotMovie);
+  const formedMovies = readFormedWheel().map(toWheelSnapshotMovie);
+  const formed = formedMovies.length > 0;
+  return {
+    formed,
+    dirty: formed && wheelSignature(currentMovies) !== wheelSignature(formedMovies),
+    movies: formedMovies,
+    current_count: currentMovies.length,
+  };
+}
+
+function broadcastWheelStatus() {
+  io.emit('wheel-status-changed', getWheelStatus());
+}
+
+// Сохраняем уже существующее колесо как сформированное при первом запуске новой версии.
+if (!stmts.getFormedWheel.get()) {
+  const initialMovies = stmts.getUnwatched.all().map(toWheelSnapshotMovie);
+  stmts.setFormedWheel.run(JSON.stringify(initialMovies));
 }
 
 const ALLOWED_THEMES = ['cheese', 'newyear', 'spring'];
@@ -474,6 +528,22 @@ app.get('/api/wheel', (req, res) => {
   res.json(stmts.getUnwatched.all());
 });
 
+app.get('/api/wheel/status', (req, res) => {
+  res.json(getWheelStatus());
+});
+
+app.post('/api/wheel/form', rejectWheelMutationDuringSpin, (req, res) => {
+  const movies = stmts.getUnwatched.all().map(toWheelSnapshotMovie);
+  if (movies.length === 0) {
+    return res.status(400).json({ error: 'Добавьте хотя бы один фильм' });
+  }
+
+  stmts.setFormedWheel.run(JSON.stringify(movies));
+  const status = getWheelStatus();
+  io.emit('wheel-status-changed', status);
+  res.json(status);
+});
+
 app.post('/api/wheel', rejectWheelMutationDuringSpin, (req, res) => {
   const addEnabledRow = db.prepare("SELECT value FROM settings WHERE key = 'add_enabled'").get();
   if (addEnabledRow?.value === '0') {
@@ -491,6 +561,7 @@ app.post('/api/wheel', rejectWheelMutationDuringSpin, (req, res) => {
     const addedByName = user ? stmts.getUsers.all().find(u => u.id === addedBy)?.name : null;
     const movie = { id: Number(result.lastInsertRowid), title, added_by: addedBy, added_by_name: addedByName };
     io.emit('movie-added', movie);
+    broadcastWheelStatus();
     res.json(movie);
   } catch (err) {
     res.status(500).json({ error: 'Ошибка добавления фильма' });
@@ -505,6 +576,7 @@ app.delete('/api/wheel/:id', rejectWheelMutationDuringSpin, (req, res) => {
   try {
     stmts.deleteUnwatched.run(id);
     io.emit('movie-removed', { id });
+    broadcastWheelStatus();
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Ошибка удаления' });
@@ -520,6 +592,10 @@ app.post('/api/wheel/:id/watched', (req, res) => {
     const currentMovie = stmts.getMovieById.get(id);
     if (!currentMovie) {
       return res.status(404).json({ error: 'Фильм не найден' });
+    }
+    const wheelStatus = getWheelStatus();
+    if (!wheelStatus.formed || wheelStatus.dirty || !wheelStatus.movies.some(movie => movie.id === id)) {
+      return res.status(409).json({ error: 'Сначала сформируйте актуальное колесо' });
     }
     const wasWatched = currentMovie.is_watched === 1;
     stmts.markWatched.run(id);
@@ -540,6 +616,7 @@ app.post('/api/wheel/:id/watched', (req, res) => {
       }
     }
 
+    broadcastWheelStatus();
     res.json(movie);
   } catch (err) {
     res.status(500).json({ error: 'Ошибка обновления' });
@@ -623,7 +700,7 @@ app.delete('/api/watched/:id', (req, res) => {
   }
 });
 
-app.patch('/api/movies/:id', (req, res) => {
+app.patch('/api/movies/:id', rejectWheelMutationDuringSpin, (req, res) => {
   const id = parseIntStrict(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: 'Неверный ID' });
 
@@ -645,6 +722,9 @@ app.patch('/api/movies/:id', (req, res) => {
     stmts.updateMovie.run(title, addedAt, id);
     const updated = stmts.getMovieById.get(id);
     io.emit('movie-updated', updated);
+    if (movie.is_watched === 0 && movie.is_next_wheel === 0) {
+      broadcastWheelStatus();
+    }
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: 'Ошибка обновления' });
@@ -1080,11 +1160,16 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const movies = stmts.getUnwatched.all();
-    if (movies.length === 0) {
-      socket.emit('spin-rejected', { error: 'В колесе нет фильмов' });
+    const wheelStatus = getWheelStatus();
+    if (!wheelStatus.formed) {
+      socket.emit('spin-rejected', { error: 'Сначала сформируйте колесо' });
       return;
     }
+    if (wheelStatus.dirty) {
+      socket.emit('spin-rejected', { error: 'Состав изменился. Сформируйте колесо заново' });
+      return;
+    }
+    const movies = wheelStatus.movies;
 
     const winnerIndex = crypto.randomInt(movies.length);
     const randomOffset = 0.08 + (crypto.randomInt(8401) / 10000);

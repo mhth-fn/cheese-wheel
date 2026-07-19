@@ -1,6 +1,21 @@
 import { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react';
 import { io } from 'socket.io-client';
-import { fetchUsers, fetchSettings, fetchTheme, fetchCenterImage, fetchWheelMovies, postMovie, deleteMovie, postGuestAuth, fetchNextWheelMovies, postNextMovie, deleteNextMovie } from './api';
+import {
+  fetchUsers,
+  fetchSettings,
+  fetchTheme,
+  fetchCenterImage,
+  fetchWheelMovies,
+  fetchWheelStatus,
+  formWheel,
+  postMovie,
+  deleteMovie,
+  updateMovie,
+  postGuestAuth,
+  fetchNextWheelMovies,
+  postNextMovie,
+  deleteNextMovie,
+} from './api';
 import AuthPage from './components/AuthPage';
 import Nav from './components/Nav';
 import WheelPage from './components/WheelPage';
@@ -39,6 +54,13 @@ export default function App() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [wheelMovies, setWheelMovies] = useState([]);
+  const [wheelStatus, setWheelStatus] = useState({
+    formed: false,
+    dirty: false,
+    movies: [],
+    current_count: 0,
+  });
+  const [wheelStatusLoadState, setWheelStatusLoadState] = useState('loading');
   const [nextWheelMovies, setNextWheelMovies] = useState([]);
   const [centerImage, setCenterImage] = useState(null);
   const [wheelIsSpinning, setWheelIsSpinning] = useState(false);
@@ -57,6 +79,26 @@ export default function App() {
 
   const isLoggedIn = currentUser !== null || isGuest;
 
+  const refreshWheelData = useCallback(async () => {
+    setWheelStatusLoadState('loading');
+    try {
+      const [currentMovies, nextMovies, status] = await Promise.all([
+        fetchWheelMovies(),
+        fetchNextWheelMovies(),
+        fetchWheelStatus(),
+      ]);
+      if (!Array.isArray(currentMovies) || !Array.isArray(nextMovies) || !Array.isArray(status.movies)) {
+        throw new Error('Некорректный ответ сервера');
+      }
+      setWheelMovies(currentMovies);
+      setNextWheelMovies(nextMovies);
+      setWheelStatus(status);
+      setWheelStatusLoadState('ready');
+    } catch {
+      setWheelStatusLoadState('error');
+    }
+  }, []);
+
   // Socket setup
   useEffect(() => {
     const socket = io();
@@ -73,7 +115,8 @@ export default function App() {
           fetchCenterImage(),
           fetchWheelMovies(),
           fetchNextWheelMovies(),
-        ]).then(([settingsResult, themeResult, centerResult, wheelResult, nextResult]) => {
+          fetchWheelStatus(),
+        ]).then(([settingsResult, themeResult, centerResult, wheelResult, nextResult, wheelStatusResult]) => {
           if (settingsResult.status === 'fulfilled') {
             const settings = settingsResult.value;
             if (settings.spin_duration !== undefined) setSpinDuration(settings.spin_duration);
@@ -85,6 +128,10 @@ export default function App() {
           if (centerResult.status === 'fulfilled') setCenterImage(centerResult.value.url || null);
           if (wheelResult.status === 'fulfilled') setWheelMovies(wheelResult.value);
           if (nextResult.status === 'fulfilled') setNextWheelMovies(nextResult.value);
+          if (wheelStatusResult.status === 'fulfilled') {
+            setWheelStatus(wheelStatusResult.value);
+            setWheelStatusLoadState('ready');
+          }
           setLastSyncedAt(Date.now());
         });
       }
@@ -98,11 +145,24 @@ export default function App() {
       setConnectionState(socket.active ? 'reconnecting' : 'error');
     };
     const onReconnectAttempt = () => setConnectionState('reconnecting');
+    const onMovieAdded = movie => setWheelMovies(prev => prev.find(item => item.id === movie.id) ? prev : [...prev, movie]);
+    const onMovieRemoved = ({ id }) => setWheelMovies(prev => prev.filter(movie => movie.id !== id));
+    const onMovieWatched = movie => setWheelMovies(prev => prev.filter(item => item.id !== movie.id));
+    const onMovieUpdated = movie => setWheelMovies(prev => prev.map(item => item.id === movie.id ? { ...item, ...movie } : item));
+    const onWheelStatusChanged = status => {
+      setWheelStatus(status);
+      setWheelStatusLoadState('ready');
+    };
 
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('connect_error', onConnectError);
     socket.io.on('reconnect_attempt', onReconnectAttempt);
+    socket.on('movie-added', onMovieAdded);
+    socket.on('movie-removed', onMovieRemoved);
+    socket.on('movie-watched', onMovieWatched);
+    socket.on('movie-updated', onMovieUpdated);
+    socket.on('wheel-status-changed', onWheelStatusChanged);
     socket.on('theme-changed', (data) => setThemeState(data.theme));
     socket.on('settings-changed', (settings) => {
       if (settings.spin_duration !== undefined) setSpinDuration(settings.spin_duration);
@@ -141,9 +201,18 @@ export default function App() {
       socket.off('disconnect', onDisconnect);
       socket.off('connect_error', onConnectError);
       socket.io.off('reconnect_attempt', onReconnectAttempt);
+      socket.off('movie-added', onMovieAdded);
+      socket.off('movie-removed', onMovieRemoved);
+      socket.off('movie-watched', onMovieWatched);
+      socket.off('movie-updated', onMovieUpdated);
+      socket.off('wheel-status-changed', onWheelStatusChanged);
       socket.disconnect();
     };
   }, []);
+
+  useEffect(() => {
+    if (isLoggedIn) refreshWheelData();
+  }, [isLoggedIn, refreshWheelData]);
 
   // Emit user identity to socket for online tracking
   useEffect(() => {
@@ -347,6 +416,42 @@ export default function App() {
     }
   }, [connected, showToast, wheelIsSpinning]);
 
+  const handleDrawerUpdate = useCallback(async (id, title) => {
+    if (!connected || wheelIsSpinning) {
+      showToast(!connected ? 'Нет соединения с сервером' : 'Дождитесь окончания прокрутки', 'error');
+      return false;
+    }
+    try {
+      const response = await updateMovie(id, { title });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Ошибка обновления');
+      showToast('Фильм обновлён', 'success');
+      return true;
+    } catch (error) {
+      showToast(error.message || 'Ошибка соединения', 'error');
+      return false;
+    }
+  }, [connected, showToast, wheelIsSpinning]);
+
+  const handleFormWheel = useCallback(async () => {
+    if (!connected || wheelIsSpinning) {
+      showToast(!connected ? 'Нет соединения с сервером' : 'Дождитесь окончания прокрутки', 'error');
+      return false;
+    }
+    try {
+      const response = await formWheel();
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Не удалось сформировать колесо');
+      setWheelStatus(data);
+      setWheelStatusLoadState('ready');
+      showToast('Колесо сформировано', 'success');
+      return true;
+    } catch (error) {
+      showToast(error.message || 'Ошибка соединения', 'error');
+      return false;
+    }
+  }, [connected, showToast, wheelIsSpinning]);
+
   const handleNextAdd = useCallback(async (title) => {
     if (!connected) {
       showToast('Нет соединения с сервером', 'error');
@@ -403,6 +508,7 @@ export default function App() {
     remoteSpin, setRemoteSpin,
     winner, setWinner, onlineUsers,
     drawerOpen, setDrawerOpen, wheelMovies, setWheelMovies,
+    wheelStatus, setWheelStatus, wheelStatusLoadState, refreshWheelData,
     nextWheelMovies, setNextWheelMovies,
     centerImage, setCenterImage,
     connected, connectionState, lastSyncedAt, reconnect,
@@ -433,8 +539,8 @@ export default function App() {
           className="drawer-toggle"
           onClick={() => setDrawerOpen(true)}
           disabled={wheelIsSpinning}
-          aria-label="Открыть фильмы и настройки колеса"
-          title="Фильмы в колесе"
+          aria-label="Открыть управление колесом"
+          title="Управление колесом"
         >
           <span className="drawer-toggle-cheese">🧀</span>
         </button>
@@ -449,6 +555,8 @@ export default function App() {
             onClose={() => setDrawerOpen(false)}
             onAdd={handleDrawerAdd}
             onRemove={handleDrawerRemove}
+            onUpdate={handleDrawerUpdate}
+            onForm={handleFormWheel}
             onAddNext={handleNextAdd}
             onRemoveNext={handleNextRemove}
           />
