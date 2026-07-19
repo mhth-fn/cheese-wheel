@@ -330,8 +330,14 @@ const stmts = {
     FROM movies m LEFT JOIN users u ON m.added_by = u.id
     WHERE m.is_watched = 0 AND m.is_next_wheel = 1 ORDER BY m.id
   `),
-  countCurrentWheel: db.prepare('SELECT COUNT(*) as count FROM movies WHERE is_watched = 0 AND is_next_wheel = 0'),
   promoteNextWheel: db.prepare('UPDATE movies SET is_next_wheel = 0 WHERE is_watched = 0 AND is_next_wheel = 1'),
+  deleteCurrentWheelRatings: db.prepare(`
+    DELETE FROM ratings
+    WHERE movie_id IN (
+      SELECT id FROM movies WHERE is_watched = 0 AND is_next_wheel = 0
+    )
+  `),
+  clearCurrentWheel: db.prepare('DELETE FROM movies WHERE is_watched = 0 AND is_next_wheel = 0'),
   insertMovie: db.prepare('INSERT INTO movies (title, added_by, is_next_wheel) VALUES (?, ?, 0)'),
   insertNextMovie: db.prepare('INSERT INTO movies (title, added_by, is_next_wheel) VALUES (?, ?, 1)'),
   getMovieById: db.prepare('SELECT * FROM movies WHERE id = ?'),
@@ -452,14 +458,6 @@ function toWheelSnapshotMovie(movie) {
   };
 }
 
-function wheelSignature(movies) {
-  return JSON.stringify(movies.map(movie => [
-    Number(movie.id),
-    movie.title,
-    movie.added_by ?? null,
-  ]));
-}
-
 function readFormedWheel() {
   const row = stmts.getFormedWheel.get();
   if (!row?.value) return [];
@@ -476,10 +474,8 @@ function readFormedWheel() {
 function getWheelStatus() {
   const currentMovies = stmts.getUnwatched.all().map(toWheelSnapshotMovie);
   const formedMovies = readFormedWheel().map(toWheelSnapshotMovie);
-  const formed = formedMovies.length > 0;
   return {
-    formed,
-    dirty: formed && wheelSignature(currentMovies) !== wheelSignature(formedMovies),
+    formed: formedMovies.length > 0,
     movies: formedMovies,
     current_count: currentMovies.length,
   };
@@ -496,14 +492,21 @@ if (!stmts.getFormedWheel.get()) {
 }
 
 const ALLOWED_THEMES = ['cheese', 'newyear', 'spring'];
-const WHEEL_ADMIN_USER_IDS = new Set([2]);
 
 function canManageMovie(req, movie) {
   const userId = Number(req.tokenData?.userId);
-  return Number.isInteger(userId) && (
-    Number(movie.added_by) === userId ||
-    WHEEL_ADMIN_USER_IDS.has(userId)
-  );
+  return Number.isInteger(userId) && Number(movie.added_by) === userId;
+}
+
+function isMovieInFormedWheel(movieId) {
+  return readFormedWheel().some(movie => Number(movie.id) === Number(movieId));
+}
+
+function rejectFormedCurrentWheelMutation(req, res, next) {
+  if (readFormedWheel().length > 0) {
+    return res.status(409).json({ error: 'Текущее колесо уже сформировано' });
+  }
+  next();
 }
 
 // ============ API ============
@@ -592,7 +595,7 @@ app.get('/api/wheel/status', (req, res) => {
   res.json(getWheelStatus());
 });
 
-app.post('/api/wheel/form', rejectWheelMutationDuringSpin, (req, res) => {
+app.post('/api/wheel/form', rejectWheelMutationDuringSpin, rejectFormedCurrentWheelMutation, (req, res) => {
   const movies = stmts.getUnwatched.all().map(toWheelSnapshotMovie);
   if (movies.length === 0) {
     return res.status(400).json({ error: 'Добавьте хотя бы один фильм' });
@@ -604,7 +607,35 @@ app.post('/api/wheel/form', rejectWheelMutationDuringSpin, (req, res) => {
   res.json(status);
 });
 
-app.post('/api/wheel', rejectWheelMutationDuringSpin, (req, res) => {
+app.post('/api/wheel/form-next', rejectWheelMutationDuringSpin, (req, res) => {
+  if (readFormedWheel().length === 0) {
+    return res.status(409).json({ error: 'Сначала сформируйте текущее колесо' });
+  }
+  const nextMovies = stmts.getNextWheel.all();
+  if (nextMovies.length === 0) {
+    return res.status(400).json({ error: 'Добавьте хотя бы один фильм в следующий раунд' });
+  }
+
+  try {
+    const promoted = db.transaction(() => {
+      stmts.deleteCurrentWheelRatings.run();
+      stmts.clearCurrentWheel.run();
+      stmts.promoteNextWheel.run();
+      const movies = stmts.getUnwatched.all();
+      stmts.setFormedWheel.run(JSON.stringify(movies.map(toWheelSnapshotMovie)));
+      return movies;
+    })();
+
+    const status = getWheelStatus();
+    io.emit('next-wheel-promoted', promoted);
+    io.emit('wheel-status-changed', status);
+    res.json(status);
+  } catch (err) {
+    res.status(500).json({ error: 'Не удалось сформировать следующее колесо' });
+  }
+});
+
+app.post('/api/wheel', rejectWheelMutationDuringSpin, rejectFormedCurrentWheelMutation, (req, res) => {
   const addEnabledRow = db.prepare("SELECT value FROM settings WHERE key = 'add_enabled'").get();
   if (addEnabledRow?.value === '0') {
     return res.status(403).json({ error: 'Добавление фильмов отключено' });
@@ -640,7 +671,7 @@ app.post('/api/wheel', rejectWheelMutationDuringSpin, (req, res) => {
   }
 });
 
-app.delete('/api/wheel/:id', rejectWheelMutationDuringSpin, (req, res) => {
+app.delete('/api/wheel/:id', rejectWheelMutationDuringSpin, rejectFormedCurrentWheelMutation, (req, res) => {
   const id = parseIntStrict(req.params.id);
   if (isNaN(id)) {
     return res.status(400).json({ error: 'Неверный ID' });
@@ -674,8 +705,8 @@ app.post('/api/wheel/:id/watched', (req, res) => {
       return res.status(404).json({ error: 'Фильм не найден' });
     }
     const wheelStatus = getWheelStatus();
-    if (!wheelStatus.formed || wheelStatus.dirty || !wheelStatus.movies.some(movie => movie.id === id)) {
-      return res.status(409).json({ error: 'Сначала сформируйте актуальное колесо' });
+    if (!wheelStatus.formed || !wheelStatus.movies.some(movie => movie.id === id)) {
+      return res.status(409).json({ error: 'Сначала сформируйте колесо' });
     }
     const wasWatched = currentMovie.is_watched === 1;
     stmts.markWatched.run(id);
@@ -683,17 +714,6 @@ app.post('/api/wheel/:id/watched', (req, res) => {
     io.emit('movie-watched', movie);
     if (!wasWatched) {
       void notifyDiscord('Сегодня смотрим *' + escapeDiscordMarkdown(movie.title) + '*');
-    }
-
-    // Авто-промоция: если текущее колесо пусто — переносим следующее
-    const remaining = stmts.countCurrentWheel.get();
-    if (remaining.count === 0) {
-      const nextMovies = stmts.getNextWheel.all();
-      if (nextMovies.length > 0) {
-        stmts.promoteNextWheel.run();
-        const promoted = stmts.getUnwatched.all();
-        io.emit('next-wheel-promoted', promoted);
-      }
     }
 
     broadcastWheelStatus();
@@ -788,6 +808,9 @@ app.delete('/api/watched/:id', (req, res) => {
   if (isNaN(id)) {
     return res.status(400).json({ error: 'Неверный ID' });
   }
+  if (isMovieInFormedWheel(id)) {
+    return res.status(409).json({ error: 'Фильм входит в текущее сформированное колесо' });
+  }
   try {
     const deleteAll = db.transaction((movieId) => {
       stmts.deleteRatings.run(movieId);
@@ -807,6 +830,9 @@ app.patch('/api/movies/:id', rejectWheelMutationDuringSpin, (req, res) => {
 
   const movie = stmts.getMovieById.get(id);
   if (!movie) return res.status(404).json({ error: 'Фильм не найден' });
+  if (isMovieInFormedWheel(id)) {
+    return res.status(409).json({ error: 'Текущее колесо уже сформировано' });
+  }
   if (movie.is_watched === 0 && !canManageMovie(req, movie)) {
     return res.status(403).json({ error: 'Можно изменить только свой фильм' });
   }
@@ -1267,10 +1293,6 @@ io.on('connection', (socket) => {
     const wheelStatus = getWheelStatus();
     if (!wheelStatus.formed) {
       socket.emit('spin-rejected', { error: 'Сначала сформируйте колесо' });
-      return;
-    }
-    if (wheelStatus.dirty) {
-      socket.emit('spin-rejected', { error: 'Состав изменился. Сформируйте колесо заново' });
       return;
     }
     const movies = wheelStatus.movies;

@@ -28,7 +28,7 @@ export default function WheelPage() {
   const wheelRef = useRef(null);
 
   const movies = wheelStatus.movies || [];
-  const wheelReady = wheelStatus.formed && !wheelStatus.dirty;
+  const wheelReady = wheelStatus.formed;
 
   useEffect(() => {
     if (!socket) return undefined;
@@ -86,7 +86,7 @@ export default function WheelPage() {
       return;
     }
     if (!wheelReady) {
-      showToast(wheelStatus.dirty ? 'Состав изменился. Сформируйте колесо заново' : 'Сначала сформируйте колесо', 'info');
+      showToast('Сначала сформируйте колесо', 'info');
       return;
     }
     if (movies.length === 0 || isSpinning || !spinEnabled || !socket) return;
@@ -131,11 +131,9 @@ export default function WheelPage() {
 
   const readinessText = isSpinning
     ? `Колесо крутится${secondsLeft ? ` · ${secondsLeft} сек` : ''}`
-    : wheelStatus.dirty
-      ? 'Состав изменён · сформируйте колесо заново'
-      : !wheelStatus.formed
-        ? 'Колесо не готово'
-        : '';
+    : !wheelStatus.formed
+      ? 'Колесо не готово'
+      : '';
 
   return (
     <section className="wheel-page-layout">

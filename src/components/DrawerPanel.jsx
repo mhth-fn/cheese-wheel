@@ -18,6 +18,7 @@ export default function DrawerPanel({
   onRemove,
   onUpdate,
   onForm,
+  onFormNext,
   onAddNext,
   onRemoveNext,
 }) {
@@ -42,13 +43,15 @@ export default function DrawerPanel({
   const [editingId, setEditingId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [forming, setForming] = useState(false);
+  const [formingNext, setFormingNext] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [confirmImageDelete, setConfirmImageDelete] = useState(false);
   const fileRef = useRef(null);
   const dialogRef = useDialogA11y(open, onClose);
 
+  const displayedCurrentMovies = wheelStatus.formed ? wheelStatus.movies : movies;
   const primaryMovies = new Map();
-  movies.forEach(movie => {
+  displayedCurrentMovies.forEach(movie => {
     if (movie.added_by && !primaryMovies.has(movie.added_by)) {
       primaryMovies.set(movie.added_by, movie);
     }
@@ -56,12 +59,9 @@ export default function DrawerPanel({
   const readyUsers = users.filter(user => primaryMovies.has(user.id));
   const currentUserMovie = primaryMovies.get(currentUser?.id);
   const currentUserNextMovie = nextMovies.find(movie => movie.added_by === currentUser?.id);
-  const extraMovies = movies.filter(movie => primaryMovies.get(movie.added_by)?.id !== movie.id);
-  const isAdmin = currentUser?.id === 2;
-  const canManageMovie = movie => !isGuest && Boolean(movie) && (
-    movie.added_by === currentUser?.id ||
-    isAdmin
-  );
+  const extraMovies = displayedCurrentMovies.filter(movie => primaryMovies.get(movie.added_by)?.id !== movie.id);
+  const canManageMovie = movie => !isGuest && Boolean(movie) && movie.added_by === currentUser?.id;
+  const canManageCurrentMovie = movie => !wheelStatus.formed && canManageMovie(movie);
 
   const handleCurrentAdd = async event => {
     event.preventDefault();
@@ -108,6 +108,12 @@ export default function DrawerPanel({
     setForming(true);
     await onForm();
     setForming(false);
+  };
+
+  const handleFormNext = async () => {
+    setFormingNext(true);
+    await onFormNext();
+    setFormingNext(false);
   };
 
   const setDuration = async value => {
@@ -170,17 +176,6 @@ export default function DrawerPanel({
 
   if (!open) return null;
 
-  const formationTitle = wheelStatus.dirty
-    ? 'Состав изменился'
-    : wheelStatus.formed
-      ? 'Колесо готово'
-      : 'Колесо не готово';
-  const formationCopy = wheelStatus.dirty
-    ? 'После изменений нужно заново сформировать колесо, иначе крутить его нельзя.'
-    : wheelStatus.formed
-      ? 'Текущий состав зафиксирован для этого раунда. Теперь колесо можно крутить.'
-      : 'Сначала сформируйте состав из выбранных фильмов, после этого колесо можно будет крутить.';
-
   return (
     <div className="wheel-modal-overlay" onMouseDown={event => event.target === event.currentTarget && onClose()}>
       <section
@@ -231,25 +226,21 @@ export default function DrawerPanel({
               <div className="wm-notice" role="status">Состав заблокирован до остановки колеса.</div>
             )}
 
-            <section className={`wm-formation ${wheelStatus.dirty ? 'is-dirty' : wheelStatus.formed ? 'is-ready' : ''}`}>
-              <div className="wm-formation-copy">
-                <span className="wm-formation-dot" aria-hidden="true" />
-                <div>
-                  <strong>{formationTitle}</strong>
-                  <p>{formationCopy}</p>
-                </div>
-              </div>
-              <button
-                className="button-primary wm-form-wheel"
-                type="button"
-                onClick={handleForm}
-                disabled={isGuest || !connected || movies.length === 0 || wheelIsSpinning || forming}
-              >
-                {forming ? 'Формируем…' : 'Сформировать колесо'}
-              </button>
-            </section>
+            {!wheelStatus.formed && (
+              <section className="wm-formation">
+                <p>Проверьте выборы участников и сформируйте колесо для этого раунда.</p>
+                <button
+                  className="button-primary wm-form-wheel"
+                  type="button"
+                  onClick={handleForm}
+                  disabled={isGuest || !connected || movies.length === 0 || wheelIsSpinning || forming}
+                >
+                  {forming ? 'Формируем…' : 'Сформировать колесо'}
+                </button>
+              </section>
+            )}
 
-            {!isGuest && addEnabled && !currentUserMovie && (
+            {!wheelStatus.formed && !isGuest && addEnabled && !currentUserMovie && (
               <form className="wm-add-row" onSubmit={handleCurrentAdd}>
                 <label className="sr-only" htmlFor="movie-input-participants">Ваш фильм</label>
                 <input
@@ -268,15 +259,15 @@ export default function DrawerPanel({
               </form>
             )}
 
-            {!isGuest && !addEnabled && (
+            {!wheelStatus.formed && !isGuest && !addEnabled && (
               <div className="wm-notice">Добавление фильмов сейчас отключено.</div>
             )}
 
             <div className="wm-participants">
               {users.map(user => {
                 const movie = primaryMovies.get(user.id);
-                const editing = movie && editingId === movie.id;
-                const manageable = canManageMovie(movie);
+                const editing = !wheelStatus.formed && movie && editingId === movie.id;
+                const manageable = canManageCurrentMovie(movie);
                 return (
                   <article key={user.id} className={`wm-participant ${movie ? 'is-ready' : 'is-waiting'}${editing ? ' is-editing' : ''}${manageable ? ' has-actions' : ''}`}>
                     <span className="wm-avatar" aria-hidden="true">{user.name.slice(0, 1)}</span>
@@ -331,8 +322,8 @@ export default function DrawerPanel({
               })}
 
               {extraMovies.map(movie => {
-                const editing = editingId === movie.id;
-                const manageable = canManageMovie(movie);
+                const editing = !wheelStatus.formed && editingId === movie.id;
+                const manageable = canManageCurrentMovie(movie);
                 return (
                 <article key={movie.id} className={`wm-participant is-ready${editing ? ' is-editing' : ''}${manageable ? ' has-actions' : ''}`}>
                   <span className="wm-avatar" aria-hidden="true">?</span>
@@ -399,6 +390,20 @@ export default function DrawerPanel({
               </>
             )}
             <p className="wm-hint">Здесь каждый участник выбирает один фильм для следующего раунда.</p>
+
+            {wheelStatus.formed && !isGuest && (
+              <section className="wm-next-cycle">
+                <p>Когда список будет готов, замените им текущее колесо.</p>
+                <button
+                  className="button-primary"
+                  type="button"
+                  onClick={handleFormNext}
+                  disabled={!connected || nextMovies.length === 0 || wheelIsSpinning || formingNext}
+                >
+                  {formingNext ? 'Формируем…' : 'Сформировать следующее колесо'}
+                </button>
+              </section>
+            )}
 
             <div className="wm-list">
               {nextMovies.length === 0 ? (

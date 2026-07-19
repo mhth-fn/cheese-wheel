@@ -42,6 +42,10 @@ export async function formWheel() {
   return apiFetch('/api/wheel/form', { method: 'POST' });
 }
 
+export async function formNextWheel() {
+  return apiFetch('/api/wheel/form-next', { method: 'POST' });
+}
+
 export async function postMovie(title) {
   return apiFetch('/api/wheel', {
     method: 'POST',

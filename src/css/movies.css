@@ -152,45 +152,8 @@
   background: var(--color-surface-muted);
 }
 
-.wm-formation.is-ready {
-  border-color: rgba(47, 138, 75, 0.25);
-  background: rgba(47, 138, 75, 0.06);
-}
-
-.wm-formation.is-dirty {
-  border-color: rgba(184, 109, 21, 0.28);
-  background: #fff4d7;
-}
-
-.wm-formation-copy {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-}
-
-.wm-formation-dot {
-  flex: 0 0 10px;
-  width: 10px;
-  height: 10px;
-  margin-top: 5px;
-  border-radius: 50%;
-  background: var(--color-text-muted);
-}
-
-.wm-formation.is-ready .wm-formation-dot {
-  background: var(--color-success);
-}
-
-.wm-formation.is-dirty .wm-formation-dot {
-  background: var(--color-warning);
-}
-
-.wm-formation-copy strong {
-  font-size: 0.9rem;
-}
-
-.wm-formation-copy p {
-  margin-top: 3px;
+.wm-formation > p,
+.wm-next-cycle > p {
   color: var(--color-text-muted);
   font-size: 0.76rem;
   line-height: 1.45;
@@ -199,6 +162,20 @@
 .wm-form-wheel {
   width: 100%;
   min-height: var(--control-height-large);
+}
+
+.wm-next-cycle {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0 var(--space-4) var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-medium);
+  background: var(--color-surface-muted);
+}
+
+.wm-next-cycle .button-primary {
+  width: 100%;
 }
 
 .wm-add-row {
