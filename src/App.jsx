@@ -8,6 +8,7 @@ import {
   fetchWheelMovies,
   fetchWheelStatus,
   formWheel,
+  formNextWheel,
   postMovie,
   deleteMovie,
   updateMovie,
@@ -56,7 +57,6 @@ export default function App() {
   const [wheelMovies, setWheelMovies] = useState([]);
   const [wheelStatus, setWheelStatus] = useState({
     formed: false,
-    dirty: false,
     movies: [],
     current_count: 0,
   });
@@ -458,7 +458,6 @@ export default function App() {
       if (!response.ok) throw new Error(data.error || 'Не удалось сформировать колесо');
       setWheelStatus(data);
       setWheelStatusLoadState('ready');
-      showToast('Колесо готово', 'success');
       return true;
     } catch (error) {
       showToast(error.message || 'Ошибка соединения', 'error');
@@ -501,6 +500,27 @@ export default function App() {
       showToast(error.message || 'Ошибка удаления', 'error');
     }
   }, [connected, showToast]);
+
+  const handleFormNextWheel = useCallback(async () => {
+    if (!connected || wheelIsSpinning) {
+      showToast(!connected ? 'Нет соединения с сервером' : 'Дождитесь окончания прокрутки', 'error');
+      return false;
+    }
+    try {
+      const response = await formNextWheel();
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Не удалось сформировать следующее колесо');
+      setWheelStatus(data);
+      setWheelStatusLoadState('ready');
+      setNextWheelMovies([]);
+      setWheelMovies(data.movies);
+      showToast('Следующее колесо сформировано', 'success');
+      return true;
+    } catch (error) {
+      showToast(error.message || 'Ошибка соединения', 'error');
+      return false;
+    }
+  }, [connected, showToast, wheelIsSpinning]);
 
   const reconnect = useCallback(() => {
     setConnectionState('connecting');
@@ -575,6 +595,7 @@ export default function App() {
             onRemove={handleDrawerRemove}
             onUpdate={handleDrawerUpdate}
             onForm={handleFormWheel}
+            onFormNext={handleFormNextWheel}
             onAddNext={handleNextAdd}
             onRemoveNext={handleNextRemove}
           />
