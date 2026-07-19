@@ -7,3 +7,7 @@ cheese-wheel@*
 node
 dist/
 uploads/
+
+.env
+*.bak
+*.bak.*
