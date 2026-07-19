@@ -24,6 +24,7 @@ export default function DrawerPanel({
   const {
     users,
     currentUser,
+    isGuest,
     spinDuration,
     setSpinDuration,
     addEnabled,
@@ -236,13 +237,13 @@ export default function DrawerPanel({
                 className="button-primary wm-form-wheel"
                 type="button"
                 onClick={handleForm}
-                disabled={!connected || movies.length === 0 || wheelIsSpinning || forming}
+                disabled={isGuest || !connected || movies.length === 0 || wheelIsSpinning || forming}
               >
                 {forming ? 'Формируем…' : 'Сформировать колесо'}
               </button>
             </section>
 
-            {addEnabled && !currentUserMovie && (
+            {!isGuest && addEnabled && !currentUserMovie && (
               <form className="wm-add-row" onSubmit={handleCurrentAdd}>
                 <label className="sr-only" htmlFor="movie-input-participants">Ваш фильм</label>
                 <input
@@ -261,7 +262,7 @@ export default function DrawerPanel({
               </form>
             )}
 
-            {!addEnabled && (
+            {!isGuest && !addEnabled && (
               <div className="wm-notice">Добавление фильмов сейчас отключено.</div>
             )}
 
@@ -294,7 +295,7 @@ export default function DrawerPanel({
                     <span className="wm-participant-status" aria-label={movie ? 'Готово' : 'Ожидаем фильм'}>
                       {movie ? 'Готово' : 'Ожидаем'}
                     </span>
-                    {movie && !editing && (
+                    {movie && !editing && !isGuest && (
                       <div className="wm-participant-actions">
                         <button
                           className="icon-button"
@@ -347,7 +348,7 @@ export default function DrawerPanel({
                     )}
                   </div>
                   <span className="wm-participant-status">Готово</span>
-                  {!editing && (
+                  {!editing && !isGuest && (
                     <div className="wm-participant-actions">
                       <button className="icon-button" type="button" onClick={() => startEditing(movie)} aria-label={`Изменить фильм ${movie.title}`}>✎</button>
                       <button className="icon-button danger" type="button" onClick={() => handleDelete(movie.id)} aria-label={`Удалить фильм ${movie.title}`}>🗑</button>
@@ -362,22 +363,24 @@ export default function DrawerPanel({
 
         {activeTab === 'next' && (
           <div className="wm-panel" role="tabpanel">
-            <form className="wm-add-row" onSubmit={handleNextAdd}>
-              <label className="sr-only" htmlFor="movie-input-next">Фильм для следующего колеса</label>
-              <input
-                id="movie-input-next"
-                className="wm-input"
-                type="text"
-                placeholder="Фильм для следующего колеса…"
-                value={nextInput}
-                maxLength={200}
-                onChange={event => setNextInput(event.target.value)}
-                disabled={wheelIsSpinning || !connected}
-              />
-              <button className="wm-add-btn button-primary" type="submit" disabled={!nextInput.trim() || wheelIsSpinning || !connected}>
-                Добавить
-              </button>
-            </form>
+            {!isGuest && (
+              <form className="wm-add-row" onSubmit={handleNextAdd}>
+                <label className="sr-only" htmlFor="movie-input-next">Фильм для следующего колеса</label>
+                <input
+                  id="movie-input-next"
+                  className="wm-input"
+                  type="text"
+                  placeholder="Фильм для следующего колеса…"
+                  value={nextInput}
+                  maxLength={200}
+                  onChange={event => setNextInput(event.target.value)}
+                  disabled={wheelIsSpinning || !connected}
+                />
+                <button className="wm-add-btn button-primary" type="submit" disabled={!nextInput.trim() || wheelIsSpinning || !connected}>
+                  Добавить
+                </button>
+              </form>
+            )}
             <p className="wm-hint">Эти фильмы перейдут в текущий состав, когда колесо закончится.</p>
 
             <div className="wm-list">
@@ -394,16 +397,18 @@ export default function DrawerPanel({
                     <span>{movie.added_by_name || 'Автор не указан'}</span>
                   </div>
                   <span className="wm-item-status">следующий</span>
-                  <button
-                    className="wm-item-delete icon-button"
-                    type="button"
-                    onClick={() => handleDelete(movie.id, true)}
-                    disabled={wheelIsSpinning || deletingId === movie.id}
-                    aria-label={`Удалить фильм ${movie.title}`}
-                    title="Удалить фильм"
-                  >
-                    {deletingId === movie.id ? '…' : '🗑'}
-                  </button>
+                  {!isGuest && (
+                    <button
+                      className="wm-item-delete icon-button"
+                      type="button"
+                      onClick={() => handleDelete(movie.id, true)}
+                      disabled={wheelIsSpinning || deletingId === movie.id}
+                      aria-label={`Удалить фильм ${movie.title}`}
+                      title="Удалить фильм"
+                    >
+                      {deletingId === movie.id ? '…' : '🗑'}
+                    </button>
+                  )}
                 </article>
               ))}
             </div>
@@ -427,7 +432,7 @@ export default function DrawerPanel({
                     className={spinDuration === value ? 'active' : ''}
                     type="button"
                     onClick={() => setDuration(value)}
-                    disabled={wheelIsSpinning}
+                    disabled={isGuest || wheelIsSpinning}
                     aria-pressed={spinDuration === value}
                   >
                     {value} сек
@@ -448,7 +453,7 @@ export default function DrawerPanel({
                   {centerImage ? <img src={centerImage} alt="Текущий центр колеса" /> : <span aria-hidden="true">🧀</span>}
                 </div>
                 <div className="wm-center-actions">
-                  <label className={`button-primary wm-upload-btn ${uploading ? 'is-disabled' : ''}`}>
+                  <label className={`button-primary wm-upload-btn ${uploading || isGuest ? 'is-disabled' : ''}`}>
                     {uploading ? 'Загрузка…' : centerImage ? 'Заменить' : 'Загрузить'}
                     <input
                       ref={fileRef}
@@ -456,10 +461,10 @@ export default function DrawerPanel({
                       accept="image/png,image/jpeg,image/gif,image/webp"
                       hidden
                       onChange={handleUpload}
-                      disabled={uploading}
+                      disabled={uploading || isGuest}
                     />
                   </label>
-                  {centerImage && !confirmImageDelete && (
+                  {!isGuest && centerImage && !confirmImageDelete && (
                     <button className="button-ghost danger" type="button" onClick={() => setConfirmImageDelete(true)} disabled={uploading}>
                       Удалить
                     </button>
