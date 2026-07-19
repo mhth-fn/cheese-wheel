@@ -67,7 +67,7 @@ export default function StatsPanel({ refreshKey }) {
         <div className="stat-card-sub">{pluralFilms(stats.total_watched)}</div>
       </article>
       <RatedMovieCard label="Лучший фильм" movie={stats.top_rated} tone="best" />
-      <RatedMovieCard label="Самый спорный" movie={stats.lowest_rated} tone="lowest" />
+      <RatedMovieCard label="Худший фильм" movie={stats.lowest_rated} tone="lowest" />
       <article className="stat-card averages" title="Среднее арифметическое только по выставленным оценкам">
         <div className="stat-card-label">Средние оценки</div>
         <div className="stats-users">
