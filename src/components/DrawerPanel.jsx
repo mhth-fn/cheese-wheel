@@ -30,7 +30,7 @@ export default function DrawerPanel({ movies, nextMovies, open, onClose, onAdd, 
   };
 
   const changeDuration = async (delta) => {
-    const val = Math.max(5, Math.min(60, spinDuration + delta));
+    const val = Math.max(5, Math.min(15, spinDuration + delta));
     setSpinDuration(val);
     await postSpinDuration(val);
   };

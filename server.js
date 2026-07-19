@@ -343,6 +343,8 @@ const stmts = {
   getMovieReviewById: db.prepare('SELECT * FROM movie_reviews WHERE id = ?'),
   deleteMovieReview: db.prepare('DELETE FROM movie_reviews WHERE id = ? AND user_id = ?'),
   updateMovieReview: db.prepare('UPDATE movie_reviews SET title=?, content=?, recommend=?, director=?, year=? WHERE id=? AND user_id=?'),
+  getReviewReactions: db.prepare('SELECT user_id, reaction FROM review_reactions WHERE review_type = ? AND review_id = ?'),
+  deleteReviewReactions: db.prepare('DELETE FROM review_reactions WHERE review_type = ? AND review_id = ?'),
 };
 
 // Динамический запрос getWatched — строится по реальным user_id из БД
@@ -863,6 +865,7 @@ app.delete('/api/wine-reviews/:id', (req, res) => {
   if (isNaN(id) || isNaN(userId)) return res.status(400).json({ error: 'Неверный ID' });
   const result = stmts.deleteWineReview.run(id, userId);
   if (result.changes === 0) return res.status(403).json({ error: 'Нет доступа или обзор не найден' });
+  stmts.deleteReviewReactions.run('wine', id);
   io.emit('wine-review-deleted', { id });
   res.json({ success: true });
 });
@@ -884,7 +887,12 @@ app.patch('/api/wine-reviews/:id', (req, res) => {
   if (result.changes === 0) return res.status(403).json({ error: 'Нет доступа или обзор не найден' });
   const review = stmts.getWineReviewById.get(id);
   const user = stmts.getUsers.all().find(u => u.id === userId);
-  const updated = { ...review, user_name: user?.name };
+  const reactions = stmts.getReviewReactions.all('wine', id);
+  const updated = {
+    ...review, user_name: user?.name, reactions,
+    likes: reactions.filter(r => r.reaction === 1).length,
+    dislikes: reactions.filter(r => r.reaction === -1).length
+  };
   io.emit('wine-review-updated', updated);
   res.json(updated);
 });
@@ -931,7 +939,12 @@ app.patch('/api/movie-reviews/:id', (req, res) => {
   if (result.changes === 0) return res.status(403).json({ error: 'Нет доступа или обзор не найден' });
   const review = stmts.getMovieReviewById.get(id);
   const user = stmts.getUsers.all().find(u => u.id === userId);
-  const updated = { ...review, user_name: user?.name };
+  const reactions = stmts.getReviewReactions.all('movie', id);
+  const updated = {
+    ...review, user_name: user?.name, reactions,
+    likes: reactions.filter(r => r.reaction === 1).length,
+    dislikes: reactions.filter(r => r.reaction === -1).length
+  };
   io.emit('movie-review-updated', updated);
   res.json(updated);
 });
@@ -942,6 +955,7 @@ app.delete('/api/movie-reviews/:id', (req, res) => {
   if (isNaN(id) || isNaN(userId)) return res.status(400).json({ error: 'Неверный ID' });
   const result = stmts.deleteMovieReview.run(id, userId);
   if (result.changes === 0) return res.status(403).json({ error: 'Нет доступа или обзор не найден' });
+  stmts.deleteReviewReactions.run('movie', id);
   io.emit('movie-review-deleted', { id });
   res.json({ success: true });
 });
@@ -956,17 +970,22 @@ app.post('/api/review-reactions', (req, res) => {
   const reviewId = parseIntStrict(review_id);
   if (isNaN(reviewId)) return res.status(400).json({ error: 'Неверный ID обзора' });
   if (reaction !== 1 && reaction !== -1) return res.status(400).json({ error: 'Неверная реакция' });
+  const review = review_type === 'movie'
+    ? stmts.getMovieReviewById.get(reviewId)
+    : stmts.getWineReviewById.get(reviewId);
+  if (!review) return res.status(404).json({ error: 'Обзор не найден' });
+  if (review.user_id === userId) return res.status(403).json({ error: 'Нельзя оценивать свой обзор' });
 
-  const existing = db.prepare('SELECT reaction FROM review_reactions WHERE review_type=? AND review_id=? AND user_id=?').get(review_type, reviewId, userId);
+  const existing = stmts.getReviewReactions.all(review_type, reviewId).find(r => r.user_id === userId);
   if (existing && existing.reaction === reaction) {
     db.prepare('DELETE FROM review_reactions WHERE review_type=? AND review_id=? AND user_id=?').run(review_type, reviewId, userId);
   } else {
     db.prepare('INSERT INTO review_reactions (review_type, review_id, user_id, reaction) VALUES (?,?,?,?) ON CONFLICT(review_type, review_id, user_id) DO UPDATE SET reaction=excluded.reaction').run(review_type, reviewId, userId, reaction);
   }
 
-  const likes = db.prepare("SELECT COUNT(*) as c FROM review_reactions WHERE review_type=? AND review_id=? AND reaction=1").get(review_type, reviewId).c;
-  const dislikes = db.prepare("SELECT COUNT(*) as c FROM review_reactions WHERE review_type=? AND review_id=? AND reaction=-1").get(review_type, reviewId).c;
-  const reactions = db.prepare("SELECT user_id, reaction FROM review_reactions WHERE review_type=? AND review_id=?").all(review_type, reviewId);
+  const reactions = stmts.getReviewReactions.all(review_type, reviewId);
+  const likes = reactions.filter(r => r.reaction === 1).length;
+  const dislikes = reactions.filter(r => r.reaction === -1).length;
 
   const payload = { review_type, review_id: reviewId, likes, dislikes, reactions };
   io.emit('review-reaction-updated', payload);
