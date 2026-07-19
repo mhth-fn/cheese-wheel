@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react';
 import { io } from 'socket.io-client';
-import { fetchUsers, fetchSettings, fetchTheme, fetchCenterImage, postMovie, deleteMovie, postGuestAuth, fetchNextWheelMovies, postNextMovie, deleteNextMovie } from './api';
+import { fetchUsers, fetchSettings, fetchTheme, fetchCenterImage, fetchWheelMovies, postMovie, deleteMovie, postGuestAuth, fetchNextWheelMovies, postNextMovie, deleteNextMovie } from './api';
 import AuthPage from './components/AuthPage';
 import Nav from './components/Nav';
 import WheelPage from './components/WheelPage';
@@ -22,6 +22,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isGuest, setIsGuest] = useState(false);
   const [users, setUsers] = useState([]);
+  const [usersLoadState, setUsersLoadState] = useState('loading');
   const [page, setPage] = useState('auth');
   const [sessionChecked, setSessionChecked] = useState(false);
   const [theme, setThemeState] = useState(() => localStorage.getItem('theme') || 'cheese');
@@ -32,13 +33,17 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
   const [winner, setWinner] = useState(null);
   const [connected, setConnected] = useState(false);
+  const [connectionState, setConnectionState] = useState('connecting');
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [adminOpen, setAdminOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [wheelMovies, setWheelMovies] = useState([]);
   const [nextWheelMovies, setNextWheelMovies] = useState([]);
   const [centerImage, setCenterImage] = useState(null);
+  const [wheelIsSpinning, setWheelIsSpinning] = useState(false);
   const socketRef = useRef(null);
+  const processedSpinIdsRef = useRef(new Set());
   const toastIdRef = useRef(0);
 
   // Spin broadcast state
@@ -57,8 +62,47 @@ export default function App() {
     const socket = io();
     socketRef.current = socket;
 
-    socket.on('connect', () => setConnected(true));
-    socket.on('disconnect', () => setConnected(false));
+    const onConnect = () => {
+      setConnected(true);
+      setConnectionState('online');
+      setLastSyncedAt(Date.now());
+      if (localStorage.getItem('cheeseWheelToken')) {
+        Promise.allSettled([
+          fetchSettings(),
+          fetchTheme(),
+          fetchCenterImage(),
+          fetchWheelMovies(),
+          fetchNextWheelMovies(),
+        ]).then(([settingsResult, themeResult, centerResult, wheelResult, nextResult]) => {
+          if (settingsResult.status === 'fulfilled') {
+            const settings = settingsResult.value;
+            if (settings.spin_duration !== undefined) setSpinDuration(settings.spin_duration);
+            if (settings.spin_enabled !== undefined) setSpinEnabled(settings.spin_enabled);
+            if (settings.add_enabled !== undefined) setAddEnabled(settings.add_enabled);
+            if (settings.decorations_enabled !== undefined) setDecorationsEnabled(settings.decorations_enabled);
+          }
+          if (themeResult.status === 'fulfilled') setThemeState(themeResult.value.theme || 'cheese');
+          if (centerResult.status === 'fulfilled') setCenterImage(centerResult.value.url || null);
+          if (wheelResult.status === 'fulfilled') setWheelMovies(wheelResult.value);
+          if (nextResult.status === 'fulfilled') setNextWheelMovies(nextResult.value);
+          setLastSyncedAt(Date.now());
+        });
+      }
+    };
+    const onDisconnect = () => {
+      setConnected(false);
+      setConnectionState(socket.active ? 'reconnecting' : 'offline');
+    };
+    const onConnectError = () => {
+      setConnected(false);
+      setConnectionState(socket.active ? 'reconnecting' : 'error');
+    };
+    const onReconnectAttempt = () => setConnectionState('reconnecting');
+
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    socket.on('connect_error', onConnectError);
+    socket.io.on('reconnect_attempt', onReconnectAttempt);
     socket.on('theme-changed', (data) => setThemeState(data.theme));
     socket.on('settings-changed', (settings) => {
       if (settings.spin_duration !== undefined) setSpinDuration(settings.spin_duration);
@@ -66,8 +110,24 @@ export default function App() {
       if (settings.add_enabled !== undefined) setAddEnabled(settings.add_enabled);
       if (settings.decorations_enabled !== undefined) setDecorationsEnabled(settings.decorations_enabled);
     });
-    socket.on('wheel-spinning', (data) => setRemoteSpin(data));
-    socket.on('online-users', (users) => setOnlineUsers(users));
+    socket.on('wheel-spinning', (data) => {
+      if (data.spinId && processedSpinIdsRef.current.has(data.spinId)) return;
+      if (data.spinId) {
+        processedSpinIdsRef.current.add(data.spinId);
+        if (processedSpinIdsRef.current.size > 20) {
+          const oldest = processedSpinIdsRef.current.values().next().value;
+          processedSpinIdsRef.current.delete(oldest);
+        }
+      }
+      setRemoteSpin({
+        ...data,
+        initiatedByThisClient: data.initiatorSocketId === socket.id,
+      });
+    });
+    socket.on('online-users', (connectedUsers) => {
+      setOnlineUsers(connectedUsers);
+      setLastSyncedAt(Date.now());
+    });
     socket.on('center-image-changed', (data) => setCenterImage(data.url));
     socket.on('next-movie-added', (movie) => setNextWheelMovies(prev => prev.find(m => m.id === movie.id) ? prev : [...prev, movie]));
     socket.on('next-movie-removed', ({ id }) => setNextWheelMovies(prev => prev.filter(m => m.id !== id)));
@@ -76,7 +136,13 @@ export default function App() {
       setWheelMovies(movies);
     });
 
-    return () => socket.disconnect();
+    return () => {
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+      socket.off('connect_error', onConnectError);
+      socket.io.off('reconnect_attempt', onReconnectAttempt);
+      socket.disconnect();
+    };
   }, []);
 
   // Emit user identity to socket for online tracking
@@ -92,7 +158,12 @@ export default function App() {
       try {
         const u = await fetchUsers();
         setUsers(u);
-      } catch (e) { console.error(e); }
+        setUsersLoadState('ready');
+      } catch (e) {
+        console.error(e);
+        setUsersLoadState('error');
+        setSessionChecked(true);
+      }
       try {
         const s = await fetchSettings();
         setSpinDuration(s.spin_duration || 5);
@@ -240,6 +311,14 @@ export default function App() {
 
   // Drawer handlers
   const handleDrawerAdd = useCallback(async (title) => {
+    if (!connected) {
+      showToast('Нет соединения с сервером', 'error');
+      return false;
+    }
+    if (wheelIsSpinning) {
+      showToast('Дождитесь окончания прокрутки', 'info');
+      return false;
+    }
     try {
       const res = await postMovie(title, currentUser?.id);
       if (res.ok) {
@@ -253,18 +332,26 @@ export default function App() {
       showToast('Ошибка соединения', 'error');
     }
     return false;
-  }, [currentUser, showToast]);
+  }, [connected, currentUser, showToast, wheelIsSpinning]);
 
   const handleDrawerRemove = useCallback(async (id) => {
+    if (!connected || wheelIsSpinning) {
+      showToast(!connected ? 'Нет соединения с сервером' : 'Дождитесь окончания прокрутки', 'error');
+      return;
+    }
     try {
       await deleteMovie(id);
       showToast('Фильм удалён из колеса', 'info');
     } catch {
       showToast('Ошибка удаления', 'error');
     }
-  }, [showToast]);
+  }, [connected, showToast, wheelIsSpinning]);
 
   const handleNextAdd = useCallback(async (title) => {
+    if (!connected) {
+      showToast('Нет соединения с сервером', 'error');
+      return false;
+    }
     try {
       const res = await postNextMovie(title, currentUser?.id);
       if (res.ok) {
@@ -278,15 +365,35 @@ export default function App() {
       showToast('Ошибка соединения', 'error');
     }
     return false;
-  }, [currentUser, showToast]);
+  }, [connected, currentUser, showToast]);
 
   const handleNextRemove = useCallback(async (id) => {
+    if (!connected) {
+      showToast('Нет соединения с сервером', 'error');
+      return;
+    }
     try {
       await deleteNextMovie(id);
     } catch {
       showToast('Ошибка удаления', 'error');
     }
-  }, [showToast]);
+  }, [connected, showToast]);
+
+  const reconnect = useCallback(() => {
+    setConnectionState('connecting');
+    socketRef.current?.connect();
+  }, []);
+
+  const retryUsers = useCallback(async () => {
+    setUsersLoadState('loading');
+    try {
+      const loadedUsers = await fetchUsers();
+      setUsers(loadedUsers);
+      setUsersLoadState('ready');
+    } catch {
+      setUsersLoadState('error');
+    }
+  }, []);
 
   const ctx = {
     currentUser, isGuest, users, page, theme, spinDuration,
@@ -298,6 +405,8 @@ export default function App() {
     drawerOpen, setDrawerOpen, wheelMovies, setWheelMovies,
     nextWheelMovies, setNextWheelMovies,
     centerImage, setCenterImage,
+    connected, connectionState, lastSyncedAt, reconnect,
+    wheelIsSpinning, setWheelIsSpinning,
   };
 
   return (
@@ -308,6 +417,8 @@ export default function App() {
         <button
           className={`admin-btn visible ${page === 'wheel' ? 'with-drawer' : ''}`}
           onClick={() => setAdminOpen(true)}
+          aria-label="Открыть админ-панель"
+          title="Админ-панель"
         >
           ⚙️
         </button>
@@ -321,6 +432,8 @@ export default function App() {
         <button
           className="drawer-toggle"
           onClick={() => setDrawerOpen(true)}
+          disabled={wheelIsSpinning}
+          aria-label="Открыть фильмы и настройки колеса"
           title="Фильмы в колесе"
         >
           <span className="drawer-toggle-cheese">🧀</span>
@@ -342,7 +455,24 @@ export default function App() {
         </>
       )}
 
-      {!isLoggedIn && sessionChecked && (
+      {!isLoggedIn && usersLoadState === 'loading' && (
+        <div className="auth-page active" aria-live="polite">
+          <div className="auth-logo">🧀</div>
+          <h1 className="auth-title">Собираем компанию…</h1>
+          <p className="auth-subtitle">Загружаем участников и настройки.</p>
+        </div>
+      )}
+
+      {!isLoggedIn && usersLoadState === 'error' && (
+        <div className="auth-page active" role="alert">
+          <div className="auth-logo">📡</div>
+          <h1 className="auth-title">Сервер не ответил</h1>
+          <p className="auth-subtitle">Проверьте соединение и попробуйте снова.</p>
+          <button className="button-primary" type="button" onClick={retryUsers}>Повторить</button>
+        </div>
+      )}
+
+      {!isLoggedIn && sessionChecked && usersLoadState === 'ready' && (
         <AuthPage users={users} onLogin={login} onGuest={loginGuest} />
       )}
 
@@ -374,11 +504,26 @@ export default function App() {
       )}
 
       {winner && (
-        <ResultModal title={winner.title} addedByName={winner.added_by_name} onClose={() => setWinner(null)} />
+        <ResultModal
+          title={winner.title}
+          addedByName={winner.added_by_name}
+          centerImage={centerImage}
+          onClose={() => setWinner(null)}
+          onViewHistory={() => {
+            setWinner(null);
+            navigate('watched');
+          }}
+        />
       )}
 
       <Toast toasts={toasts} />
-      <ConnectionStatus connected={connected} onlineUsers={onlineUsers} />
+      <ConnectionStatus
+        state={connectionState}
+        onlineUsers={onlineUsers}
+        currentUser={currentUser}
+        lastSyncedAt={lastSyncedAt}
+        onReconnect={reconnect}
+      />
     </AppContext.Provider>
   );
 }

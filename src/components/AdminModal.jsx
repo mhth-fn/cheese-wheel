@@ -1,5 +1,6 @@
 import { postTheme, postSpinEnabled, postAddEnabled, postDecorationsEnabled } from '../api';
 import { useApp } from '../App';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 
 const themes = [
   { key: 'cheese', icon: '🧀', name: 'Сырная тема', desc: 'Жёлто-оранжевый дизайн' },
@@ -9,6 +10,7 @@ const themes = [
 
 export default function AdminModal({ theme, onClose }) {
   const { setThemeState, spinEnabled, setSpinEnabled, addEnabled, setAddEnabled, decorationsEnabled, setDecorationsEnabled } = useApp();
+  const dialogRef = useDialogA11y(true, onClose);
 
   const handleSetTheme = async (t) => {
     try {
@@ -38,15 +40,18 @@ export default function AdminModal({ theme, onClose }) {
   };
 
   return (
-    <div className="admin-modal active" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="admin-modal-content">
-        <h2 className="admin-modal-title">⚙️ Админ-панель</h2>
+    <div className="admin-modal active" onMouseDown={event => event.target === event.currentTarget && onClose()}>
+      <section ref={dialogRef} className="admin-modal-content" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title" tabIndex={-1}>
+        <button className="admin-modal-close icon-button" type="button" onClick={onClose} aria-label="Закрыть админ-панель">✕</button>
+        <h2 id="admin-modal-title" className="admin-modal-title">⚙️ Админ-панель</h2>
         <div className="theme-selector">
           {themes.map(t => (
-            <div
+            <button
+              type="button"
               key={t.key}
               className={`theme-option ${theme === t.key ? 'active' : ''}`}
               onClick={() => handleSetTheme(t.key)}
+              aria-pressed={theme === t.key}
             >
               <span className="theme-option-icon">{t.icon}</span>
               <div className="theme-option-info">
@@ -54,7 +59,7 @@ export default function AdminModal({ theme, onClose }) {
                 <div className="theme-option-desc">{t.desc}</div>
               </div>
               <span className="theme-option-check">✓</span>
-            </div>
+            </button>
           ))}
         </div>
 
@@ -76,7 +81,7 @@ export default function AdminModal({ theme, onClose }) {
             <span className="admin-toggle-label">Декорации (снег / лепестки)</span>
           </label>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
