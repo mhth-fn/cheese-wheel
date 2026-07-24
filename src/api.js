@@ -133,6 +133,10 @@ export async function postGuestAuth() {
   return fetch('/api/auth/guest', { method: 'POST' });
 }
 
+export async function postLogout() {
+  return apiFetch('/api/auth/logout', { method: 'POST' });
+}
+
 export async function changePassword(userId, oldPassword, newPassword) {
   return apiFetch(`/api/users/${userId}/password`, {
     method: 'POST',

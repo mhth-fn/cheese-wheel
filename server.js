@@ -209,7 +209,7 @@ function buildVlessLink(serverConfig, inbound, client, deviceName) {
 }
 
 function requireMember(req, res, next) {
-  if (req.tokenData?.isGuest || !Number.isInteger(Number(req.tokenData?.userId))) {
+  if (!isMemberToken(req.tokenData)) {
     return res.status(403).json({ error: 'VPN доступен только участникам' });
   }
   next();
@@ -331,6 +331,7 @@ async function notifyDiscord(content) {
 
 // ============ ТОКЕНЫ ============
 const TOKEN_EXPIRY = 30 * 24 * 60 * 60 * 1000; // 30 дней
+const SESSION_COOKIE = 'cheese_session';
 
 function createToken(userId, isGuest = false) {
   const token = crypto.randomBytes(32).toString('hex');
@@ -347,6 +348,48 @@ function getTokenData(token) {
   return { userId: row.user_id, isGuest: !!row.is_guest, expires: row.expires };
 }
 
+function isMemberToken(data) {
+  if (!data || data.isGuest) return false;
+  const userId = Number(data.userId);
+  if (!Number.isInteger(userId) || userId < 1) return false;
+  return Boolean(db.prepare('SELECT 1 FROM users WHERE id=?').get(userId));
+}
+
+function getCookieToken(req) {
+  const cookieHeader = req.headers.cookie;
+  if (!cookieHeader) return null;
+  const cookie = cookieHeader
+    .split(';')
+    .map(value => value.trim())
+    .find(value => value.startsWith(`${SESSION_COOKIE}=`));
+  return cookie ? cookie.slice(SESSION_COOKIE.length + 1) : null;
+}
+
+function getRequestToken(req) {
+  const header = req.headers.authorization;
+  if (header?.startsWith('Bearer ')) return header.slice(7);
+  return getCookieToken(req);
+}
+
+function setSessionCookie(res, token) {
+  res.cookie(SESSION_COOKIE, token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'strict',
+    maxAge: TOKEN_EXPIRY,
+    path: '/',
+  });
+}
+
+function clearSessionCookie(res) {
+  res.clearCookie(SESSION_COOKIE, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'strict',
+    path: '/',
+  });
+}
+
 // Чистим просроченные токены раз в час
 setInterval(() => {
   db.prepare('DELETE FROM tokens WHERE expires < ?').run(Date.now());
@@ -354,13 +397,14 @@ setInterval(() => {
 
 // ============ AUTH MIDDLEWARE ============
 function requireAuth(req, res, next) {
-  const header = req.headers['authorization'];
-  const token = header?.startsWith('Bearer ') ? header.slice(7) : null;
+  const token = getRequestToken(req);
   const data = getTokenData(token);
   if (!data) return res.status(401).json({ error: 'Требуется авторизация' });
   if (data.isGuest && req.method !== 'GET') {
     return res.status(403).json({ error: 'Гостевой доступ только для чтения' });
   }
+  if (!getCookieToken(req)) setSessionCookie(res, token);
+  req.authToken = token;
   req.tokenData = data;
   next();
 }
@@ -386,6 +430,14 @@ const publicPath = path.join(__dirname, 'public');
 const uploadsPath = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsPath)) fs.mkdirSync(uploadsPath);
 app.use('/uploads', express.static(uploadsPath));
+app.get('/vpn', (req, res, next) => {
+  const data = getTokenData(getCookieToken(req));
+  if (!isMemberToken(data)) {
+    res.set('Cache-Control', 'no-store');
+    return res.redirect(302, '/');
+  }
+  next();
+});
 app.use(express.static(fs.existsSync(distPath) ? distPath : publicPath));
 
 // База данных
@@ -834,11 +886,12 @@ function rejectFormedCurrentWheelMutation(req, res, next) {
 
 // ============ API ============
 
-// Публичные маршруты: /api/auth, /api/auth/guest, GET /api/users
+// Публичные маршруты: вход, выход, гостевой вход и GET /api/users
 // Всё остальное — через requireAuth
 app.use('/api', (req, res, next) => {
   if (req.path === '/auth' && req.method === 'POST') return next();
   if (req.path === '/auth/guest' && req.method === 'POST') return next();
+  if (req.path === '/auth/logout' && req.method === 'POST') return next();
   if (req.path === '/users' && req.method === 'GET') return next();
   requireAuth(req, res, next);
 });
@@ -859,6 +912,7 @@ app.post('/api/auth', (req, res) => {
   }
   if (verifyPassword(password, user.password_hash)) {
     const token = createToken(user.id);
+    setSessionCookie(res, token);
     res.json({ success: true, token });
   } else {
     res.status(401).json({ error: 'Неверный пароль' });
@@ -867,7 +921,15 @@ app.post('/api/auth', (req, res) => {
 
 app.post('/api/auth/guest', (req, res) => {
   const token = createToken(null, true);
+  setSessionCookie(res, token);
   res.json({ success: true, token });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  const token = getRequestToken(req);
+  if (token) db.prepare('DELETE FROM tokens WHERE token=?').run(token);
+  clearSessionCookie(res);
+  res.json({ success: true });
 });
 
 // Смена пароля

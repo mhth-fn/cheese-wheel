@@ -13,6 +13,7 @@ import {
   deleteMovie,
   updateMovie,
   postGuestAuth,
+  postLogout,
   fetchNextWheelMovies,
   postNextMovie,
   deleteNextMovie,
@@ -284,13 +285,15 @@ export default function App() {
       }
       const urlPage = location.pathname === '/watched' ? 'watched'
         : location.pathname === '/games' ? 'games'
+        : location.pathname === '/vpn' ? 'vpn'
         : location.pathname === '/wine-reviews' ? 'wine-reviews'
         : location.pathname === '/movie-reviews' ? 'movie-reviews'
         : 'wheel';
       const applySession = () => {
         if (session.isGuest) {
           setIsGuest(true);
-          setPage(urlPage);
+          setPage(urlPage === 'vpn' ? 'wheel' : urlPage);
+          if (urlPage === 'vpn') history.replaceState({ page: 'wheel' }, '', '/');
         } else if (session.userId) {
           const user = users.find(u => u.id === session.userId);
           if (user) { setCurrentUser(user); setPage(urlPage); }
@@ -328,6 +331,7 @@ export default function App() {
     if (!isLoggedIn) return;
     const path = page === 'watched' ? '/watched'
       : page === 'games' ? '/games'
+      : page === 'vpn' ? '/vpn'
       : page === 'wine-reviews' ? '/wine-reviews'
       : page === 'movie-reviews' ? '/movie-reviews'
       : '/';
@@ -339,14 +343,20 @@ export default function App() {
       if (!isLoggedIn) return;
       const p = e.state?.page || (location.pathname === '/watched' ? 'watched'
         : location.pathname === '/games' ? 'games'
+        : location.pathname === '/vpn' ? 'vpn'
         : location.pathname === '/wine-reviews' ? 'wine-reviews'
         : location.pathname === '/movie-reviews' ? 'movie-reviews'
         : 'wheel');
+      if (p === 'vpn' && (isGuest || !currentUser)) {
+        history.replaceState({ page: 'wheel' }, '', '/');
+        setPage('wheel');
+        return;
+      }
       setPage(p);
     };
     window.addEventListener('popstate', handler);
     return () => window.removeEventListener('popstate', handler);
-  }, [isLoggedIn]);
+  }, [isLoggedIn, isGuest, currentUser]);
 
   const login = useCallback((user, token) => {
     setCurrentUser(user);
@@ -368,27 +378,40 @@ export default function App() {
     setPage('wheel');
   }, []);
 
-  const logout = useCallback(() => {
-    localStorage.removeItem('cheeseWheelSession');
-    localStorage.removeItem('cheeseWheelToken');
-    setCurrentUser(null);
-    setIsGuest(false);
-    setPage('auth');
-    setAdminOpen(false);
-    setDrawerOpen(false);
-    history.replaceState(null, '', '/');
+  const logout = useCallback(async () => {
+    try {
+      await postLogout();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      localStorage.removeItem('cheeseWheelSession');
+      localStorage.removeItem('cheeseWheelToken');
+      setCurrentUser(null);
+      setIsGuest(false);
+      setPage('auth');
+      setAdminOpen(false);
+      setDrawerOpen(false);
+      history.replaceState(null, '', '/');
+    }
   }, []);
 
   const navigate = useCallback((p) => {
+    if (p === 'vpn' && (isGuest || !currentUser)) {
+      setPage('wheel');
+      setDrawerOpen(false);
+      history.replaceState({ page: 'wheel' }, '', '/');
+      return;
+    }
     setPage(p);
     setDrawerOpen(false);
     const navPath = p === 'watched' ? '/watched'
       : p === 'games' ? '/games'
+      : p === 'vpn' ? '/vpn'
       : p === 'wine-reviews' ? '/wine-reviews'
       : p === 'movie-reviews' ? '/movie-reviews'
       : '/';
     history.pushState({ page: p }, '', navPath);
-  }, []);
+  }, [isGuest, currentUser]);
 
   // Drawer handlers
   const handleDrawerAdd = useCallback(async (title) => {
