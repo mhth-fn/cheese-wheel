@@ -16,7 +16,7 @@ const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 const crypto = require('crypto');
 
 const VPN_MAX_CLIENTS_PER_SERVER = Math.min(
-  Math.max(Number.parseInt(process.env.VPN_MAX_CLIENTS_PER_SERVER || '5', 10) || 5, 1),
+  Math.max(Number.parseInt(process.env.VPN_MAX_CLIENTS_PER_SERVER || '10', 10) || 10, 1),
   20
 );
 const VPN_SERVERS = [
@@ -32,7 +32,7 @@ const VPN_SERVERS = [
   },
   {
     id: 'secondary',
-    label: 'Cloudzy Франкфурт',
+    label: 'Франкфурт Cloudzy',
     address: '172.86.69.135',
     baseUrl: process.env.XUI_SECONDARY_URL,
     username: process.env.XUI_SECONDARY_USERNAME,
