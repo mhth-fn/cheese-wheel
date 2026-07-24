@@ -49,7 +49,9 @@ export default function DrawerPanel({
   const fileRef = useRef(null);
   const dialogRef = useDialogA11y(open, onClose);
 
-  const displayedCurrentMovies = wheelStatus.formed ? wheelStatus.movies : movies;
+  const displayedCurrentMovies = wheelStatus.formed
+    ? (wheelStatus.round_movies || wheelStatus.movies)
+    : movies;
   const primaryMovies = new Map();
   displayedCurrentMovies.forEach(movie => {
     if (movie.added_by && !primaryMovies.has(movie.added_by)) {
@@ -266,10 +268,11 @@ export default function DrawerPanel({
             <div className="wm-participants">
               {users.map(user => {
                 const movie = primaryMovies.get(user.id);
+                const watched = Boolean(movie?.is_watched);
                 const editing = !wheelStatus.formed && movie && editingId === movie.id;
                 const manageable = canManageCurrentMovie(movie);
                 return (
-                  <article key={user.id} className={`wm-participant ${movie ? 'is-ready' : 'is-waiting'}${editing ? ' is-editing' : ''}${manageable ? ' has-actions' : ''}`}>
+                  <article key={user.id} className={`wm-participant ${movie ? 'is-ready' : 'is-waiting'}${watched ? ' is-watched' : ''}${editing ? ' is-editing' : ''}${manageable ? ' has-actions' : ''}`}>
                     <span className="wm-avatar" aria-hidden="true">{user.name.slice(0, 1)}</span>
                     <div className="wm-participant-copy">
                       <strong>{user.name}{currentUser?.id === user.id ? ' · вы' : ''}</strong>
@@ -290,8 +293,8 @@ export default function DrawerPanel({
                         <span title={movie?.title}>{movie?.title || 'Ещё не добавил фильм'}</span>
                       )}
                     </div>
-                    <span className="wm-participant-status" aria-label={movie ? 'Готово' : 'Ожидаем фильм'}>
-                      {movie ? 'Готово' : 'Ожидаем'}
+                    <span className="wm-participant-status" aria-label={watched ? 'Просмотрено' : movie ? 'В колесе' : 'Ожидаем фильм'}>
+                      {watched ? 'Просмотрено' : movie ? 'В колесе' : 'Ожидаем'}
                     </span>
                     {movie && !editing && manageable && (
                       <div className="wm-participant-actions">

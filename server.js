@@ -830,6 +830,7 @@ function toWheelSnapshotMovie(movie) {
     title: movie.title,
     added_by: movie.added_by ?? null,
     added_by_name: movie.added_by_name ?? null,
+    is_watched: Number(movie.is_watched) === 1,
   };
 }
 
@@ -848,10 +849,18 @@ function readFormedWheel() {
 
 function getWheelStatus() {
   const currentMovies = stmts.getUnwatched.all().map(toWheelSnapshotMovie);
-  const formedMovies = readFormedWheel().map(toWheelSnapshotMovie);
+  const roundMovies = readFormedWheel().map(movie => {
+    const storedMovie = stmts.getMovieById.get(Number(movie.id));
+    return {
+      ...toWheelSnapshotMovie(movie),
+      is_watched: Number(storedMovie?.is_watched) === 1,
+    };
+  });
+  const activeMovies = roundMovies.filter(movie => !movie.is_watched);
   return {
-    formed: formedMovies.length > 0,
-    movies: formedMovies,
+    formed: roundMovies.length > 0,
+    movies: activeMovies,
+    round_movies: roundMovies,
     current_count: currentMovies.length,
   };
 }
@@ -1849,6 +1858,10 @@ io.on('connection', (socket) => {
       return;
     }
     const movies = wheelStatus.movies;
+    if (movies.length === 0) {
+      socket.emit('spin-rejected', { error: 'Все фильмы текущего раунда уже просмотрены' });
+      return;
+    }
 
     const winnerIndex = crypto.randomInt(movies.length);
     const randomOffset = 0.08 + (crypto.randomInt(8401) / 10000);

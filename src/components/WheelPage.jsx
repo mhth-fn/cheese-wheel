@@ -172,10 +172,18 @@ export default function WheelPage() {
       ) : (
         <div className="wheel-not-ready" aria-live="polite">
           <span className="wheel-not-ready-icon" aria-hidden="true">🧀</span>
-          <strong>{wheelStatusLoadState === 'loading' ? 'Загружаем колесо' : 'Колесо не готово'}</strong>
+          <strong>
+            {wheelStatusLoadState === 'loading'
+              ? 'Загружаем колесо'
+              : wheelStatus.formed
+                ? 'Все фильмы просмотрены'
+                : 'Колесо не готово'}
+          </strong>
           <span>
             {wheelStatusLoadState === 'error'
               ? 'Не удалось получить состав колеса.'
+              : wheelStatus.formed
+                ? 'Для нового выбора сформируйте следующий раунд.'
               : isGuest
                 ? 'Ждём, когда участники сформируют состав.'
                 : 'Откройте панель слева и сформируйте состав.'}

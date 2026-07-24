@@ -262,6 +262,15 @@
   color: var(--color-warning);
 }
 
+.wm-participant.is-watched {
+  background: var(--color-surface-muted);
+}
+
+.wm-participant.is-watched .wm-participant-status {
+  background: rgba(93, 81, 55, 0.1);
+  color: var(--color-text-muted);
+}
+
 .wm-participant-actions {
   display: grid;
   grid-template-columns: repeat(2, 40px);

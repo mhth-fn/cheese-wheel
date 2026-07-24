@@ -60,6 +60,7 @@ export default function App() {
   const [wheelStatus, setWheelStatus] = useState({
     formed: false,
     movies: [],
+    round_movies: [],
     current_count: 0,
   });
   const [wheelStatusLoadState, setWheelStatusLoadState] = useState('loading');
