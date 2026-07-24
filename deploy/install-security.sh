@@ -5,6 +5,9 @@ umask 077
 APP_DIR=/opt/cheese-wheel
 ENV_FILE="$APP_DIR/.env"
 BACKUP_DIR=/var/backups/cheese-wheel
+BACKUP_CONFIG_DIR=/etc/cheese-wheel
+BACKUP_ALERT_ENV="$BACKUP_CONFIG_DIR/backup-alert.env"
+RESTIC_CACHE_DIR=/var/cache/cheese-wheel-restic
 NGINX_REALIP_TARGET=/etc/nginx/conf.d/cloudflare-realip.conf
 NGINX_SITE_TARGET=/etc/nginx/sites-enabled/cheese-wheel.conf
 
@@ -41,12 +44,29 @@ ensure_secret RATE_LIMIT_PEPPER
 ensure_secret AUDIT_LOG_PEPPER
 
 install -d -o root -g root -m 0700 "$BACKUP_DIR"
+install -d -o root -g root -m 0700 "$BACKUP_CONFIG_DIR"
+install -d -o root -g root -m 0700 "$RESTIC_CACHE_DIR"
 install -o root -g root -m 0644 \
   "$APP_DIR/deploy/cheese-wheel-backup.service" \
   /etc/systemd/system/cheese-wheel-backup.service
 install -o root -g root -m 0644 \
   "$APP_DIR/deploy/cheese-wheel-backup.timer" \
   /etc/systemd/system/cheese-wheel-backup.timer
+install -o root -g root -m 0644 \
+  "$APP_DIR/deploy/cheese-wheel-offsite-backup.service" \
+  /etc/systemd/system/cheese-wheel-offsite-backup.service
+install -o root -g root -m 0644 \
+  "$APP_DIR/deploy/cheese-wheel-backup-alert@.service" \
+  /etc/systemd/system/cheese-wheel-backup-alert@.service
+
+if [[ ! -f "$BACKUP_ALERT_ENV" ]]; then
+  DISCORD_WEBHOOK=$(sed -n 's/^DISCORD_WEBHOOK_URL=//p' "$ENV_FILE" | tail -n 1)
+  if [[ -n "$DISCORD_WEBHOOK" ]]; then
+    printf 'BACKUP_ALERT_WEBHOOK_URL=%s\n' "$DISCORD_WEBHOOK" > "$BACKUP_ALERT_ENV"
+    chown root:root "$BACKUP_ALERT_ENV"
+    chmod 0600 "$BACKUP_ALERT_ENV"
+  fi
+fi
 
 # This explicit mode is only for the stop-the-world phase-2 bootstrap. It
 # accepts the complete legacy schema, but rejects a partially-created security

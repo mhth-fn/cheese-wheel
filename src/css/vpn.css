@@ -165,7 +165,7 @@
 
 .vpn-server-counts small {
   color: var(--color-text-muted);
-  font-size: 0.68rem;
+  font-size: 0.76rem;
   white-space: nowrap;
 }
 
@@ -302,7 +302,7 @@
   border-radius: var(--radius-pill);
   background: #eef2fb;
   color: #365d9d;
-  font-size: 0.68rem;
+  font-size: 0.76rem;
   font-weight: 800;
 }
 

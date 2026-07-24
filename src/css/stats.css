@@ -57,7 +57,7 @@
 .stat-card-label {
   width: 100%;
   color: var(--color-text-muted);
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   font-weight: 700;
 }
 
@@ -79,14 +79,15 @@
 
 .stat-card-more {
   color: var(--color-text-muted);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
 .stat-card-sub {
   margin-top: var(--space-1);
   color: var(--color-text-muted);
-  font-size: 0.68rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
 }
 
 .stat-match-users {
@@ -149,7 +150,7 @@
   max-width: 100%;
   overflow: hidden;
   color: var(--color-text-muted);
-  font-size: 0.65rem;
+  font-size: 0.78rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

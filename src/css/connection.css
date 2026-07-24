@@ -126,7 +126,7 @@
 
 .connection-user-online {
   color: var(--color-success);
-  font-size: 0.64rem;
+  font-size: 0.75rem;
 }
 
 .connection-empty {
@@ -147,14 +147,79 @@
 }
 
 @media (max-width: 720px) {
+  .app-container {
+    padding-bottom: calc(136px + env(safe-area-inset-bottom));
+  }
+
   .connection-status {
-    right: 12px;
-    bottom: 82px;
+    right: max(12px, env(safe-area-inset-right));
+    bottom: calc(84px + env(safe-area-inset-bottom));
+    z-index: 890;
   }
 
   .connection-status-main {
-    min-height: 40px;
-    padding: 0 var(--space-2);
-    font-size: 0.68rem;
+    width: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+    padding: 0;
+    border-color: var(--color-border);
+  }
+
+  .connection-status-main > span:nth-child(2),
+  .connection-status-main .connection-arrow {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .connection-dot {
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--color-surface);
+    box-shadow: 0 0 0 2px var(--color-danger);
+  }
+
+  .state-online .connection-dot {
+    box-shadow: 0 0 0 2px var(--color-success);
+  }
+
+  .state-connecting .connection-dot,
+  .state-reconnecting .connection-dot {
+    box-shadow: 0 0 0 2px var(--color-warning);
+  }
+
+  .connection-popover {
+    max-height: calc(100dvh - 160px);
+    overflow-y: auto;
+  }
+
+  @supports selector(body:has(*)) {
+    body:has(.app-container) .connection-status {
+      position: relative;
+      right: auto;
+      bottom: auto;
+      width: 44px;
+      margin:
+        calc(-128px - env(safe-area-inset-bottom))
+        max(12px, env(safe-area-inset-right))
+        calc(84px + env(safe-area-inset-bottom))
+        auto;
+    }
+  }
+}
+
+@supports selector(body:has(*)) {
+  body:has(.dialog-backdrop) .connection-status,
+  body:has(.wheel-modal-overlay) .connection-status,
+  body:has(.admin-modal.active) .connection-status {
+    visibility: hidden;
+    pointer-events: none;
   }
 }

@@ -24,6 +24,42 @@ function getAriaSort(sortColumn, sortDirection, column) {
   return sortDirection === 'asc' ? 'ascending' : 'descending';
 }
 
+function getMovieDateLabel(movie) {
+  if (movie.watched_at) return `Просмотрен ${formatDate(movie.watched_at)}`;
+  if (movie.added_at) return `Добавлен ${formatDate(movie.added_at)}`;
+  return 'Дата не указана';
+}
+
+function useMediaQuery(query) {
+  const getMatches = () => (
+    typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia(query).matches
+  );
+  const [matches, setMatches] = useState(getMatches);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const mediaQuery = window.matchMedia(query);
+    const onChange = event => setMatches(event.matches);
+    setMatches(mediaQuery.matches);
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', onChange);
+    } else {
+      mediaQuery.addListener?.(onChange);
+    }
+    return () => {
+      if (mediaQuery.removeEventListener) {
+        mediaQuery.removeEventListener('change', onChange);
+      } else {
+        mediaQuery.removeListener?.(onChange);
+      }
+    };
+  }, [query]);
+
+  return matches;
+}
+
 const CORE_USER_NAMES = ['Антон', 'Митя', 'Пётр', 'Сергей'];
 
 function normalizeUserName(value) {
@@ -66,6 +102,7 @@ export default function WatchedPage() {
   const [baseScope, setBaseScope] = useState('all');
   const [personalModeEnabled, setPersonalModeEnabled] = useState(false);
   const searchRef = useRef(null);
+  const isCompactLayout = useMediaQuery('(max-width: 600px)');
 
   const loadMovies = useCallback(async () => {
     setLoadError('');
@@ -393,6 +430,17 @@ export default function WatchedPage() {
     ? <span className="sort-icon active" aria-hidden="true">{sortDirection === 'asc' ? '↑' : '↓'}</span>
     : null;
 
+  const handleCompactSortChange = event => {
+    const column = event.target.value || null;
+    setSortColumn(column);
+    setSortDirection(column ? (column === 'title' ? 'asc' : 'desc') : null);
+  };
+
+  const toggleCompactSortDirection = () => {
+    if (!sortColumn) return;
+    setSortDirection(direction => direction === 'asc' ? 'desc' : 'asc');
+  };
+
   const renderRatingCell = (movie, userId) => {
     const rating = movie[`rating_${userId}`];
     if (currentUser?.id === userId || isAdmin) {
@@ -435,6 +483,123 @@ export default function WatchedPage() {
       </span>
     );
   };
+
+  const renderEditMovieForm = (movie, layout) => (
+    <div className="edit-movie-cell">
+      <label className="sr-only" htmlFor={`edit-title-${layout}-${movie.id}`}>
+        Название фильма
+      </label>
+      <input
+        id={`edit-title-${layout}-${movie.id}`}
+        className="edit-movie-title"
+        value={editTitle}
+        onChange={event => setEditTitle(event.target.value)}
+        onKeyDown={handleEditKeyDown}
+        autoFocus
+      />
+      <div className="edit-movie-date-row">
+        <label htmlFor={`edit-date-${layout}-${movie.id}`}>Дата просмотра:</label>
+        <input
+          id={`edit-date-${layout}-${movie.id}`}
+          type="date"
+          className="edit-movie-date"
+          value={editWatchedAt}
+          onChange={event => setEditWatchedAt(event.target.value)}
+          onKeyDown={handleEditKeyDown}
+        />
+      </div>
+      <div className="edit-movie-actions">
+        <button className="button-primary" type="button" onClick={saveEditing}>
+          Сохранить
+        </button>
+        <button className="button-ghost" type="button" onClick={cancelEditing}>
+          Отмена
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderCompactMovieCard = movie => (
+    <article className="watched-movie-card" key={movie.id} role="listitem">
+      {editingId === movie.id ? (
+        <>
+          <p className="watched-card-edit-label">Редактирование фильма</p>
+          {renderEditMovieForm(movie, 'card')}
+        </>
+      ) : (
+        <>
+          <header className="watched-card-header">
+            <button
+              className="watched-card-title"
+              type="button"
+              onClick={() => openMoviePanel(movie, 'details')}
+              aria-haspopup="dialog"
+            >
+              <strong>{movie.title}</strong>
+              <span>Открыть карточку фильма</span>
+            </button>
+            {showAverageColumn && (
+              <div className="watched-card-average">
+                <span>Средняя</span>
+                {renderAvgRating(movie)}
+              </div>
+            )}
+          </header>
+
+          <div className="watched-card-meta">
+            <span>📅 {getMovieDateLabel(movie)}</span>
+            <span>🎟 {movie.added_by_name ? `Предложил ${movie.added_by_name}` : 'Кто предложил — не указано'}</span>
+          </div>
+
+          <div className="watched-card-ratings" role="group" aria-label={`Оценки фильму ${movie.title}`}>
+            {visibleUsers.map(user => (
+              <div className="watched-card-rating" key={user.id}>
+                <span>{personalMode ? 'Моя оценка' : user.name}</span>
+                {renderRatingCell(movie, user.id)}
+              </div>
+            ))}
+          </div>
+
+          <footer className="watched-card-footer">
+            <div className="watched-card-review-actions">
+              <button
+                className="movie-review-trigger"
+                type="button"
+                onClick={() => openMoviePanel(movie, 'reviews')}
+                aria-haspopup="dialog"
+                aria-label={`Открыть рецензии на ${movie.title}, ${Number(movie.review_count) || 0}`}
+              >
+                Рецензии · {Number(movie.review_count) || 0}
+              </button>
+              {!isGuest && (
+                <button
+                  className="movie-review-write"
+                  type="button"
+                  onClick={() => openMoviePanel(movie, 'compose')}
+                  aria-haspopup="dialog"
+                  aria-label={`Написать рецензию на ${movie.title}`}
+                >
+                  Написать
+                </button>
+              )}
+            </div>
+            {isAdmin && (
+              <div className="watched-card-admin-actions" role="group" aria-label={`Действия с фильмом ${movie.title}`}>
+                <button className="row-action-button" type="button" onClick={() => startEditing(movie)}>
+                  <span aria-hidden="true">✎</span>
+                  <span>Изменить</span>
+                </button>
+                <button className="row-action-button danger" type="button" onClick={() => setPendingDelete(movie)}>
+                  <span aria-hidden="true">🗑</span>
+                  <span>Удалить</span>
+                </button>
+              </div>
+            )}
+          </footer>
+        </>
+      )}
+    </article>
+  );
 
   return (
     <>
@@ -496,7 +661,9 @@ export default function WatchedPage() {
         <span className="search-shortcut" aria-hidden="true">/</span>
       </div>
 
-      <p className="table-scroll-hint">На узком экране таблицу можно прокручивать по горизонтали.</p>
+      {!isCompactLayout && (
+        <p className="table-scroll-hint">На узком экране таблицу можно прокручивать по горизонтали.</p>
+      )}
 
       <div className="watched-table-wrapper">
         {loadState === 'loading' && movies.length === 0 ? (
@@ -536,10 +703,56 @@ export default function WatchedPage() {
             <div className="empty-state-title">Ничего не найдено</div>
             <p>По запросу «{debouncedQuery}» фильмов нет.</p>
           </div>
+        ) : isCompactLayout ? (
+          <>
+            <div className="watched-card-sort" role="group" aria-label="Сортировка просмотренных фильмов">
+              <label>
+                <span>Сортировка</span>
+                <select value={sortColumn || ''} onChange={handleCompactSortChange}>
+                  <option value="">Сначала новые</option>
+                  <option value="title">По названию</option>
+                  {visibleUsers.map(user => (
+                    <option key={user.id} value={`rating_${user.id}`}>
+                      {personalMode ? 'По моей оценке' : `По оценке: ${user.name}`}
+                    </option>
+                  ))}
+                  {showAverageColumn && <option value="avg_rating">По средней</option>}
+                </select>
+              </label>
+              <button
+                className="button-ghost"
+                type="button"
+                onClick={toggleCompactSortDirection}
+                disabled={!sortColumn}
+                aria-label={
+                  sortColumn === 'title'
+                    ? `Сейчас ${sortDirection === 'asc' ? 'от А до Я' : 'от Я до А'}. Изменить направление`
+                    : `Сейчас сначала ${sortDirection === 'asc' ? 'низкие' : 'высокие'} оценки. Изменить направление`
+                }
+              >
+                {sortColumn === 'title'
+                  ? (sortDirection === 'asc' ? 'А → Я' : 'Я → А')
+                  : (sortDirection === 'asc' ? 'Сначала ниже' : 'Сначала выше')}
+              </button>
+            </div>
+            <div
+              className="watched-mobile-list"
+              role="list"
+              aria-label={
+                personalMode
+                  ? 'Фильмы, которые я оценил'
+                  : coreMode
+                    ? 'Просмотренные фильмы основной четвёрки'
+                    : 'Все просмотренные фильмы'
+              }
+            >
+              {sorted.map(renderCompactMovieCard)}
+            </div>
+          </>
         ) : (
           <table
-            className="watched-table"
-            style={{ minWidth: `${292 + visibleUsers.length * 88 + (showAverageColumn ? 108 : 0)}px` }}
+            className={`watched-table${isAdmin ? ' has-actions' : ''}`}
+            style={{ minWidth: `${220 + (isAdmin ? 72 : 0) + visibleUsers.length * 88 + (showAverageColumn ? 108 : 0)}px` }}
             aria-label={
               personalMode
                 ? 'Фильмы, которые я оценил'
@@ -556,8 +769,8 @@ export default function WatchedPage() {
             </colgroup>
             <thead>
               <tr>
-                {isAdmin && <th aria-label="Действия" />}
-                <th aria-sort={getAriaSort(sortColumn, sortDirection, 'title')}>
+                {isAdmin && <th className="watched-actions-sticky" aria-label="Действия" />}
+                <th className="watched-title-sticky" aria-sort={getAriaSort(sortColumn, sortDirection, 'title')}>
                   <button className="table-sort-button" type="button" onClick={() => handleSort('title')}>
                     Фильм {sortIcon('title')}
                   </button>
@@ -585,26 +798,16 @@ export default function WatchedPage() {
               {sorted.map(movie => (
                 <tr key={movie.id}>
                   {isAdmin && (
-                    <td>
+                    <td className="watched-actions-sticky">
                       <div className="row-actions">
                         <button className="row-action-button" type="button" onClick={() => startEditing(movie)} title="Редактировать" aria-label={`Редактировать ${movie.title}`}>✎</button>
                         <button className="row-action-button danger" type="button" onClick={() => setPendingDelete(movie)} title="Удалить" aria-label={`Удалить ${movie.title}`}>🗑</button>
                       </div>
                     </td>
                   )}
-                  <td>
+                  <td className="watched-title-sticky">
                     {editingId === movie.id ? (
-                      <div className="edit-movie-cell">
-                        <input className="edit-movie-title" value={editTitle} onChange={event => setEditTitle(event.target.value)} onKeyDown={handleEditKeyDown} autoFocus />
-                        <div className="edit-movie-date-row">
-                          <label htmlFor={`edit-date-${movie.id}`}>Дата просмотра:</label>
-                          <input id={`edit-date-${movie.id}`} type="date" className="edit-movie-date" value={editWatchedAt} onChange={event => setEditWatchedAt(event.target.value)} onKeyDown={handleEditKeyDown} />
-                        </div>
-                        <div className="edit-movie-actions">
-                          <button className="button-primary" type="button" onClick={saveEditing}>Сохранить</button>
-                          <button className="button-ghost" type="button" onClick={cancelEditing}>Отмена</button>
-                        </div>
-                      </div>
+                      renderEditMovieForm(movie, 'table')
                     ) : (
                       <div className="movie-title-stack">
                         <button

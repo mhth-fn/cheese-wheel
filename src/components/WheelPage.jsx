@@ -144,12 +144,17 @@ export default function WheelPage() {
       ? 'Результат вращения сохраняется'
       : !wheelStatus.formed
       ? 'Колесо не готово'
+      : !isAdmin
+        ? 'Прокрутку запускает администратор'
       : '';
 
   return (
     <section className="wheel-page-layout">
       {readinessText && (
-        <div className={`wheel-readiness${isSpinning ? ' is-spinning' : ' is-warning'}`} aria-live="polite">
+        <div
+          className={`wheel-readiness${isSpinning ? ' is-spinning' : !isAdmin ? ' is-info' : ' is-warning'}`}
+          aria-live="polite"
+        >
           <span aria-hidden="true" />
           {readinessText}
         </div>

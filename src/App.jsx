@@ -1,4 +1,13 @@
-import { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react';
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  createContext,
+  useContext,
+  lazy,
+  Suspense,
+} from 'react';
 import { io } from 'socket.io-client';
 import {
   fetchUsers,
@@ -22,17 +31,17 @@ import {
 import AuthPage from './components/AuthPage';
 import Nav from './components/Nav';
 import WheelPage from './components/WheelPage';
-import WatchedPage from './components/WatchedPage';
 import ResultModal from './components/ResultModal';
 import AdminModal from './components/AdminModal';
 import Toast from './components/Toast';
 import ConnectionStatus from './components/ConnectionStatus';
 import DrawerPanel from './components/DrawerPanel';
-import GamesPage from './components/GamesPage';
-import WineReviewsPage from './components/WineReviewsPage';
-import MovieReviewsPage from './components/MovieReviewsPage';
-import VpnPage from './components/VpnPage';
 import ThemeDecorations from './components/ThemeDecorations';
+
+const WatchedPage = lazy(() => import('./components/WatchedPage'));
+const GamesPage = lazy(() => import('./components/GamesPage'));
+const ReviewsJournalPage = lazy(() => import('./components/ReviewsJournalPage'));
+const VpnPage = lazy(() => import('./components/VpnPage'));
 
 export const AppContext = createContext(null);
 export const useApp = () => useContext(AppContext);
@@ -47,9 +56,35 @@ function pageFromLocation() {
   if (location.pathname === '/watched') return 'watched';
   if (location.pathname === '/games') return 'games';
   if (location.pathname === '/vpn') return 'vpn';
-  if (location.pathname === '/wine-reviews') return 'wine-reviews';
-  if (location.pathname === '/movie-reviews') return 'movie-reviews';
+  if (location.pathname === '/reviews/wine' || location.pathname === '/wine-reviews') {
+    return 'wine-reviews';
+  }
+  if (
+    location.pathname === '/reviews'
+    || location.pathname === '/reviews/movies'
+    || location.pathname === '/movie-reviews'
+  ) {
+    return 'movie-reviews';
+  }
   return 'wheel';
+}
+
+function pathForPage(page) {
+  if (page === 'watched') return '/watched';
+  if (page === 'games') return '/games';
+  if (page === 'vpn') return '/vpn';
+  if (page === 'wine-reviews') return '/reviews/wine';
+  if (page === 'movie-reviews') return '/reviews';
+  return '/';
+}
+
+function PageLoading() {
+  return (
+    <div className="page-loading" role="status" aria-live="polite">
+      <span className="skeleton" aria-hidden="true" />
+      Загружаем раздел…
+    </div>
+  );
 }
 
 function normalizeServerSession(data, users) {
@@ -333,11 +368,14 @@ export default function App() {
     if (isLoggedIn) refreshWheelData();
   }, [isLoggedIn, refreshWheelData]);
 
-  // Initial data load
+  // Only the participant list is public. Authenticated data is loaded after
+  // session restoration, which also avoids putting 401 error objects into
+  // array state during a fresh login.
   useEffect(() => {
     (async () => {
       try {
         const u = await fetchUsers();
+        if (!Array.isArray(u)) throw new Error('Некорректный список участников');
         setUsers(u);
         setUsersLoadState('ready');
       } catch (e) {
@@ -345,25 +383,6 @@ export default function App() {
         setUsersLoadState('error');
         setSessionChecked(true);
       }
-      try {
-        const s = await fetchSettings();
-        setSpinDuration(s.spin_duration || 5);
-        if (s.spin_enabled !== undefined) setSpinEnabled(s.spin_enabled);
-        if (s.add_enabled !== undefined) setAddEnabled(s.add_enabled);
-        if (s.decorations_enabled !== undefined) setDecorationsEnabled(s.decorations_enabled);
-      } catch (e) { console.error(e); }
-      try {
-        const t = await fetchTheme();
-        setThemeState(t.theme || 'cheese');
-      } catch (e) { console.error(e); }
-      try {
-        const c = await fetchCenterImage();
-        setCenterImage(c.url || null);
-      } catch (e) { console.error(e); }
-      try {
-        const nw = await fetchNextWheelMovies();
-        setNextWheelMovies(nw);
-      } catch (e) { console.error(e); }
     })();
   }, []);
 
@@ -410,24 +429,13 @@ export default function App() {
   // Browser history
   useEffect(() => {
     if (!isLoggedIn) return;
-    const path = page === 'watched' ? '/watched'
-      : page === 'games' ? '/games'
-      : page === 'vpn' ? '/vpn'
-      : page === 'wine-reviews' ? '/wine-reviews'
-      : page === 'movie-reviews' ? '/movie-reviews'
-      : '/';
-    history.replaceState({ page }, '', path);
+    history.replaceState({ page }, '', pathForPage(page));
   }, [page, isLoggedIn]);
 
   useEffect(() => {
     const handler = (e) => {
       if (!isLoggedIn) return;
-      const p = e.state?.page || (location.pathname === '/watched' ? 'watched'
-        : location.pathname === '/games' ? 'games'
-        : location.pathname === '/vpn' ? 'vpn'
-        : location.pathname === '/wine-reviews' ? 'wine-reviews'
-        : location.pathname === '/movie-reviews' ? 'movie-reviews'
-        : 'wheel');
+      const p = e.state?.page || pageFromLocation();
       if (p === 'vpn' && (isGuest || !currentUser)) {
         history.replaceState({ page: 'wheel' }, '', '/');
         setPage('wheel');
@@ -493,13 +501,7 @@ export default function App() {
     }
     setPage(p);
     setDrawerOpen(false);
-    const navPath = p === 'watched' ? '/watched'
-      : p === 'games' ? '/games'
-      : p === 'vpn' ? '/vpn'
-      : p === 'wine-reviews' ? '/wine-reviews'
-      : p === 'movie-reviews' ? '/movie-reviews'
-      : '/';
-    history.pushState({ page: p }, '', navPath);
+    history.pushState({ page: p }, '', pathForPage(p));
   }, [isGuest, currentUser]);
 
   // Drawer handlers
@@ -752,28 +754,37 @@ export default function App() {
                style={{ display: page === 'wheel' ? '' : 'none' }}>
             <WheelPage />
           </div>
-          <div id="watched-page" className={`page ${page === 'watched' ? 'active' : ''}`}
-               style={{ display: page === 'watched' ? '' : 'none' }}>
-            <WatchedPage />
-          </div>
-          <div id="games-page" className={`page ${page === 'games' ? 'active' : ''}`}
-               style={{ display: page === 'games' ? '' : 'none' }}>
-            <GamesPage />
-          </div>
-          {!isGuest && (
-            <div id="vpn-page" className={`page ${page === 'vpn' ? 'active' : ''}`}
-                 style={{ display: page === 'vpn' ? '' : 'none' }}>
-              {page === 'vpn' && <VpnPage />}
+          {page === 'watched' && (
+            <div id="watched-page" className="page active">
+              <Suspense fallback={<PageLoading />}>
+                <WatchedPage />
+              </Suspense>
             </div>
           )}
-          <div id="wine-reviews-page" className={`page ${page === 'wine-reviews' ? 'active' : ''}`}
-               style={{ display: page === 'wine-reviews' ? '' : 'none' }}>
-            <WineReviewsPage />
-          </div>
-          <div id="movie-reviews-page" className={`page ${page === 'movie-reviews' ? 'active' : ''}`}
-               style={{ display: page === 'movie-reviews' ? '' : 'none' }}>
-            <MovieReviewsPage />
-          </div>
+          {page === 'games' && (
+            <div id="games-page" className="page active">
+              <Suspense fallback={<PageLoading />}>
+                <GamesPage />
+              </Suspense>
+            </div>
+          )}
+          {!isGuest && page === 'vpn' && (
+            <div id="vpn-page" className="page active">
+              <Suspense fallback={<PageLoading />}>
+                <VpnPage />
+              </Suspense>
+            </div>
+          )}
+          {(page === 'movie-reviews' || page === 'wine-reviews') && (
+            <div id="reviews-page" className="page active">
+              <Suspense fallback={<PageLoading />}>
+                <ReviewsJournalPage
+                  kind={page === 'wine-reviews' ? 'wine' : 'movies'}
+                  onKindChange={kind => navigate(kind === 'wine' ? 'wine-reviews' : 'movie-reviews')}
+                />
+              </Suspense>
+            </div>
+          )}
         </div>
       )}
 

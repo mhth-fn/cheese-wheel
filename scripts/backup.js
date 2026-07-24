@@ -191,6 +191,40 @@ async function writeAndVerifyManifest(snapshotDirectory, files) {
   }
 }
 
+async function verifyManifest(snapshotDirectory, files) {
+  const expectedFiles = new Set(files);
+  const manifestPath = path.join(snapshotDirectory, 'SHA256SUMS');
+  await assertRegularFile(manifestPath, 'Backup checksum manifest');
+
+  const manifest = await fsp.readFile(manifestPath, 'utf8');
+  const entries = manifest.trimEnd().split('\n');
+  if (entries.length !== expectedFiles.size) {
+    throw new Error('Backup checksum manifest has an unexpected number of entries');
+  }
+
+  const seen = new Set();
+  for (const line of entries) {
+    const match = /^([a-f0-9]{64})  ([A-Za-z0-9_.-]+)$/.exec(line);
+    if (!match || !expectedFiles.has(match[2]) || seen.has(match[2])) {
+      throw new Error('Backup checksum manifest contains an invalid entry');
+    }
+    seen.add(match[2]);
+
+    const backupFile = path.join(snapshotDirectory, match[2]);
+    await assertRegularFile(backupFile, `Backup file ${match[2]}`);
+    const actual = await sha256File(backupFile);
+    const expectedDigest = Buffer.from(match[1], 'hex');
+    const actualDigest = Buffer.from(actual, 'hex');
+    if (!crypto.timingSafeEqual(expectedDigest, actualDigest)) {
+      throw new Error(`Backup checksum verification failed for ${match[2]}`);
+    }
+  }
+
+  if (seen.size !== expectedFiles.size) {
+    throw new Error('Backup checksum manifest is missing an expected entry');
+  }
+}
+
 async function archiveAndVerifyUploads(uploadsPath, archivePath, tarPath) {
   const resolvedUploads = path.resolve(uploadsPath);
   await assertRealDirectory(resolvedUploads, 'Uploads path');
@@ -408,5 +442,6 @@ module.exports = {
   runBackup,
   timestampFromSnapshotName,
   verifyDatabase,
+  verifyManifest,
   writeAndVerifyManifest,
 };

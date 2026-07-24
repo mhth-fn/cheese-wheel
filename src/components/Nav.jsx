@@ -39,12 +39,20 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
   const [setupData, setSetupData] = useState(null);
   const [recoveryCodes, setRecoveryCodes] = useState([]);
   const dropdownRef = useRef(null);
+  const triggerRef = useRef(null);
+  const dropdownWasOpenRef = useRef(false);
 
   const pages = [
     { key: 'wheel', icon: '🎡', label: 'Колесо' },
-    { key: 'watched', icon: '📋', label: 'Просмотренные' },
+    { key: 'watched', icon: '📋', label: 'Просмотренные', shortLabel: 'История' },
+    {
+      key: 'reviews',
+      target: 'movie-reviews',
+      icon: '✍️',
+      label: 'Обзоры',
+      active: activePage === 'movie-reviews' || activePage === 'wine-reviews',
+    },
     { key: 'games', icon: '🎮', label: 'Игры' },
-    ...(!isGuest ? [{ key: 'vpn', icon: '🔐', label: 'VPN' }] : []),
   ];
 
   const resetSubmenus = useCallback(() => {
@@ -62,6 +70,8 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
   useEffect(() => {
     const handler = (event) => {
       if (event.key === 'Escape') {
+        if (!dropdownOpen) return;
+        event.preventDefault();
         setDropdownOpen(false);
         resetSubmenus();
         return;
@@ -77,7 +87,27 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
       document.removeEventListener('mousedown', handler);
       document.removeEventListener('keydown', handler);
     };
-  }, [resetSubmenus]);
+  }, [dropdownOpen, resetSubmenus]);
+
+  useEffect(() => {
+    if (dropdownOpen) {
+      dropdownWasOpenRef.current = true;
+      const frame = window.requestAnimationFrame(() => {
+        const popover = dropdownRef.current?.querySelector('.nav-dropdown');
+        if (popover?.contains(document.activeElement)) return;
+        popover
+          ?.querySelector('button:not(:disabled), input:not(:disabled)')
+          ?.focus();
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }
+
+    if (dropdownWasOpenRef.current) {
+      dropdownWasOpenRef.current = false;
+      triggerRef.current?.focus();
+    }
+    return undefined;
+  }, [changingPassword, dropdownOpen, securityOpen, twoFactorStep]);
 
   const handlePasswordSubmit = async (event) => {
     event.preventDefault();
@@ -235,24 +265,30 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
         {pages.map(page => (
           <button
             key={page.key}
-            className={`nav-btn ${activePage === page.key ? 'active' : ''}`}
-            onClick={() => onNavigate(page.key)}
-            aria-current={activePage === page.key ? 'page' : undefined}
+            className={`nav-btn ${(page.active ?? (activePage === page.key)) ? 'active' : ''}`}
+            onClick={() => onNavigate(page.target || page.key)}
+            aria-current={(page.active ?? (activePage === page.key)) ? 'page' : undefined}
+            aria-label={page.label}
           >
             <span aria-hidden="true">{page.icon}</span>
-            <span>{page.label}</span>
+            <span className={page.shortLabel ? 'nav-label-full' : undefined}>{page.label}</span>
+            {page.shortLabel && (
+              <span className="nav-label-short" aria-hidden="true">{page.shortLabel}</span>
+            )}
           </button>
         ))}
       </div>
       <div className="nav-user" ref={dropdownRef}>
         <button
+          ref={triggerRef}
           className="nav-user-btn"
           onClick={() => {
             setDropdownOpen(previous => !previous);
             if (dropdownOpen) resetSubmenus();
           }}
           aria-expanded={dropdownOpen}
-          aria-haspopup="menu"
+          aria-haspopup="dialog"
+          aria-controls="nav-profile-popover"
           aria-label={`Меню пользователя ${userName}`}
         >
           <span className="nav-user-avatar" aria-hidden="true">{userName?.slice(0, 1) || 'Г'}</span>
@@ -262,13 +298,18 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
         </button>
 
         {dropdownOpen && (
-          <div className={`nav-dropdown ${securityOpen ? 'nav-dropdown-wide' : ''}`} role="menu">
+          <div
+            id="nav-profile-popover"
+            className={`nav-dropdown ${securityOpen ? 'nav-dropdown-wide' : ''}`}
+            role="dialog"
+            aria-modal="false"
+            aria-label={`Настройки пользователя ${userName}`}
+          >
             {!isGuest && !changingPassword && !securityOpen && (
               <button
                 className="nav-dropdown-item"
                 type="button"
                 onClick={() => setChangingPassword(true)}
-                role="menuitem"
               >
                 🔑 Поменять пароль
               </button>
@@ -284,6 +325,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
                   value={oldPwd}
                   onChange={event => setOldPwd(event.target.value)}
                   autoComplete="current-password"
+                  aria-label="Текущий пароль"
                   autoFocus
                 />
                 <input
@@ -292,6 +334,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
                   value={newPwd}
                   onChange={event => setNewPwd(event.target.value)}
                   autoComplete="new-password"
+                  aria-label="Новый пароль"
                 />
                 <input
                   type="password"
@@ -299,6 +342,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
                   value={confirmPwd}
                   onChange={event => setConfirmPwd(event.target.value)}
                   autoComplete="new-password"
+                  aria-label="Подтверждение нового пароля"
                 />
                 {pwdError && <span className="nav-pwd-error">{pwdError}</span>}
                 <button type="submit" className="nav-dropdown-item nav-pwd-submit">
@@ -308,7 +352,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
             )}
 
             {!isGuest && !changingPassword && !securityOpen && (
-              <button className="nav-dropdown-item" type="button" onClick={loadTwoFactorStatus} role="menuitem">
+              <button className="nav-dropdown-item" type="button" onClick={loadTwoFactorStatus}>
                 🛡️ Двухфакторная защита
               </button>
             )}
@@ -368,6 +412,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
                       value={securityPassword}
                       onChange={event => setSecurityPassword(event.target.value)}
                       autoComplete="current-password"
+                      aria-label="Текущий пароль"
                       autoFocus
                     />
                     <button className="button-primary" type="submit" disabled={!securityPassword || twoFactorState === 'saving'}>
@@ -393,6 +438,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
                       onChange={event => setSecurityCode(event.target.value)}
                       autoComplete="one-time-code"
                       inputMode="numeric"
+                      aria-label="Код из приложения-аутентификатора"
                       autoFocus
                     />
                     <button className="button-primary" type="submit" disabled={!securityCode.trim() || twoFactorState === 'saving'}>
@@ -415,6 +461,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
                       value={securityPassword}
                       onChange={event => setSecurityPassword(event.target.value)}
                       autoComplete="current-password"
+                      aria-label="Текущий пароль"
                       autoFocus
                     />
                     <input
@@ -424,6 +471,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
                       onChange={event => setSecurityCode(event.target.value)}
                       autoComplete="one-time-code"
                       inputMode={twoFactorStep === 'disable' ? 'text' : 'numeric'}
+                      aria-label="Код подтверждения"
                     />
                     <button
                       className={twoFactorStep === 'disable' ? 'button-danger' : 'button-primary'}
@@ -460,28 +508,20 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
             )}
 
             {!isGuest && !changingPassword && !securityOpen && (
-              <>
-                <button
-                  className="nav-dropdown-item"
-                  type="button"
-                  onClick={() => { onNavigate('wine-reviews'); setDropdownOpen(false); }}
-                  role="menuitem"
-                >
-                  🍷 Обзоры на вино
-                </button>
-                <button
-                  className="nav-dropdown-item"
-                  type="button"
-                  onClick={() => { onNavigate('movie-reviews'); setDropdownOpen(false); }}
-                  role="menuitem"
-                >
-                  🎬 Обзоры на кино
-                </button>
-              </>
+              <button
+                className="nav-dropdown-item"
+                type="button"
+                onClick={() => {
+                  onNavigate('vpn');
+                  setDropdownOpen(false);
+                }}
+              >
+                🔐 VPN
+              </button>
             )}
 
             {!changingPassword && !securityOpen && (
-              <button className="nav-dropdown-item nav-dropdown-logout" type="button" onClick={onLogout} role="menuitem">
+              <button className="nav-dropdown-item nav-dropdown-logout" type="button" onClick={onLogout}>
                 🚪 Выход
               </button>
             )}

@@ -1,9 +1,9 @@
 [Unit]
-Description=Verified Cheese Wheel SQLite backup
+Description=Encrypted off-site Cheese Wheel backup
 Documentation=file:/opt/cheese-wheel/deploy/README-backups.md
-ConditionPathExists=/var/lib/cheese-wheel/cheese_wheel.db
-After=local-fs.target
-OnSuccess=cheese-wheel-offsite-backup.service
+ConditionPathExists=/etc/cheese-wheel/offsite.env
+After=network-online.target
+Wants=network-online.target
 OnFailure=cheese-wheel-backup-alert@%n.service
 
 [Service]
@@ -11,11 +11,11 @@ Type=oneshot
 User=root
 Group=root
 UMask=0077
-Environment=CHEESE_WHEEL_DB=/var/lib/cheese-wheel/cheese_wheel.db
-Environment=CHEESE_WHEEL_UPLOADS=/var/lib/cheese-wheel/uploads
 Environment=CHEESE_WHEEL_BACKUP_DIR=/var/backups/cheese-wheel
-Environment=CHEESE_WHEEL_BACKUP_RETENTION_DAYS=30
-ExecStart=/usr/bin/node /opt/cheese-wheel/scripts/backup.js
+Environment=RESTIC_BIN=/usr/bin/restic
+Environment=RESTIC_CACHE_DIR=/var/cache/cheese-wheel-restic
+EnvironmentFile=/etc/cheese-wheel/offsite.env
+ExecStart=/usr/bin/node /opt/cheese-wheel/scripts/offsite-backup.js
 Nice=10
 IOSchedulingClass=idle
 NoNewPrivileges=true
@@ -36,7 +36,7 @@ RestrictSUIDSGID=true
 RestrictRealtime=true
 LockPersonality=true
 SystemCallArchitectures=native
-CapabilityBoundingSet=CAP_DAC_READ_SEARCH
-IPAddressDeny=any
-ReadOnlyPaths=/var/lib/cheese-wheel
-ReadWritePaths=/var/backups/cheese-wheel
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/var/backups/cheese-wheel
+ReadOnlyPaths=/etc/cheese-wheel
+ReadWritePaths=/var/cache/cheese-wheel-restic

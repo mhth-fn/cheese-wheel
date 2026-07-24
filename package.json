@@ -8,6 +8,8 @@
     "build": "vite build",
     "start": "node server.js",
     "test": "node --test test/*.test.js",
+    "test:integration": "node --test test/api-integration.test.js",
+    "test:browser": "node --test test/browser-smoke.e2e.js",
     "backup": "node scripts/backup.js"
   },
   "dependencies": {
@@ -20,5 +22,8 @@
     "socket.io": "^4.7.2",
     "socket.io-client": "^4.8.3",
     "vite": "^7.3.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.0"
   }
 }

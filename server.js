@@ -1,6 +1,7 @@
 //TODO: декомпозировать файл
 const express = require('express');
 const { createServer } = require('http');
+const fs = require('node:fs');
 const https = require('https');
 const net = require('net');
 const tls = require('tls');
@@ -8,8 +9,20 @@ const { Server } = require('socket.io');
 const Database = require('better-sqlite3');
 const path = require('path');
 const { createAuditLog } = require('./lib/audit-log');
+const { resolveFrontendBuild } = require('./lib/frontend-build');
 const { createPersistentRateLimiter } = require('./lib/persistent-rate-limit');
 
+const testFrontendDistPath = (
+  process.env.NODE_ENV === 'test'
+  && process.env.TEST_FRONTEND_DIST_PATH
+)
+  ? path.resolve(process.env.TEST_FRONTEND_DIST_PATH)
+  : undefined;
+const frontendBuild = resolveFrontendBuild(
+  __dirname,
+  process.env.NODE_ENV,
+  testFrontendDistPath
+);
 const app = express();
 app.set('trust proxy', 'loopback');
 const server = createServer(app);
@@ -449,6 +462,10 @@ async function notifyDiscord(content) {
 // ============ ТОКЕНЫ ============
 const TOKEN_EXPIRY = 30 * 24 * 60 * 60 * 1000; // 30 дней
 const SESSION_COOKIE = 'cheese_session';
+const ALLOW_INSECURE_TEST_COOKIE = (
+  process.env.NODE_ENV === 'test'
+  && process.env.TEST_ALLOW_HTTP_COOKIE === '1'
+);
 
 function createToken(userId, isGuest = false) {
   const token = crypto.randomBytes(32).toString('hex');
@@ -507,7 +524,7 @@ function getRequestToken(req) {
 function setSessionCookie(res, token) {
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: true,
+    secure: !ALLOW_INSECURE_TEST_COOKIE,
     sameSite: 'strict',
     maxAge: TOKEN_EXPIRY,
     path: '/',
@@ -517,7 +534,7 @@ function setSessionCookie(res, token) {
 function clearSessionCookie(res) {
   res.clearCookie(SESSION_COOKIE, {
     httpOnly: true,
-    secure: true,
+    secure: !ALLOW_INSECURE_TEST_COOKIE,
     sameSite: 'strict',
     path: '/',
   });
@@ -631,10 +648,8 @@ app.use('/api', (req, res, next) => {
   res.vary('Cookie');
   next();
 });
-// Serve React build output (run `npm run build` first)
-const fs = require('fs');
-const distPath = path.join(__dirname, 'dist');
-const publicPath = path.join(__dirname, 'public');
+// Serve only the current React build. The retired vanilla SPA in public/ must
+// never become an implicit authentication UI when a deployment misses dist/.
 const uploadsPath = process.env.UPLOADS_PATH
   ? path.resolve(process.env.UPLOADS_PATH)
   : path.join(__dirname, 'uploads');
@@ -654,9 +669,11 @@ app.get('/vpn', (req, res, next) => {
   }
   next();
 });
-app.use(express.static(fs.existsSync(distPath) ? distPath : publicPath, {
-  dotfiles: 'deny',
-}));
+if (frontendBuild.available) {
+  app.use(express.static(frontendBuild.distPath, {
+    dotfiles: 'deny',
+  }));
+}
 
 // База данных
 const dataDir = process.env.DATA_DIR
@@ -1768,6 +1785,21 @@ function rejectFormedCurrentWheelMutation(req, res, next) {
 }
 
 // ============ API ============
+
+app.get('/healthz', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ status: 'ok' });
+});
+
+app.get('/readyz', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    db.prepare('SELECT 1').get();
+    res.json({ status: 'ready' });
+  } catch {
+    res.status(503).json({ status: 'not_ready' });
+  }
+});
 
 // Публичные маршруты: вход, выход, гостевой вход и GET /api/users
 // Всё остальное — через requireAuth
@@ -3695,8 +3727,13 @@ io.on('connection', (socket) => {
 
 // SPA fallback
 app.get('*', (req, res) => {
-  const dir = fs.existsSync(distPath) ? distPath : publicPath;
-  res.sendFile(path.join(dir, 'index.html'));
+  if (!frontendBuild.available) {
+    res.set('Cache-Control', 'no-store');
+    return res.status(503).type('text/plain').send(
+      'Frontend build is unavailable. Run `npm run build` or use the Vite development server.'
+    );
+  }
+  return res.sendFile(frontendBuild.indexPath);
 });
 
 app.use((error, req, res, next) => {

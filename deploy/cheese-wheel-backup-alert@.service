@@ -1,0 +1,34 @@
+[Unit]
+Description=Notify about failed Cheese Wheel backup unit %i
+Documentation=file:/opt/cheese-wheel/deploy/README-backups.md
+ConditionPathExists=/etc/cheese-wheel/backup-alert.env
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=1h
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+User=cheese-wheel
+Group=cheese-wheel
+EnvironmentFile=/etc/cheese-wheel/backup-alert.env
+ExecStart=/usr/bin/node /opt/cheese-wheel/scripts/backup-alert.js %i
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

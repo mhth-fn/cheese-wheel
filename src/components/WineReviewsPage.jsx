@@ -22,7 +22,7 @@ function getRecommendInfo(val) {
   return { cls: 'meh', label: '😐 Сойдёт' };
 }
 
-export default function WineReviewsPage() {
+export default function WineReviewsPage({ embedded = false }) {
   const { currentUser, isGuest, isAdmin, showToast, socket } = useApp();
   const [reviews, setReviews] = useState([]);
   const [formTitle, setFormTitle]   = useState('');
@@ -58,6 +58,7 @@ export default function WineReviewsPage() {
       socket.off('wine-review-added', onAdd);
       socket.off('wine-review-deleted', onDelete);
       socket.off('wine-review-updated', onUpdate);
+      socket.off('review-reaction-updated', onReaction);
     };
   }, [socket]);
 
@@ -145,20 +146,25 @@ export default function WineReviewsPage() {
 
   return (
     <div className="reviews-page">
-      <h2 className="reviews-title">🍷 Обзоры на вино</h2>
+      {!embedded && <h2 className="reviews-title">🍷 Обзоры на вино</h2>}
 
       {!isGuest && currentUser && (
         <form className="review-form" onSubmit={handleSubmit}>
-          <input
-            className="review-form-input"
-            type="text"
-            placeholder="Название вина *"
-            value={formTitle}
-            onChange={e => setFormTitle(e.target.value)}
-            maxLength={200}
-          />
+          <label className="review-form-field">
+            <span>Название вина *</span>
+            <input
+              className="review-form-input"
+              type="text"
+              placeholder="Например, Chianti Classico"
+              value={formTitle}
+              onChange={e => setFormTitle(e.target.value)}
+              maxLength={200}
+              required
+            />
+          </label>
 
-          <div className="wine-meta-row">
+          <fieldset className="review-choice-fieldset wine-meta-row">
+            <legend>Тип вина</legend>
             <div className="wine-type-toggle">
               {WINE_TYPES.map(t => (
                 <button
@@ -166,71 +172,88 @@ export default function WineReviewsPage() {
                   type="button"
                   className={`wine-type-btn ${wineType === t.value ? 'active' : ''}`}
                   onClick={() => setWineType(prev => prev === t.value ? '' : t.value)}
+                  aria-pressed={wineType === t.value}
                 >
                   {t.label}
                 </button>
               ))}
             </div>
-          </div>
+          </fieldset>
 
           <div className="wine-fields-row">
-            <input
-              className="review-form-input wine-field"
-              type="text"
-              placeholder="Сорт винограда"
-              value={grape}
-              onChange={e => setGrape(e.target.value)}
-              maxLength={100}
-            />
-            <input
-              className="review-form-input wine-field"
-              type="text"
-              placeholder="Страна / регион"
-              value={region}
-              onChange={e => setRegion(e.target.value)}
-              maxLength={100}
-            />
-            <input
-              className="review-form-input wine-field wine-field-short"
-              type="number"
-              placeholder="Год урожая"
-              value={vintage}
-              onChange={e => setVintage(e.target.value)}
-              min={1900}
-              max={2100}
-            />
-            <input
-              className="review-form-input wine-field wine-field-short"
-              type="text"
-              placeholder="Цена"
-              value={price}
-              onChange={e => setPrice(e.target.value)}
-              maxLength={50}
-            />
+            <label className="review-form-field wine-field">
+              <span>Сорт винограда</span>
+              <input
+                className="review-form-input"
+                type="text"
+                value={grape}
+                onChange={e => setGrape(e.target.value)}
+                maxLength={100}
+              />
+            </label>
+            <label className="review-form-field wine-field">
+              <span>Страна или регион</span>
+              <input
+                className="review-form-input"
+                type="text"
+                value={region}
+                onChange={e => setRegion(e.target.value)}
+                maxLength={100}
+              />
+            </label>
+            <label className="review-form-field wine-field wine-field-short">
+              <span>Год урожая</span>
+              <input
+                className="review-form-input"
+                type="number"
+                value={vintage}
+                onChange={e => setVintage(e.target.value)}
+                min={1900}
+                max={2100}
+              />
+            </label>
+            <label className="review-form-field wine-field wine-field-short">
+              <span>Цена</span>
+              <input
+                className="review-form-input"
+                type="text"
+                value={price}
+                onChange={e => setPrice(e.target.value)}
+                maxLength={50}
+              />
+            </label>
           </div>
 
-          <textarea
-            className="review-form-textarea"
-            placeholder="Ваш обзор... *"
-            value={formContent}
-            onChange={e => setFormContent(e.target.value)}
-            maxLength={5000}
-            rows={4}
-          />
+          <label className="review-form-field">
+            <span>Текст обзора *</span>
+            <textarea
+              className="review-form-textarea"
+              placeholder="Аромат, вкус и общее впечатление"
+              value={formContent}
+              onChange={e => setFormContent(e.target.value)}
+              maxLength={5000}
+              rows={4}
+              required
+            />
+          </label>
 
           <div className="review-form-footer">
-            <div className="recommend-toggle-group">
-              {RECOMMEND_OPTIONS.map(opt => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  className={`review-recommend-toggle ${opt.cls}${recommend === opt.value ? ' active' : ''}`}
-                  onClick={() => setRecommend(opt.value)}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+            <fieldset className="review-choice-fieldset">
+              <legend>Рекомендация</legend>
+              <div className="recommend-toggle-group">
+                {RECOMMEND_OPTIONS.map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className={`review-recommend-toggle ${opt.cls}${recommend === opt.value ? ' active' : ''}`}
+                    onClick={() => setRecommend(opt.value)}
+                    aria-pressed={recommend === opt.value}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
             <button
               type="submit"
               className="review-submit-btn"
@@ -242,42 +265,77 @@ export default function WineReviewsPage() {
         </form>
       )}
 
+      {isGuest && (
+        <div className="review-readonly-note">
+          В гостевом режиме обзоры можно читать. Чтобы написать свой, войдите как участник.
+        </div>
+      )}
+
       {reviews.length === 0 && (
         <p className="reviews-empty">Обзоров пока нет. Будьте первым!</p>
       )}
 
       <div className="reviews-list">
         {reviews.map(r => (
-          <div key={r.id} className="review-card">
+          <article key={r.id} className="review-card">
             {editingId === r.id ? (
               <div className="review-edit-form">
-                <input className="review-form-input" value={editFields.title} onChange={ef('title')} maxLength={200} placeholder="Название" />
-                <div className="wine-meta-row">
+                <label className="review-form-field">
+                  <span>Название вина</span>
+                  <input
+                    className="review-form-input"
+                    value={editFields.title}
+                    onChange={ef('title')}
+                    maxLength={200}
+                  />
+                </label>
+                <fieldset className="review-choice-fieldset wine-meta-row">
+                  <legend>Тип вина</legend>
                   <div className="wine-type-toggle">
                     {WINE_TYPES.map(t => (
                       <button key={t.value} type="button"
                         className={`wine-type-btn ${editFields.wineType === t.value ? 'active' : ''}`}
                         onClick={() => setEditFields(prev => ({ ...prev, wineType: prev.wineType === t.value ? '' : t.value }))}
+                        aria-pressed={editFields.wineType === t.value}
                       >{t.label}</button>
                     ))}
                   </div>
-                </div>
+                </fieldset>
                 <div className="wine-fields-row">
-                  <input className="review-form-input wine-field" value={editFields.grape} onChange={ef('grape')} maxLength={100} placeholder="Сорт винограда" />
-                  <input className="review-form-input wine-field" value={editFields.region} onChange={ef('region')} maxLength={100} placeholder="Страна / регион" />
-                  <input className="review-form-input wine-field wine-field-short" type="number" value={editFields.vintage} onChange={ef('vintage')} min={1900} max={2100} placeholder="Год урожая" />
-                  <input className="review-form-input wine-field wine-field-short" value={editFields.price} onChange={ef('price')} maxLength={50} placeholder="Цена" />
+                  <label className="review-form-field wine-field">
+                    <span>Сорт винограда</span>
+                    <input className="review-form-input" value={editFields.grape} onChange={ef('grape')} maxLength={100} />
+                  </label>
+                  <label className="review-form-field wine-field">
+                    <span>Страна или регион</span>
+                    <input className="review-form-input" value={editFields.region} onChange={ef('region')} maxLength={100} />
+                  </label>
+                  <label className="review-form-field wine-field wine-field-short">
+                    <span>Год урожая</span>
+                    <input className="review-form-input" type="number" value={editFields.vintage} onChange={ef('vintage')} min={1900} max={2100} />
+                  </label>
+                  <label className="review-form-field wine-field wine-field-short">
+                    <span>Цена</span>
+                    <input className="review-form-input" value={editFields.price} onChange={ef('price')} maxLength={50} />
+                  </label>
                 </div>
-                <textarea className="review-form-textarea" value={editFields.content} onChange={ef('content')} maxLength={5000} rows={4} />
+                <label className="review-form-field">
+                  <span>Текст обзора</span>
+                  <textarea className="review-form-textarea" value={editFields.content} onChange={ef('content')} maxLength={5000} rows={4} />
+                </label>
                 <div className="review-form-footer">
-                  <div className="recommend-toggle-group">
-                    {RECOMMEND_OPTIONS.map(opt => (
-                      <button key={opt.value} type="button"
-                        className={`review-recommend-toggle ${opt.cls}${editFields.recommend === opt.value ? ' active' : ''}`}
-                        onClick={() => setEditFields(prev => ({ ...prev, recommend: opt.value }))}
-                      >{opt.label}</button>
-                    ))}
-                  </div>
+                  <fieldset className="review-choice-fieldset">
+                    <legend>Рекомендация</legend>
+                    <div className="recommend-toggle-group">
+                      {RECOMMEND_OPTIONS.map(opt => (
+                        <button key={opt.value} type="button"
+                          className={`review-recommend-toggle ${opt.cls}${editFields.recommend === opt.value ? ' active' : ''}`}
+                          onClick={() => setEditFields(prev => ({ ...prev, recommend: opt.value }))}
+                          aria-pressed={editFields.recommend === opt.value}
+                        >{opt.label}</button>
+                      ))}
+                    </div>
+                  </fieldset>
                   <button type="button" className="review-edit-cancel" onClick={() => setEditingId(null)}>Отмена</button>
                   <button type="button" className="review-submit-btn" onClick={() => handleEditSave(r.id)}>Сохранить</button>
                 </div>
@@ -292,8 +350,24 @@ export default function WineReviewsPage() {
                   </span>
                   {!isGuest && (currentUser?.id === r.user_id || isAdmin) && (
                     <>
-                      <button className="review-edit-btn" onClick={() => startEdit(r)} title="Редактировать">✏️</button>
-                      <button className="review-delete-btn" onClick={() => handleDelete(r.id)} title="Удалить">🗑️</button>
+                      <button
+                        className="review-edit-btn"
+                        type="button"
+                        onClick={() => startEdit(r)}
+                        title="Редактировать"
+                        aria-label={`Редактировать обзор на ${r.title}`}
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        className="review-delete-btn"
+                        type="button"
+                        onClick={() => handleDelete(r.id)}
+                        title="Удалить"
+                        aria-label={`Удалить обзор на ${r.title}`}
+                      >
+                        🗑️
+                      </button>
                     </>
                   )}
                 </div>
@@ -314,21 +388,27 @@ export default function WineReviewsPage() {
                   <div className="review-reactions">
                     <button
                       className={`reaction-btn like ${(r.reactions || []).find(x => x.user_id === currentUser.id)?.reaction === 1 ? 'active' : ''}`}
+                      type="button"
                       onClick={() => handleReaction(r.id, 1)}
                       title="Нравится"
                       disabled={currentUser.id === r.user_id}
+                      aria-label={`Нравится обзор на ${r.title}, ${r.likes || 0}`}
+                      aria-pressed={(r.reactions || []).find(x => x.user_id === currentUser.id)?.reaction === 1}
                     >👍 {r.likes || 0}</button>
                     <button
                       className={`reaction-btn dislike ${(r.reactions || []).find(x => x.user_id === currentUser.id)?.reaction === -1 ? 'active' : ''}`}
+                      type="button"
                       onClick={() => handleReaction(r.id, -1)}
                       title="Не нравится"
                       disabled={currentUser.id === r.user_id}
+                      aria-label={`Не нравится обзор на ${r.title}, ${r.dislikes || 0}`}
+                      aria-pressed={(r.reactions || []).find(x => x.user_id === currentUser.id)?.reaction === -1}
                     >👎 {r.dislikes || 0}</button>
                   </div>
                 )}
               </>
             )}
-          </div>
+          </article>
         ))}
       </div>
     </div>

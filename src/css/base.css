@@ -4,10 +4,10 @@
   --color-surface: #fffdf3;
   --color-surface-muted: #fff7d8;
   --color-surface-hover: #fff4c5;
-  --color-primary: #d9862f;
-  --color-primary-hover: #e49538;
-  --color-primary-active: #c87526;
-  --color-primary-border: #a96322;
+  --color-primary: #a44a0f;
+  --color-primary-hover: #913c09;
+  --color-primary-active: #7d3307;
+  --color-primary-border: #713006;
   --color-text: #4f3b0d;
   --color-text-muted: #7c6841;
   --color-border: #d7b243;
@@ -53,8 +53,8 @@
   --shadow: rgba(79, 59, 13, 0.18);
 
   --theme-bg: linear-gradient(180deg, #f8dc78 0%, var(--color-background) 100%);
-  --theme-btn: linear-gradient(180deg, #e99a3e 0%, var(--color-primary) 100%);
-  --theme-btn-hover: linear-gradient(180deg, #f0a84c 0%, var(--color-primary-hover) 100%);
+  --theme-btn: linear-gradient(180deg, #b65b18 0%, var(--color-primary) 100%);
+  --theme-btn-hover: linear-gradient(180deg, #a95012 0%, var(--color-primary-hover) 100%);
   --theme-btn-active: linear-gradient(180deg, var(--color-primary) 0%, var(--color-primary-active) 100%);
   --theme-btn-border: var(--color-primary-border);
   --theme-btn-shadow: var(--color-primary-border);
@@ -155,6 +155,23 @@ textarea:disabled {
 
 .page.active {
   display: block;
+}
+
+.page-loading {
+  display: flex;
+  min-height: 220px;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.page-loading .skeleton {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
 }
 
 .surface {
