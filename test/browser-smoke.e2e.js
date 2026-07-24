@@ -110,12 +110,24 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   );
   const cardBox = await page.locator('.watched-movie-card').first().boundingBox();
   const connectionBox = await page.locator('.connection-status').boundingBox();
-  assert.ok(cardBox && connectionBox, 'mobile cards and connection status must be visible');
+  const bottomNavBox = await page.locator('.nav-pages').boundingBox();
+  assert.ok(
+    cardBox && connectionBox && bottomNavBox,
+    'mobile cards, navigation and connection status must be visible'
+  );
   assert.equal(
     connectionBox.y < cardBox.y + cardBox.height
       && connectionBox.y + connectionBox.height > cardBox.y,
     false,
     'connection status must not overlap a movie card'
+  );
+  assert.equal(
+    connectionBox.x < bottomNavBox.x + bottomNavBox.width
+      && connectionBox.x + connectionBox.width > bottomNavBox.x
+      && connectionBox.y < bottomNavBox.y + bottomNavBox.height
+      && connectionBox.y + connectionBox.height > bottomNavBox.y,
+    false,
+    'connection status must not overlap the mobile navigation'
   );
 
   await page.locator('.watched-card-title').first().click();
