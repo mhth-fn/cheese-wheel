@@ -306,7 +306,7 @@
   user-select: all;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 720px), (max-width: 960px) and (max-height: 560px) {
   .nav {
     justify-content: flex-end;
     min-height: 48px;
@@ -333,6 +333,7 @@
     flex-direction: column;
     gap: 1px;
     font-size: 0.78rem;
+    line-height: 1.2;
   }
 
   .nav-btn > span:first-child {

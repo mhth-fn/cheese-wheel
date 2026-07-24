@@ -1,4 +1,6 @@
 .reviews-page {
+  width: 100%;
+  min-width: 0;
   max-width: 800px;
   margin: 0 auto;
   padding: 20px 16px 40px;
@@ -36,7 +38,15 @@
 
 .reviews-journal {
   width: min(100%, 840px);
+  min-width: 0;
   margin: 0 auto;
+}
+
+.reviews-journal-panel,
+.movie-reviews-section {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .reviews-journal-header {
@@ -124,6 +134,9 @@
 
 /* Form */
 .review-form {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   background: rgba(255,255,255,0.7);
   border: 2px solid var(--cheese-dark);
   border-radius: 12px;
@@ -135,7 +148,10 @@
 }
 
 .review-form-input {
+  display: block;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   padding: 8px 12px;
   border: 1.5px solid var(--cheese-dark);
   border-radius: 8px;
@@ -187,9 +203,10 @@
 
 .review-link-choice {
   display: inline-flex;
-  width: max-content;
+  width: 100%;
+  min-width: 0;
   max-width: 100%;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-2);
   color: var(--color-success);
   font-size: 0.8rem;
@@ -198,9 +215,15 @@
 }
 
 .review-link-choice input {
+  flex: 0 0 18px;
   width: 18px;
   height: 18px;
   accent-color: var(--color-success);
+}
+
+.review-link-choice span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .review-match-choice {
@@ -211,7 +234,10 @@
 }
 
 .review-form-textarea {
+  display: block;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   padding: 8px 12px;
   border: 1.5px solid var(--cheese-dark);
   border-radius: 8px;

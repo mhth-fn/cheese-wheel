@@ -279,7 +279,7 @@ textarea:disabled {
   to { transform: translateX(340%); }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 720px), (max-width: 960px) and (max-height: 560px) {
   body {
     background:
       radial-gradient(circle 25px at 5% 18%, var(--cheese-hole) 48%, transparent 52%),

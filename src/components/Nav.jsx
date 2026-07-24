@@ -53,6 +53,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
       active: activePage === 'movie-reviews' || activePage === 'wine-reviews',
     },
     { key: 'games', icon: '🎮', label: 'Игры' },
+    ...(!isGuest ? [{ key: 'vpn', icon: '🔐', label: 'VPN' }] : []),
   ];
 
   const resetSubmenus = useCallback(() => {
@@ -505,19 +506,6 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
 
                 {securityError && <p className="nav-pwd-error" role="alert">{securityError}</p>}
               </div>
-            )}
-
-            {!isGuest && !changingPassword && !securityOpen && (
-              <button
-                className="nav-dropdown-item"
-                type="button"
-                onClick={() => {
-                  onNavigate('vpn');
-                  setDropdownOpen(false);
-                }}
-              >
-                🔐 VPN
-              </button>
             )}
 
             {!changingPassword && !securityOpen && (

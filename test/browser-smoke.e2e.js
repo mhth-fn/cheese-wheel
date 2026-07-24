@@ -94,9 +94,7 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   await page.locator('nav[aria-label="Основные разделы"]').waitFor();
   const profileButton = page.getByRole('button', { name: 'Меню пользователя Сергей' });
   await profileButton.waitFor();
-  await profileButton.click();
-  await page.getByRole('button', { name: /VPN/ }).waitFor();
-  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'VPN', exact: true }).waitFor();
 
   await page.getByRole('button', { name: 'Просмотренные', exact: true }).click();
   await page.waitForURL(`${instance.baseUrl}/watched`);
@@ -144,6 +142,98 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   await page.getByRole('button', { name: 'Обзоры', exact: true }).click();
   await page.waitForURL(`${instance.baseUrl}/reviews`);
   await page.getByRole('heading', { name: 'Обзоры', exact: true }).waitFor();
+  const titleInput = page.getByLabel('Название фильма *');
+  const reviewForm = page.locator('.review-form');
+  await titleInput.waitFor();
+  await titleInput.fill('Очень длинное название фильма, которое должно оставаться внутри формы');
+
+  const assertReviewFormFits = async orientation => {
+    const layout = await page.evaluate(() => {
+      const form = document.querySelector('.review-form');
+      const input = document.querySelector('#movie-review-title');
+      const nav = document.querySelector('.nav-pages');
+      const profile = document.querySelector('.nav-user');
+      const connection = document.querySelector('.connection-status');
+      const formRect = form?.getBoundingClientRect();
+      const inputRect = input?.getBoundingClientRect();
+      const navRect = nav?.getBoundingClientRect();
+      const profileRect = profile?.getBoundingClientRect();
+      const connectionRect = connection?.getBoundingClientRect();
+      return {
+        viewportWidth: window.innerWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        formWidth: form?.clientWidth,
+        formContentWidth: form?.scrollWidth,
+        formRect: formRect && {
+          left: formRect.left,
+          right: formRect.right,
+        },
+        inputRect: inputRect && {
+          left: inputRect.left,
+          right: inputRect.right,
+        },
+        navPosition: nav ? getComputedStyle(nav).position : null,
+        navRect: navRect && {
+          left: navRect.left,
+          right: navRect.right,
+          top: navRect.top,
+          bottom: navRect.bottom,
+        },
+        profileRect: profileRect && {
+          left: profileRect.left,
+          right: profileRect.right,
+          top: profileRect.top,
+          bottom: profileRect.bottom,
+        },
+        connectionRect: connectionRect && {
+          left: connectionRect.left,
+          right: connectionRect.right,
+          top: connectionRect.top,
+          bottom: connectionRect.bottom,
+        },
+      };
+    });
+    assert.equal(
+      layout.documentWidth <= layout.viewportWidth,
+      true,
+      `${orientation}: page must not overflow horizontally`
+    );
+    assert.ok(layout.formRect && layout.inputRect, `${orientation}: review form must be visible`);
+    assert.ok(
+      layout.inputRect.left >= layout.formRect.left - 1
+        && layout.inputRect.right <= layout.formRect.right + 1,
+      `${orientation}: movie title input must stay inside the form`
+    );
+    assert.ok(
+      layout.formContentWidth <= layout.formWidth,
+      `${orientation}: review form contents must not overflow`
+    );
+    assert.equal(layout.navPosition, 'fixed', `${orientation}: phone navigation must stay mobile`);
+    assert.equal(
+      layout.navRect.left < layout.profileRect.right
+        && layout.navRect.right > layout.profileRect.left
+        && layout.navRect.top < layout.profileRect.bottom
+        && layout.navRect.bottom > layout.profileRect.top,
+      false,
+      `${orientation}: navigation must not cover the profile`
+    );
+    assert.equal(
+      layout.navRect.left < layout.connectionRect.right
+        && layout.navRect.right > layout.connectionRect.left
+        && layout.navRect.top < layout.connectionRect.bottom
+        && layout.navRect.bottom > layout.connectionRect.top,
+      false,
+      `${orientation}: navigation must not cover the connection status`
+    );
+  };
+
+  await assertReviewFormFits('portrait');
+  await page.setViewportSize({ width: 844, height: 390 });
+  await assertReviewFormFits('landscape');
+  await page.getByRole('button', { name: 'VPN', exact: true }).click();
+  await page.waitForURL(`${instance.baseUrl}/vpn`);
+  await page.getByRole('button', { name: 'Обзоры', exact: true }).click();
+  await page.waitForURL(`${instance.baseUrl}/reviews`);
   const wineTab = page.getByRole('tab', { name: 'Вино', exact: true });
   await wineTab.click();
   await page.waitForURL(`${instance.baseUrl}/reviews/wine`);
