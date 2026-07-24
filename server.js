@@ -3,6 +3,7 @@ const express = require('express');
 const { createServer } = require('http');
 const https = require('https');
 const net = require('net');
+const tls = require('tls');
 const { Server } = require('socket.io');
 const Database = require('better-sqlite3');
 const path = require('path');
@@ -72,14 +73,56 @@ function parseXuiJson(value, fallback = {}) {
   }
 }
 
-function requestXui(serverConfig, pathname, options = {}) {
+function openPinnedTlsSocket(serverConfig, url, timeout = 10000) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const socket = tls.connect({
+      host: url.hostname,
+      port: Number(url.port) || 443,
+      servername: net.isIP(url.hostname) ? undefined : url.hostname,
+      rejectUnauthorized: false,
+    });
+
+    const fail = error => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      reject(error);
+    };
+
+    socket.setTimeout(timeout, () => fail(new Error('x-ui TLS handshake timed out')));
+    socket.once('error', fail);
+    socket.once('secureConnect', () => {
+      const expectedFingerprint = normalizeFingerprint(serverConfig.tlsFingerprint);
+      const actualFingerprint = normalizeFingerprint(
+        socket.getPeerCertificate()?.fingerprint256
+      );
+      if (!actualFingerprint || actualFingerprint !== expectedFingerprint) {
+        fail(new Error(`TLS fingerprint mismatch for ${serverConfig.id}`));
+        return;
+      }
+
+      settled = true;
+      socket.setTimeout(0);
+      socket.removeListener('error', fail);
+      resolve(socket);
+    });
+  });
+}
+
+async function requestXui(serverConfig, pathname, options = {}) {
   const url = new URL(pathname, serverConfig.baseUrl);
+  if (url.protocol !== 'https:') {
+    throw new Error(`x-ui URL must use HTTPS for ${serverConfig.id}`);
+  }
   const body = options.body || '';
+  const socket = await openPinnedTlsSocket(serverConfig, url);
 
   return new Promise((resolve, reject) => {
     const req = https.request(url, {
       method: options.method || 'GET',
       agent: false,
+      createConnection: () => socket,
       rejectUnauthorized: false,
       headers: {
         Accept: 'application/json',
@@ -89,16 +132,6 @@ function requestXui(serverConfig, pathname, options = {}) {
       },
       timeout: 10000,
     }, response => {
-      const expectedFingerprint = normalizeFingerprint(serverConfig.tlsFingerprint);
-      const actualFingerprint = normalizeFingerprint(
-        response.socket.getPeerCertificate()?.fingerprint256
-      );
-      if (!actualFingerprint || actualFingerprint !== expectedFingerprint) {
-        response.resume();
-        reject(new Error(`TLS fingerprint mismatch for ${serverConfig.id}`));
-        return;
-      }
-
       let responseBody = '';
       response.setEncoding('utf8');
       response.on('data', chunk => {

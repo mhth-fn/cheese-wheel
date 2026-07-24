@@ -23,7 +23,7 @@ module.exports = {
     env: {
       ...localEnv,
       PORT: 3000,
-      DEFAULT_PASSWORD: 'Cheese$Wheel#2024!',
+      DEFAULT_PASSWORD: process.env.DEFAULT_PASSWORD || localEnv.DEFAULT_PASSWORD || '',
       DISCORD_WEBHOOK_URL: process.env.DISCORD_WEBHOOK_URL || localEnv.DISCORD_WEBHOOK_URL || ''
     }
   }]
