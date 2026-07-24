@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../App';
-import { markWatched } from '../api';
 import CheeseWheel from './CheeseWheel';
 
 export default function WheelPage() {
@@ -96,28 +95,18 @@ export default function WheelPage() {
     socket.emit('spin-wheel', { spinDuration: duration });
   };
 
-  const handleSpinComplete = useCallback(async (winner) => {
+  const handleSpinComplete = useCallback((winner) => {
     setIsSpinning(false);
     setWheelIsSpinning(false);
     setSecondsLeft(0);
-    const wasRemote = isRemoteSpinRef.current;
     isRemoteSpinRef.current = false;
     if (!winner) return;
 
+    // The server owns the spin result and writes it to watched history.
+    // Clients only render the shared result, so an arbitrary movie id cannot
+    // be marked as watched from the browser.
     setWinner(winner);
-    if (!wasRemote) {
-      try {
-        const response = await markWatched(winner.id);
-        if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.error || 'Не удалось сохранить результат');
-        }
-      } catch (error) {
-        showToast(error.message || 'Ошибка сохранения результата', 'error');
-        await refreshWheelData();
-      }
-    }
-  }, [refreshWheelData, setWheelIsSpinning, setWinner, showToast]);
+  }, [setWheelIsSpinning, setWinner]);
 
   const spinDisabled = (
     isGuest ||

@@ -27,7 +27,6 @@ module.exports = {
       NODE_ENV: 'production',
       HOST: '127.0.0.1',
       APP_ORIGIN: 'https://cheese-wheel.ru',
-      ADMIN_USER_ID: '2',
       DATA_DIR: '/var/lib/cheese-wheel',
       UPLOADS_PATH: '/var/lib/cheese-wheel/uploads',
       PORT: 3000,

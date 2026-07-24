@@ -26,6 +26,7 @@ export default function DrawerPanel({
     users,
     currentUser,
     isGuest,
+    isAdmin,
     spinDuration,
     setSpinDuration,
     addEnabled,
@@ -48,6 +49,7 @@ export default function DrawerPanel({
   const [confirmImageDelete, setConfirmImageDelete] = useState(false);
   const fileRef = useRef(null);
   const dialogRef = useDialogA11y(open, onClose);
+  const tabs = isAdmin ? TABS : TABS.filter(tab => tab.key !== 'settings');
 
   const displayedCurrentMovies = wheelStatus.formed
     ? (wheelStatus.round_movies || wheelStatus.movies)
@@ -62,7 +64,11 @@ export default function DrawerPanel({
   const currentUserMovie = primaryMovies.get(currentUser?.id);
   const currentUserNextMovie = nextMovies.find(movie => movie.added_by === currentUser?.id);
   const extraMovies = displayedCurrentMovies.filter(movie => primaryMovies.get(movie.added_by)?.id !== movie.id);
-  const canManageMovie = movie => !isGuest && Boolean(movie) && movie.added_by === currentUser?.id;
+  const canManageMovie = movie => (
+    !isGuest
+    && Boolean(movie)
+    && (movie.added_by === currentUser?.id || isAdmin)
+  );
   const canManageCurrentMovie = movie => !wheelStatus.formed && canManageMovie(movie);
 
   const handleCurrentAdd = async event => {
@@ -199,7 +205,7 @@ export default function DrawerPanel({
         </header>
 
         <div className="wm-tabs" role="tablist" aria-label="Разделы настроек">
-          {TABS.map(tab => {
+          {tabs.map(tab => {
             const count = tab.key === 'participants'
               ? `${readyUsers.length}/${users.length}`
               : tab.key === 'next'
@@ -228,7 +234,7 @@ export default function DrawerPanel({
               <div className="wm-notice" role="status">Состав заблокирован до остановки колеса.</div>
             )}
 
-            {!wheelStatus.formed && (
+            {!wheelStatus.formed && isAdmin && (
               <section className="wm-formation">
                 <p>Проверьте выборы участников и сформируйте колесо для этого раунда.</p>
                 <button
@@ -240,6 +246,11 @@ export default function DrawerPanel({
                   {forming ? 'Формируем…' : 'Сформировать колесо'}
                 </button>
               </section>
+            )}
+            {!wheelStatus.formed && !isAdmin && (
+              <div className="wm-notice" role="status">
+                Когда все выберут фильмы, администратор сформирует колесо.
+              </div>
             )}
 
             {!wheelStatus.formed && !isGuest && addEnabled && !currentUserMovie && (
@@ -394,7 +405,7 @@ export default function DrawerPanel({
             )}
             <p className="wm-hint">Здесь каждый участник выбирает один фильм для следующего раунда.</p>
 
-            {wheelStatus.formed && !isGuest && (
+            {wheelStatus.formed && isAdmin && (
               <section className="wm-next-cycle">
                 <p>Когда список будет готов, замените им текущее колесо.</p>
                 <button
@@ -474,7 +485,7 @@ export default function DrawerPanel({
           </div>
         )}
 
-        {activeTab === 'settings' && (
+        {activeTab === 'settings' && isAdmin && (
           <div className="wm-settings" role="tabpanel">
             <section className="wm-settings-block">
               <div className="wm-settings-heading">

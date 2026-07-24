@@ -1,0 +1,13 @@
+[Unit]
+Description=Run Cheese Wheel verified backup every six hours
+
+[Timer]
+OnCalendar=*-*-* 00,06,12,18:17:00 UTC
+RandomizedDelaySec=15m
+Persistent=true
+AccuracySec=1m
+Unit=cheese-wheel-backup.service
+
+[Install]
+WantedBy=timers.target
+

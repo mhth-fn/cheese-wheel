@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, createContext, useContext } f
 import { io } from 'socket.io-client';
 import {
   fetchUsers,
+  fetchAuthSession,
   fetchSettings,
   fetchTheme,
   fetchCenterImage,
@@ -41,6 +42,44 @@ const BROWSER_THEME_COLORS = {
   newyear: '#1a472a',
   spring: '#e8f5e9',
 };
+
+function pageFromLocation() {
+  if (location.pathname === '/watched') return 'watched';
+  if (location.pathname === '/games') return 'games';
+  if (location.pathname === '/vpn') return 'vpn';
+  if (location.pathname === '/wine-reviews') return 'wine-reviews';
+  if (location.pathname === '/movie-reviews') return 'movie-reviews';
+  return 'wheel';
+}
+
+function normalizeServerSession(data, users) {
+  if (!data || data.authenticated === false) return null;
+  const isGuest = Boolean(data.isGuest ?? data.is_guest ?? data.guest);
+  if (isGuest) return { isGuest: true, user: null };
+
+  const rawUser = data.user || (
+    data.user_id || data.userId
+      ? {
+          id: data.user_id || data.userId,
+          name: data.name || data.user_name,
+          role: data.role,
+        }
+      : null
+  );
+  const userId = Number(rawUser?.id);
+  if (!Number.isInteger(userId)) return null;
+  const listedUser = users.find(user => Number(user.id) === userId);
+  return {
+    isGuest: false,
+    user: {
+      ...(listedUser || {}),
+      ...rawUser,
+      id: userId,
+      name: rawUser.name || listedUser?.name || 'Участник',
+      role: rawUser.role || 'member',
+    },
+  };
+}
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -87,6 +126,41 @@ export default function App() {
   }, []);
 
   const isLoggedIn = currentUser !== null || isGuest;
+  const isAdmin = currentUser?.role === 'admin';
+
+  const refreshSession = useCallback(async () => {
+    const response = await fetchAuthSession();
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        setCurrentUser(null);
+        setIsGuest(false);
+        localStorage.removeItem('cheeseWheelSession');
+        localStorage.removeItem('cheeseWheelToken');
+        return null;
+      }
+      throw new Error('Не удалось проверить сессию');
+    }
+
+    const data = await response.json();
+    const session = normalizeServerSession(data, users);
+    if (!session) {
+      setCurrentUser(null);
+      setIsGuest(false);
+      localStorage.removeItem('cheeseWheelSession');
+      localStorage.removeItem('cheeseWheelToken');
+      return null;
+    }
+
+    setCurrentUser(session.user);
+    setIsGuest(session.isGuest);
+    localStorage.setItem(
+      'cheeseWheelSession',
+      JSON.stringify(session.isGuest ? { active: true, isGuest: true } : { active: true })
+    );
+    // Старый Bearer-токен нужен только для однократного переноса сессии в HttpOnly cookie.
+    localStorage.removeItem('cheeseWheelToken');
+    return session;
+  }, [users]);
 
   const refreshWheelData = useCallback(async () => {
     setWheelStatusLoadState('loading');
@@ -112,9 +186,7 @@ export default function App() {
   useEffect(() => {
     const socket = io({
       autoConnect: false,
-      auth: (callback) => {
-        callback({ token: localStorage.getItem('cheeseWheelToken') || undefined });
-      },
+      auth: {},
     });
     socketRef.current = socket;
 
@@ -173,6 +245,13 @@ export default function App() {
       setWheelStatus(status);
       setWheelStatusLoadState('ready');
     };
+    const onUserRoleChanged = ({ user_id: userId, role }) => {
+      setCurrentUser(previous => (
+        previous && Number(previous.id) === Number(userId)
+          ? { ...previous, role: role === 'admin' ? 'admin' : 'member' }
+          : previous
+      ));
+    };
 
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
@@ -183,6 +262,7 @@ export default function App() {
     socket.on('movie-watched', onMovieWatched);
     socket.on('movie-updated', onMovieUpdated);
     socket.on('wheel-status-changed', onWheelStatusChanged);
+    socket.on('user-role-changed', onUserRoleChanged);
     socket.on('theme-changed', (data) => setThemeState(data.theme));
     socket.on('settings-changed', (settings) => {
       if (settings.spin_duration !== undefined) setSpinDuration(settings.spin_duration);
@@ -227,6 +307,7 @@ export default function App() {
       socket.off('movie-watched', onMovieWatched);
       socket.off('movie-updated', onMovieUpdated);
       socket.off('wheel-status-changed', onWheelStatusChanged);
+      socket.off('user-role-changed', onUserRoleChanged);
       socket.off('next-movie-added', onNextMovieAdded);
       socket.off('next-movie-updated', onNextMovieUpdated);
       socket.disconnect();
@@ -237,9 +318,7 @@ export default function App() {
     const socket = socketRef.current;
     if (!socket) return;
     if (isLoggedIn) {
-      socket.auth = callback => {
-        callback({ token: localStorage.getItem('cheeseWheelToken') || undefined });
-      };
+      socket.auth = {};
       setConnectionState('connecting');
       if (!socket.connected) socket.connect();
     } else {
@@ -258,7 +337,7 @@ export default function App() {
   useEffect(() => {
     const socket = socketRef.current;
     if (!socket || !currentUser || !connected) return;
-    socket.emit('set-user', { userId: currentUser.id, userName: currentUser.name });
+    socket.emit('set-user');
   }, [currentUser, connected]);
 
   // Initial data load
@@ -295,55 +374,34 @@ export default function App() {
     })();
   }, []);
 
-  // Session restore
+  // Session restore. Local storage is only a display hint; identity and role always
+  // come from the server-side HttpOnly session.
   useEffect(() => {
-    if (users.length === 0) return;
-    const saved = localStorage.getItem('cheeseWheelSession');
-    const legacyToken = localStorage.getItem('cheeseWheelToken');
-    if (saved) {
-      let session;
+    if (usersLoadState !== 'ready') return;
+    let cancelled = false;
+
+    (async () => {
       try {
-        session = JSON.parse(saved);
-      } catch (e) {
-        localStorage.removeItem('cheeseWheelSession');
-        localStorage.removeItem('cheeseWheelToken');
-        setSessionChecked(true);
-        return;
-      }
-      const urlPage = location.pathname === '/watched' ? 'watched'
-        : location.pathname === '/games' ? 'games'
-        : location.pathname === '/vpn' ? 'vpn'
-        : location.pathname === '/wine-reviews' ? 'wine-reviews'
-        : location.pathname === '/movie-reviews' ? 'movie-reviews'
-        : 'wheel';
-      const applySession = () => {
-        if (session.isGuest) {
-          setIsGuest(true);
-          setPage(urlPage === 'vpn' ? 'wheel' : urlPage);
-          if (urlPage === 'vpn') history.replaceState({ page: 'wheel' }, '', '/');
-        } else if (session.userId) {
-          const user = users.find(u => u.id === session.userId);
-          if (user) { setCurrentUser(user); setPage(urlPage); }
+        const session = await refreshSession();
+        if (cancelled || !session) return;
+        const requestedPage = pageFromLocation();
+        if (session.isGuest && requestedPage === 'vpn') {
+          history.replaceState({ page: 'wheel' }, '', '/');
+          setPage('wheel');
+        } else {
+          setPage(requestedPage);
         }
-      };
-      fetch('/api/settings', {
-        headers: legacyToken ? { 'Authorization': `Bearer ${legacyToken}` } : {},
-      })
-        .then(res => {
-          if (!res.ok) {
-            localStorage.removeItem('cheeseWheelSession');
-            localStorage.removeItem('cheeseWheelToken');
-          } else {
-            localStorage.removeItem('cheeseWheelToken');
-            applySession();
-          }
-        })
-        .catch(() => applySession()) // сервер недоступен — всё равно восстанавливаем
-        .finally(() => setSessionChecked(true));
-      return;
-    }
-    setSessionChecked(true);
-  }, [users]);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        if (!cancelled) setSessionChecked(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshSession, usersLoadState]);
 
   // Apply theme class + cache
   useEffect(() => {
@@ -388,29 +446,33 @@ export default function App() {
     return () => window.removeEventListener('popstate', handler);
   }, [isLoggedIn, isGuest, currentUser]);
 
-  const login = useCallback((user) => {
-    setCurrentUser(user);
-    setIsGuest(false);
-    localStorage.setItem('cheeseWheelSession', JSON.stringify({ userId: user.id }));
-    localStorage.removeItem('cheeseWheelToken');
-    setPage('wheel');
-  }, []);
+  const login = useCallback(async () => {
+    try {
+      const session = await refreshSession();
+      if (!session?.user || session.isGuest) return false;
+      setPage('wheel');
+      return true;
+    } catch (error) {
+      console.error(error);
+      showToast('Вход выполнен, но сессию не удалось проверить', 'error');
+      return false;
+    }
+  }, [refreshSession, showToast]);
 
   const loginGuest = useCallback(async () => {
     try {
       const res = await postGuestAuth();
-      if (!res.ok) throw new Error('Не удалось войти в гостевой режим');
-      localStorage.removeItem('cheeseWheelToken');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Не удалось войти в гостевой режим');
+      const session = await refreshSession();
+      if (!session?.isGuest) throw new Error('Не удалось проверить гостевую сессию');
     } catch (e) {
       console.error(e);
-      showToast('Не удалось войти в гостевой режим', 'error');
+      showToast(e.message || 'Не удалось войти в гостевой режим', 'error');
       return;
     }
-    setCurrentUser(null);
-    setIsGuest(true);
-    localStorage.setItem('cheeseWheelSession', JSON.stringify({ isGuest: true }));
     setPage('wheel');
-  }, [showToast]);
+  }, [refreshSession, showToast]);
 
   const logout = useCallback(async () => {
     try {
@@ -584,9 +646,7 @@ export default function App() {
     setConnectionState('connecting');
     const socket = socketRef.current;
     if (!socket) return;
-    socket.auth = callback => {
-      callback({ token: localStorage.getItem('cheeseWheelToken') || undefined });
-    };
+    socket.auth = {};
     socket.connect();
   }, []);
 
@@ -601,8 +661,12 @@ export default function App() {
     }
   }, []);
 
+  useEffect(() => {
+    if (adminOpen && !isAdmin) setAdminOpen(false);
+  }, [adminOpen, isAdmin]);
+
   const ctx = {
-    currentUser, isGuest, users, page, theme, spinDuration,
+    currentUser, isGuest, isAdmin, users, page, theme, spinDuration,
     spinEnabled, addEnabled, decorationsEnabled,
     socket: socketRef.current, showToast, isLoggedIn,
     setSpinDuration, setSpinEnabled, setAddEnabled, setDecorationsEnabled, setThemeState,
@@ -614,13 +678,14 @@ export default function App() {
     centerImage, setCenterImage,
     connected, connectionState, lastSyncedAt, reconnect,
     wheelIsSpinning, setWheelIsSpinning,
+    refreshSession,
   };
 
   return (
     <AppContext.Provider value={ctx}>
       {decorationsEnabled && <ThemeDecorations theme={theme} />}
 
-      {currentUser?.id === 2 && (
+      {isAdmin && (
         <button
           className={`admin-btn visible ${page === 'wheel' ? 'with-drawer' : ''}`}
           onClick={() => setAdminOpen(true)}

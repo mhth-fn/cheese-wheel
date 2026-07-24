@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useApp } from '../App';
 
 export default function ReviewsPage({ title, icon, fetchReviews, postReview, deleteReview, addEvent, deleteEvent }) {
-  const { currentUser, isGuest, showToast, socket } = useApp();
+  const { currentUser, isGuest, isAdmin, showToast, socket } = useApp();
   const [reviews, setReviews] = useState([]);
   const [formTitle, setFormTitle] = useState('');
   const [formContent, setFormContent] = useState('');
@@ -117,7 +117,7 @@ export default function ReviewsPage({ title, icon, fetchReviews, postReview, del
               <span className={`review-badge ${r.recommend ? 'yes' : 'no'}`}>
                 {r.recommend ? '✅ Рекомендую' : '❌ Не рекомендую'}
               </span>
-              {!isGuest && currentUser?.id === r.user_id && (
+              {!isGuest && (currentUser?.id === r.user_id || isAdmin) && (
                 <button className="review-delete-btn" onClick={() => handleDelete(r.id)} title="Удалить">🗑️</button>
               )}
             </div>

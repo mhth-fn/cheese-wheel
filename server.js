@@ -7,14 +7,20 @@ const tls = require('tls');
 const { Server } = require('socket.io');
 const Database = require('better-sqlite3');
 const path = require('path');
+const { createAuditLog } = require('./lib/audit-log');
+const { createPersistentRateLimiter } = require('./lib/persistent-rate-limit');
 
 const app = express();
+app.set('trust proxy', 'loopback');
 const server = createServer(app);
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 const APP_ORIGIN = process.env.APP_ORIGIN || 'https://cheese-wheel.ru';
-const ADMIN_USER_ID = Number.parseInt(process.env.ADMIN_USER_ID || '2', 10);
+const BOOTSTRAP_ADMIN_USER_ID = Number.parseInt(
+  process.env.BOOTSTRAP_ADMIN_USER_ID || '2',
+  10
+);
 const SOCKET_ALLOWED_ORIGINS = new Set([
   APP_ORIGIN,
   'http://localhost:5173',
@@ -38,6 +44,21 @@ const io = new Server(server, {
 });
 
 const crypto = require('crypto');
+const {
+  base32Encode,
+  createLoginChallenge,
+  decryptTotpSecret,
+  encryptTotpSecret,
+  generateRecoveryCodes,
+  generateTotpSecret,
+  hashLoginChallenge,
+  hashRecoveryCode,
+  hashSessionToken,
+  normalizeRecoveryCode,
+  normalizeTotpCode,
+  parseTotpEncryptionKey,
+  verifyTotpCode,
+} = require('./lib/security');
 
 const VPN_MAX_CLIENTS_PER_SERVER = Math.min(
   Math.max(Number.parseInt(process.env.VPN_MAX_CLIENTS_PER_SERVER || '10', 10) || 10, 1),
@@ -272,7 +293,7 @@ function requireMember(req, res, next) {
 }
 
 function requireAdmin(req, res, next) {
-  if (!isMemberToken(req.tokenData) || Number(req.tokenData.userId) !== ADMIN_USER_ID) {
+  if (!isMemberToken(req.tokenData) || req.tokenData.role !== 'admin') {
     return res.status(403).json({ error: 'Доступно только администратору' });
   }
   next();
@@ -354,49 +375,46 @@ async function checkVpnServer(serverConfig) {
 }
 
 // ============ RATE LIMITING ============
-const rateLimitBuckets = new Map();
-const RATE_LIMIT_BUCKET_CAP = 10000;
+let persistentRateLimiter = null;
+let auditLog = null;
+
+function isLoopbackAddress(value) {
+  const address = String(value || '').replace(/^::ffff:/, '');
+  return address === '127.0.0.1' || address === '::1';
+}
 
 function getClientRateKey(req) {
-  const cloudflareIp = String(req.headers['cf-connecting-ip'] || '').trim();
-  if (net.isIP(cloudflareIp)) return cloudflareIp;
-  return req.ip || req.socket.remoteAddress || 'unknown';
+  if (net.isIP(req.ip)) return req.ip;
+
+  const remoteAddress = req.socket?.remoteAddress || req.connection?.remoteAddress;
+  if (isLoopbackAddress(remoteAddress)) {
+    // Socket.IO receives a raw IncomingMessage rather than an Express request.
+    // Nginx replaces X-Forwarded-For with one trusted, normalized client IP.
+    const forwarded = String(req.headers?.['x-forwarded-for'] || '').trim();
+    if (net.isIP(forwarded)) return forwarded;
+  }
+  return net.isIP(remoteAddress) ? remoteAddress : 'unknown';
 }
 
 function consumeRateLimit(scope, key, max, windowMs) {
-  const now = Date.now();
-  const bucketKey = `${scope}:${key}`;
-  const entry = rateLimitBuckets.get(bucketKey);
-  if (!entry || now > entry.resetAt) {
-    if (!entry && rateLimitBuckets.size >= RATE_LIMIT_BUCKET_CAP) {
-      const oldestKey = rateLimitBuckets.keys().next().value;
-      if (oldestKey) rateLimitBuckets.delete(oldestKey);
-    }
-    rateLimitBuckets.set(bucketKey, { count: 1, resetAt: now + windowMs });
-    return { allowed: true, retryAfter: 0 };
+  if (!persistentRateLimiter) {
+    return { allowed: false, retryAfter: 30, unavailable: true };
   }
-  if (entry.count >= max) {
-    return {
-      allowed: false,
-      retryAfter: Math.max(1, Math.ceil((entry.resetAt - now) / 1000)),
-    };
+  try {
+    return persistentRateLimiter.consume(scope, key, max, windowMs);
+  } catch (error) {
+    console.error('[cheese-wheel] Persistent rate limiter failed:', error.message);
+    return { allowed: false, retryAfter: 30, unavailable: true };
   }
-  entry.count++;
-  return { allowed: true, retryAfter: 0 };
 }
 
 function rejectRateLimited(res, result) {
   res.set('Retry-After', String(result.retryAfter));
+  if (result.unavailable) {
+    return res.status(503).json({ error: 'Защита запросов временно недоступна' });
+  }
   return res.status(429).json({ error: 'Слишком много запросов. Попробуйте позже.' });
 }
-
-const rateLimitCleanup = setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of rateLimitBuckets) {
-    if (entry.resetAt <= now) rateLimitBuckets.delete(key);
-  }
-}, 60 * 1000);
-rateLimitCleanup.unref();
 
 function escapeDiscordMarkdown(text) {
   return String(text).replace(/([\\_*~`>|])/g, '\\$1');
@@ -428,17 +446,33 @@ const SESSION_COOKIE = 'cheese_session';
 
 function createToken(userId, isGuest = false) {
   const token = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashSessionToken(token);
   const expires = Date.now() + TOKEN_EXPIRY;
-  db.prepare('INSERT OR REPLACE INTO tokens (token, user_id, is_guest, expires) VALUES (?,?,?,?)').run(token, userId ?? null, isGuest ? 1 : 0, expires);
+  db.prepare('INSERT INTO tokens (token, user_id, is_guest, expires) VALUES (?,?,?,?)')
+    .run(tokenHash, userId ?? null, isGuest ? 1 : 0, expires);
   return token;
 }
 
 function getTokenData(token) {
-  if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return null;
-  const row = db.prepare('SELECT user_id, is_guest, expires FROM tokens WHERE token=?').get(token);
+  const tokenHash = hashSessionToken(token);
+  if (!tokenHash) return null;
+  const row = db.prepare(`
+    SELECT t.user_id, t.is_guest, t.expires, u.role
+    FROM tokens t
+    LEFT JOIN users u ON u.id = t.user_id
+    WHERE t.token = ?
+  `).get(tokenHash);
   if (!row) return null;
-  if (Date.now() > row.expires) { db.prepare('DELETE FROM tokens WHERE token=?').run(token); return null; }
-  return { userId: row.user_id, isGuest: !!row.is_guest, expires: row.expires };
+  if (Date.now() > row.expires) {
+    db.prepare('DELETE FROM tokens WHERE token=?').run(tokenHash);
+    return null;
+  }
+  return {
+    userId: row.user_id,
+    isGuest: !!row.is_guest,
+    expires: row.expires,
+    role: row.role || null,
+  };
 }
 
 function isMemberToken(data) {
@@ -486,6 +520,11 @@ function clearSessionCookie(res) {
 // Чистим просроченные токены раз в час
 setInterval(() => {
   db.prepare('DELETE FROM tokens WHERE expires < ?').run(Date.now());
+  db.prepare('DELETE FROM login_challenges WHERE expires < ?').run(Date.now());
+  db.prepare(`
+    DELETE FROM user_totp
+    WHERE enabled = 0 AND pending_expires IS NOT NULL AND pending_expires < ?
+  `).run(Date.now());
 }, 60 * 60 * 1000);
 
 // ============ AUTH MIDDLEWARE ============
@@ -498,6 +537,7 @@ function requireAuth(req, res, next) {
   }
   if (!getCookieToken(req)) setSessionCookie(res, token);
   req.authToken = token;
+  req.authTokenHash = hashSessionToken(token);
   req.tokenData = data;
   next();
 }
@@ -554,6 +594,10 @@ app.use((req, res, next) => {
   }
   next();
 });
+app.use('/api', (req, res, next) => {
+  if (!auditLog) return next();
+  return auditLog.middleware(req, res, next);
+});
 app.use(express.json({ limit: '16kb' }));
 app.use('/api', (req, res, next) => {
   if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
@@ -603,13 +647,15 @@ if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true, mode: 0o70
 const db = new Database(path.join(dataDir, 'cheese_wheel.db'));
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+db.pragma('busy_timeout = 5000');
 
 // Создание таблиц
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT UNIQUE NOT NULL,
-    password_hash TEXT
+    password_hash TEXT,
+    role TEXT NOT NULL DEFAULT 'member' CHECK(role IN ('member', 'admin'))
   );
 
   CREATE TABLE IF NOT EXISTS movies (
@@ -640,6 +686,41 @@ db.exec(`
     is_guest INTEGER DEFAULT 0,
     expires INTEGER NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS user_totp (
+    user_id INTEGER PRIMARY KEY,
+    secret_enc TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0, 1)),
+    pending_expires INTEGER,
+    last_used_step INTEGER,
+    enabled_at INTEGER,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS two_factor_recovery_codes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    code_hash TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    used_at INTEGER,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, code_hash)
+  );
+
+  CREATE TABLE IF NOT EXISTS login_challenges (
+    challenge_hash TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    expires INTEGER NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_login_challenges_expires
+    ON login_challenges(expires);
+
+  CREATE INDEX IF NOT EXISTS idx_recovery_codes_user_unused
+    ON two_factor_recovery_codes(user_id, used_at);
 
   CREATE TABLE IF NOT EXISTS vpn_clients (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -694,6 +775,41 @@ try {
 } catch (e) {
   // колонка уже существует
 }
+
+// Миграция: роли заменяют привязку административных прав к конкретному ID.
+try {
+  db.exec(`
+    ALTER TABLE users
+    ADD COLUMN role TEXT NOT NULL DEFAULT 'member'
+      CHECK(role IN ('member', 'admin'))
+  `);
+} catch (e) {
+  // колонка уже существует
+}
+db.exec("UPDATE users SET role = 'member' WHERE role IS NULL OR role NOT IN ('member', 'admin')");
+
+// Старые cookies продолжают работать, но в БД вместо bearer-токенов
+// остаются только их SHA-256 отпечатки. Маркер и замена атомарны.
+const migrateSessionTokenHashes = db.transaction(() => {
+  const marker = db.prepare(
+    "SELECT value FROM settings WHERE key = 'migration_session_token_hash_v1'"
+  ).get();
+  if (marker) return;
+
+  const legacyTokens = db.prepare('SELECT token FROM tokens').all();
+  const updateToken = db.prepare('UPDATE tokens SET token = ? WHERE token = ?');
+  legacyTokens.forEach(({ token }) => {
+    const tokenHash = hashSessionToken(token);
+    if (!tokenHash) {
+      throw new Error('Cannot migrate an invalid legacy session token');
+    }
+    updateToken.run(tokenHash, token);
+  });
+  db.prepare(`
+    INSERT INTO settings (key, value)
+    VALUES ('migration_session_token_hash_v1', '1')
+  `).run();
+});
 
 // Миграция: добавляем колонку added_by для фильмов
 try {
@@ -847,10 +963,118 @@ const CORE_STATS_USER_NAMES = Object.freeze(['Антон', 'Митя', 'Пётр
 const insertUser = db.prepare('INSERT OR IGNORE INTO users (id, name, password_hash) VALUES (?, ?, ?)');
 seedUsers.forEach(u => insertUser.run(u.id, u.name, hashPassword(DEFAULT_PASSWORD)));
 
+// Прежний ID используется только в атомарной одноразовой миграции. После неё
+// отсутствие администратора является ошибкой конфигурации, а не поводом снова
+// неявно выдать права пользователю с фиксированным ID.
+const bootstrapRoles = db.transaction(() => {
+  const marker = db.prepare(
+    "SELECT value FROM settings WHERE key = 'migration_roles_v1'"
+  ).get();
+  const countAdmins = () => db.prepare(
+    "SELECT COUNT(*) AS count FROM users WHERE role = 'admin'"
+  ).get().count;
+
+  if (marker) {
+    if (countAdmins() === 0) {
+      throw new Error('[cheese-wheel] В системе не осталось ни одного администратора');
+    }
+    return;
+  }
+
+  if (countAdmins() === 0) {
+    if (!Number.isInteger(BOOTSTRAP_ADMIN_USER_ID) || BOOTSTRAP_ADMIN_USER_ID < 1) {
+      throw new Error('[cheese-wheel] BOOTSTRAP_ADMIN_USER_ID должен быть корректным ID');
+    }
+    const result = db.prepare(
+      "UPDATE users SET role = 'admin' WHERE id = ?"
+    ).run(BOOTSTRAP_ADMIN_USER_ID);
+    if (result.changes !== 1) {
+      throw new Error('[cheese-wheel] Не удалось назначить первоначального администратора');
+    }
+  }
+
+  db.prepare(`
+    INSERT INTO settings (key, value)
+    VALUES ('migration_roles_v1', '1')
+  `).run();
+});
+bootstrapRoles();
+migrateSessionTokenHashes();
+
 // Устанавливаем пароль тем, у кого его нет (после миграции)
 const usersWithoutPassword = db.prepare('SELECT id FROM users WHERE password_hash IS NULL').all();
 const setPassword = db.prepare('UPDATE users SET password_hash = ? WHERE id = ?');
 usersWithoutPassword.forEach(u => setPassword.run(hashPassword(DEFAULT_PASSWORD), u.id));
+
+function getSecurityPepper(name) {
+  const value = process.env[name];
+  if (typeof value === 'string' && Buffer.byteLength(value, 'utf8') >= 32) {
+    return value;
+  }
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(`[cheese-wheel] ${name} должен содержать минимум 32 случайных байта`);
+  }
+  return `${name}:development-only-do-not-use-in-production`;
+}
+
+persistentRateLimiter = createPersistentRateLimiter({
+  db,
+  pepper: getSecurityPepper('RATE_LIMIT_PEPPER'),
+});
+auditLog = createAuditLog(db, {
+  pepper: getSecurityPepper('AUDIT_LOG_PEPPER'),
+});
+
+const auditCleanup = setInterval(() => {
+  try {
+    auditLog.cleanupExpired();
+  } catch (error) {
+    console.error('[cheese-wheel] Audit cleanup failed:', error.message);
+  }
+}, 24 * 60 * 60 * 1000);
+auditCleanup.unref();
+
+function getTotpEncryptionKey(required = false) {
+  const configured = process.env.TOTP_ENCRYPTION_KEY;
+  if (!configured) {
+    if (required) {
+      throw new Error(
+        '[cheese-wheel] TOTP_ENCRYPTION_KEY должен быть задан для двухфакторной защиты'
+      );
+    }
+    return null;
+  }
+  try {
+    return parseTotpEncryptionKey(configured);
+  } catch {
+    if (required) {
+      throw new Error(
+        '[cheese-wheel] TOTP_ENCRYPTION_KEY должен содержать ровно 64 шестнадцатеричных символа'
+      );
+    }
+    return null;
+  }
+}
+
+// Просроченную незавершённую настройку можно безопасно забыть. Любое оставшееся
+// состояние проверяем при старте, чтобы неверный ключ не заблокировал вход позже.
+db.prepare(`
+  DELETE FROM user_totp
+  WHERE enabled = 0 AND pending_expires IS NOT NULL AND pending_expires < ?
+`).run(Date.now());
+const storedTotpRows = db.prepare('SELECT user_id, secret_enc FROM user_totp').all();
+if (storedTotpRows.length > 0) {
+  const totpKey = getTotpEncryptionKey(true);
+  storedTotpRows.forEach(row => {
+    try {
+      decryptTotpSecret(row.secret_enc, totpKey, row.user_id);
+    } catch {
+      throw new Error(
+        `[cheese-wheel] Не удалось расшифровать TOTP-секрет пользователя ${row.user_id}`
+      );
+    }
+  });
+}
 
 // Дефолтные настройки
 db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('spin_duration', '5')").run();
@@ -865,7 +1089,21 @@ const stmts = {
   setTheme: db.prepare("UPDATE settings SET value = ? WHERE key = 'theme'"),
   getUsers: db.prepare('SELECT id, name FROM users ORDER BY id'),
   getUserById: db.prepare('SELECT id FROM users WHERE id = ?'),
-  getUserWithPassword: db.prepare('SELECT id, name, password_hash FROM users WHERE id = ?'),
+  getAuthUser: db.prepare(`
+    SELECT u.id, u.name, u.role,
+      CASE WHEN t.enabled = 1 THEN 1 ELSE 0 END AS two_factor_enabled
+    FROM users u
+    LEFT JOIN user_totp t ON t.user_id = u.id
+    WHERE u.id = ?
+  `),
+  getAdminUsers: db.prepare(`
+    SELECT u.id, u.name, u.role,
+      CASE WHEN t.enabled = 1 THEN 1 ELSE 0 END AS two_factor_enabled
+    FROM users u
+    LEFT JOIN user_totp t ON t.user_id = u.id
+    ORDER BY u.id
+  `),
+  getUserWithPassword: db.prepare('SELECT id, name, password_hash, role FROM users WHERE id = ?'),
   setUserPassword: db.prepare('UPDATE users SET password_hash = ? WHERE id = ?'),
   getUnwatched: db.prepare(`
     SELECT m.*, u.name as added_by_name
@@ -1020,6 +1258,233 @@ const vpnStmts = {
   deleteByIdAndUser: db.prepare('DELETE FROM vpn_clients WHERE id = ? AND user_id = ?'),
 };
 
+const authSecurityStmts = {
+  getTotp: db.prepare(`
+    SELECT user_id, secret_enc, enabled, pending_expires, last_used_step, enabled_at
+    FROM user_totp
+    WHERE user_id = ?
+  `),
+  upsertPendingTotp: db.prepare(`
+    INSERT INTO user_totp (
+      user_id, secret_enc, enabled, pending_expires, last_used_step, enabled_at
+    ) VALUES (?, ?, 0, ?, NULL, NULL)
+    ON CONFLICT(user_id) DO UPDATE SET
+      secret_enc = excluded.secret_enc,
+      enabled = 0,
+      pending_expires = excluded.pending_expires,
+      last_used_step = NULL,
+      enabled_at = NULL
+    WHERE user_totp.enabled = 0
+  `),
+  enableTotp: db.prepare(`
+    UPDATE user_totp
+    SET enabled = 1, pending_expires = NULL, last_used_step = ?, enabled_at = ?
+    WHERE user_id = ? AND enabled = 0 AND pending_expires >= ?
+  `),
+  advanceTotpStep: db.prepare(`
+    UPDATE user_totp
+    SET last_used_step = ?
+    WHERE user_id = ?
+      AND enabled = 1
+      AND (last_used_step IS NULL OR last_used_step < ?)
+  `),
+  deleteTotp: db.prepare('DELETE FROM user_totp WHERE user_id = ?'),
+  deleteRecoveryCodes: db.prepare(
+    'DELETE FROM two_factor_recovery_codes WHERE user_id = ?'
+  ),
+  insertRecoveryCode: db.prepare(`
+    INSERT INTO two_factor_recovery_codes (user_id, code_hash, created_at)
+    VALUES (?, ?, ?)
+  `),
+  consumeRecoveryCode: db.prepare(`
+    UPDATE two_factor_recovery_codes
+    SET used_at = ?
+    WHERE user_id = ? AND code_hash = ? AND used_at IS NULL
+  `),
+  countRecoveryCodes: db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM two_factor_recovery_codes
+    WHERE user_id = ? AND used_at IS NULL
+  `),
+  getLoginChallenge: db.prepare(`
+    SELECT challenge_hash, user_id, expires, attempts
+    FROM login_challenges
+    WHERE challenge_hash = ?
+  `),
+  insertLoginChallenge: db.prepare(`
+    INSERT INTO login_challenges (
+      challenge_hash, user_id, expires, attempts, created_at
+    ) VALUES (?, ?, ?, 0, ?)
+  `),
+  incrementChallengeAttempts: db.prepare(`
+    UPDATE login_challenges
+    SET attempts = attempts + 1
+    WHERE challenge_hash = ? AND attempts < 5 AND expires >= ?
+  `),
+  deleteChallenge: db.prepare('DELETE FROM login_challenges WHERE challenge_hash = ?'),
+  deleteUserChallenges: db.prepare('DELETE FROM login_challenges WHERE user_id = ?'),
+  deleteExpiredChallenges: db.prepare('DELETE FROM login_challenges WHERE expires < ?'),
+};
+
+function serializeAuthUser(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    name: row.name,
+    role: row.role === 'admin' ? 'admin' : 'member',
+    two_factor_enabled: Boolean(row.two_factor_enabled),
+  };
+}
+
+function createRecoveryCodeSet(userId, now = Date.now()) {
+  const codes = generateRecoveryCodes(10);
+  authSecurityStmts.deleteRecoveryCodes.run(userId);
+  codes.forEach(code => {
+    authSecurityStmts.insertRecoveryCode.run(userId, hashRecoveryCode(code), now);
+  });
+  return codes;
+}
+
+function issueLoginChallenge(userId) {
+  const challenge = createLoginChallenge();
+  const now = Date.now();
+  authSecurityStmts.deleteUserChallenges.run(userId);
+  authSecurityStmts.insertLoginChallenge.run(
+    hashLoginChallenge(challenge),
+    userId,
+    now + 5 * 60 * 1000,
+    now
+  );
+  return challenge;
+}
+
+function consumeSecondFactor(userId, submittedCode, allowRecovery = true) {
+  const row = authSecurityStmts.getTotp.get(userId);
+  if (!row || row.enabled !== 1) return null;
+
+  const totpCode = normalizeTotpCode(submittedCode);
+  if (totpCode) {
+    const secret = decryptTotpSecret(
+      row.secret_enc,
+      getTotpEncryptionKey(true),
+      userId
+    );
+    const matchedStep = verifyTotpCode(secret, totpCode, {
+      window: 1,
+      lastUsedStep: row.last_used_step,
+    });
+    if (matchedStep == null) return null;
+    const result = authSecurityStmts.advanceTotpStep.run(
+      matchedStep,
+      userId,
+      matchedStep
+    );
+    return result.changes === 1 ? { type: 'totp', step: matchedStep } : null;
+  }
+
+  if (!allowRecovery) return null;
+  const recoveryCode = normalizeRecoveryCode(submittedCode);
+  const recoveryHash = recoveryCode ? hashRecoveryCode(recoveryCode) : null;
+  if (!recoveryHash) return null;
+  const result = authSecurityStmts.consumeRecoveryCode.run(
+    Date.now(),
+    userId,
+    recoveryHash
+  );
+  return result.changes === 1 ? { type: 'recovery' } : null;
+}
+
+const completeTwoFactorLogin = db.transaction((rawChallenge, submittedCode) => {
+  const challengeHash = hashLoginChallenge(rawChallenge);
+  if (!challengeHash) return { status: 'invalid' };
+
+  const now = Date.now();
+  const challenge = authSecurityStmts.getLoginChallenge.get(challengeHash);
+  if (!challenge || challenge.expires < now || challenge.attempts >= 5) {
+    if (challenge) authSecurityStmts.deleteChallenge.run(challengeHash);
+    return { status: 'invalid' };
+  }
+
+  const attemptResult = authSecurityStmts.incrementChallengeAttempts.run(
+    challengeHash,
+    now
+  );
+  if (attemptResult.changes !== 1) return { status: 'invalid' };
+
+  const factor = consumeSecondFactor(challenge.user_id, submittedCode, true);
+  if (!factor) {
+    if (challenge.attempts + 1 >= 5) {
+      authSecurityStmts.deleteChallenge.run(challengeHash);
+    }
+    return { status: 'invalid' };
+  }
+
+  const user = stmts.getAuthUser.get(challenge.user_id);
+  if (!user) {
+    authSecurityStmts.deleteChallenge.run(challengeHash);
+    return { status: 'invalid' };
+  }
+
+  authSecurityStmts.deleteUserChallenges.run(challenge.user_id);
+  return {
+    status: 'ok',
+    token: createToken(challenge.user_id),
+    user: serializeAuthUser(user),
+    usedRecoveryCode: factor.type === 'recovery',
+  };
+});
+
+const enablePendingTotp = db.transaction((userId, submittedCode, currentTokenHash) => {
+  const row = authSecurityStmts.getTotp.get(userId);
+  const now = Date.now();
+  if (!row || row.enabled === 1) return { status: 'not-pending' };
+  if (!row.pending_expires || row.pending_expires < now) {
+    authSecurityStmts.deleteTotp.run(userId);
+    return { status: 'expired' };
+  }
+
+  const code = normalizeTotpCode(submittedCode);
+  if (!code) return { status: 'invalid' };
+  const secret = decryptTotpSecret(
+    row.secret_enc,
+    getTotpEncryptionKey(true),
+    userId
+  );
+  const matchedStep = verifyTotpCode(secret, code, { window: 1, now });
+  if (matchedStep == null) return { status: 'invalid' };
+
+  const enabled = authSecurityStmts.enableTotp.run(
+    matchedStep,
+    now,
+    userId,
+    now
+  );
+  if (enabled.changes !== 1) return { status: 'expired' };
+
+  const recoveryCodes = createRecoveryCodeSet(userId, now);
+  db.prepare('DELETE FROM tokens WHERE user_id = ? AND token <> ?')
+    .run(userId, currentTokenHash);
+  authSecurityStmts.deleteUserChallenges.run(userId);
+  return { status: 'ok', recoveryCodes };
+});
+
+const disableTwoFactor = db.transaction((userId, submittedCode, currentTokenHash) => {
+  const factor = consumeSecondFactor(userId, submittedCode, true);
+  if (!factor) return false;
+  authSecurityStmts.deleteTotp.run(userId);
+  authSecurityStmts.deleteRecoveryCodes.run(userId);
+  authSecurityStmts.deleteUserChallenges.run(userId);
+  db.prepare('DELETE FROM tokens WHERE user_id = ? AND token <> ?')
+    .run(userId, currentTokenHash);
+  return true;
+});
+
+const regenerateRecoveryCodeSet = db.transaction((userId, submittedCode) => {
+  const factor = consumeSecondFactor(userId, submittedCode, false);
+  if (!factor) return null;
+  return createRecoveryCodeSet(userId);
+});
+
 // Динамический запрос getWatched — строится по реальным user_id из БД
 {
   const allUsers = db.prepare('SELECT id FROM users ORDER BY id').all();
@@ -1104,6 +1569,101 @@ function broadcastWheelStatus() {
   io.emit('wheel-status-changed', getWheelStatus());
 }
 
+const PENDING_SPIN_SETTING = 'pending_spin_v1';
+let pendingSpinTimer = null;
+
+function readPendingSpin() {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?')
+    .get(PENDING_SPIN_SETTING);
+  if (!row?.value) return null;
+  try {
+    const pending = JSON.parse(row.value);
+    if (
+      typeof pending.spinId !== 'string' ||
+      !Number.isInteger(Number(pending.movieId)) ||
+      !Number.isInteger(Number(pending.actorUserId)) ||
+      !Number.isFinite(Number(pending.completeAt))
+    ) {
+      return null;
+    }
+    return {
+      spinId: pending.spinId,
+      movieId: Number(pending.movieId),
+      actorUserId: Number(pending.actorUserId),
+      completeAt: Number(pending.completeAt),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function finishPendingSpin(expectedSpinId) {
+  const completed = db.transaction(() => {
+    const pending = readPendingSpin();
+    if (!pending || (expectedSpinId && pending.spinId !== expectedSpinId)) {
+      return null;
+    }
+    const movie = stmts.getMovieById.get(pending.movieId);
+    const belongsToRound = readFormedWheel()
+      .some(item => Number(item.id) === pending.movieId);
+    db.prepare('DELETE FROM settings WHERE key = ?').run(PENDING_SPIN_SETTING);
+    if (!movie || Number(movie.is_watched) === 1 || !belongsToRound) {
+      return { ...pending, changed: false, movie };
+    }
+    stmts.markWatched.run(pending.movieId);
+    return {
+      ...pending,
+      changed: true,
+      movie: stmts.getMovieById.get(pending.movieId),
+    };
+  })();
+
+  if (!completed) return;
+  pendingSpinTimer = null;
+  if (!completed.changed) {
+    broadcastWheelStatus();
+    return;
+  }
+
+  io.emit('movie-watched', completed.movie);
+  broadcastWheelStatus();
+  void notifyDiscord(
+    'Сегодня смотрим *' + escapeDiscordMarkdown(completed.movie.title) + '*'
+  );
+  const actor = stmts.getAuthUser.get(completed.actorUserId);
+  auditLog.record({
+    actorUserId: completed.actorUserId,
+    actorRole: actor?.role,
+    action: 'wheel.spin_completed',
+    targetType: 'movie',
+    targetId: completed.movieId,
+    result: 'success',
+    details: {
+      spin_id: completed.spinId,
+      movie_title: completed.movie.title,
+    },
+  });
+}
+
+function schedulePendingSpin(pending) {
+  if (pendingSpinTimer) clearTimeout(pendingSpinTimer);
+  const delay = Math.max(0, pending.completeAt - Date.now());
+  pendingSpinTimer = setTimeout(
+    () => finishPendingSpin(pending.spinId),
+    Math.min(delay, 2_147_000_000)
+  );
+  pendingSpinTimer.unref();
+}
+
+const restoredPendingSpin = readPendingSpin();
+if (restoredPendingSpin) {
+  activeSpinUntil = restoredPendingSpin.completeAt + 1200;
+  schedulePendingSpin(restoredPendingSpin);
+} else {
+  // Invalid or half-written state must never block future rounds.
+  db.prepare('DELETE FROM settings WHERE key = ?').run(PENDING_SPIN_SETTING);
+}
+
 // Сохраняем уже существующее колесо как сформированное при первом запуске новой версии.
 if (!stmts.getFormedWheel.get()) {
   const initialMovies = stmts.getUnwatched.all().map(toWheelSnapshotMovie);
@@ -1114,7 +1674,8 @@ const ALLOWED_THEMES = ['cheese', 'newyear', 'spring'];
 
 function canManageMovie(req, movie) {
   const userId = Number(req.tokenData?.userId);
-  return Number.isInteger(userId) && Number(movie.added_by) === userId;
+  return req.tokenData?.role === 'admin'
+    || (Number.isInteger(userId) && Number(movie.added_by) === userId);
 }
 
 function isMovieInFormedWheel(movieId) {
@@ -1134,12 +1695,18 @@ function rejectFormedCurrentWheelMutation(req, res, next) {
 // Всё остальное — через requireAuth
 app.use('/api', (req, res, next) => {
   if (req.path === '/auth' && req.method === 'POST') return next();
+  if (req.path === '/auth/2fa' && req.method === 'POST') return next();
   if (req.path === '/auth/guest' && req.method === 'POST') return next();
   if (req.path === '/auth/logout' && req.method === 'POST') return next();
   if (req.path === '/users' && req.method === 'GET') return next();
   requireAuth(req, res, () => {
     if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
-      const writeLimit = consumeRateLimit('api-write', req.authToken, 180, 60 * 1000);
+      const writeLimit = consumeRateLimit(
+        'api-write',
+        req.authTokenHash,
+        180,
+        60 * 1000
+      );
       if (!writeLimit.allowed) return rejectRateLimited(res, writeLimit);
     }
     next();
@@ -1163,11 +1730,84 @@ app.post('/api/auth', (req, res) => {
   const user = stmts.getUserWithPassword.get(userId);
   const passwordValid = verifyPassword(password, user?.password_hash || DUMMY_PASSWORD_HASH);
   if (user && passwordValid) {
+    req.auditActor = { userId: user.id, role: user.role };
+    const totp = authSecurityStmts.getTotp.get(user.id);
+    if (totp?.enabled === 1) {
+      const challenge = issueLoginChallenge(user.id);
+      return res.status(202).json({
+        success: false,
+        two_factor_required: true,
+        challenge,
+        challenge_id: challenge,
+        expires_in: 5 * 60,
+      });
+    }
+
     const token = createToken(user.id);
     setSessionCookie(res, token);
-    res.json({ success: true });
+    res.json({
+      success: true,
+      user: serializeAuthUser(stmts.getAuthUser.get(user.id)),
+    });
   } else {
     res.status(401).json({ error: 'Неверный пользователь или пароль' });
+  }
+});
+
+app.post('/api/auth/2fa', (req, res) => {
+  const { code } = req.body || {};
+  const challenge = req.body?.challenge ?? req.body?.challenge_id;
+  if (
+    typeof challenge !== 'string' ||
+    typeof code !== 'string' ||
+    !hashLoginChallenge(challenge)
+  ) {
+    return res.status(400).json({ error: 'Неверный формат' });
+  }
+
+  const ipLimit = consumeRateLimit(
+    'auth-2fa-ip',
+    getClientRateKey(req),
+    30,
+    5 * 60 * 1000
+  );
+  if (!ipLimit.allowed) return rejectRateLimited(res, ipLimit);
+  const challengeLimit = consumeRateLimit(
+    'auth-2fa-challenge',
+    hashLoginChallenge(challenge),
+    8,
+    5 * 60 * 1000
+  );
+  if (!challengeLimit.allowed) return rejectRateLimited(res, challengeLimit);
+
+  try {
+    const result = completeTwoFactorLogin(challenge, code);
+    if (result.status !== 'ok') {
+      return res.status(401).json({ error: 'Неверный или просроченный код' });
+    }
+    req.auditActor = { userId: result.user.id, role: result.user.role };
+    if (result.usedRecoveryCode) {
+      auditLog.record({
+        actorUserId: result.user.id,
+        actorRole: result.user.role,
+        action: 'two_factor.recovery_used',
+        targetType: 'user',
+        targetId: result.user.id,
+        result: 'success',
+        requestId: req.auditRequestId,
+        ip: getClientRateKey(req),
+        userAgent: req.headers['user-agent'],
+      });
+    }
+    setSessionCookie(res, result.token);
+    return res.json({
+      success: true,
+      user: result.user,
+      used_recovery_code: result.usedRecoveryCode,
+    });
+  } catch (error) {
+    console.error('[cheese-wheel] 2FA login failed:', error.message);
+    return res.status(500).json({ error: 'Не удалось проверить код' });
   }
 });
 
@@ -1176,7 +1816,7 @@ app.post('/api/auth/guest', (req, res) => {
   const existingSession = getTokenData(existingToken);
   if (existingSession?.isGuest) {
     setSessionCookie(res, existingToken);
-    return res.json({ success: true });
+    return res.json({ success: true, is_guest: true });
   }
 
   const ipLimit = consumeRateLimit('guest-ip', getClientRateKey(req), 20, 60 * 1000);
@@ -1186,14 +1826,32 @@ app.post('/api/auth/guest', (req, res) => {
 
   const token = createToken(null, true);
   setSessionCookie(res, token);
-  res.json({ success: true });
+  res.json({ success: true, is_guest: true });
 });
 
 app.post('/api/auth/logout', (req, res) => {
   const token = getRequestToken(req);
-  if (token) db.prepare('DELETE FROM tokens WHERE token=?').run(token);
+  const tokenData = getTokenData(token);
+  if (tokenData?.userId) {
+    req.auditActor = { userId: tokenData.userId, role: tokenData.role };
+  }
+  const tokenHash = hashSessionToken(token);
+  if (tokenHash) db.prepare('DELETE FROM tokens WHERE token=?').run(tokenHash);
   clearSessionCookie(res);
   res.json({ success: true });
+});
+
+app.get('/api/auth/session', (req, res) => {
+  if (req.tokenData.isGuest) {
+    return res.json({ authenticated: true, is_guest: true, user: null });
+  }
+  const user = stmts.getAuthUser.get(req.tokenData.userId);
+  if (!user) return res.status(401).json({ error: 'Сессия недействительна' });
+  res.json({
+    authenticated: true,
+    is_guest: false,
+    user: serializeAuthUser(user),
+  });
 });
 
 // Смена пароля
@@ -1219,8 +1877,225 @@ app.post('/api/users/:id/password', (req, res) => {
     return res.status(401).json({ error: 'Неверный текущий пароль' });
   }
   stmts.setUserPassword.run(hashPassword(new_password), id);
-  db.prepare('DELETE FROM tokens WHERE user_id = ? AND token <> ?').run(id, req.authToken);
+  db.prepare('DELETE FROM tokens WHERE user_id = ? AND token <> ?')
+    .run(id, req.authTokenHash);
   res.json({ success: true });
+});
+
+app.get('/api/admin/users', requireAdmin, (req, res) => {
+  res.json(stmts.getAdminUsers.all().map(serializeAuthUser));
+});
+
+app.get('/api/admin/audit', requireAdmin, (req, res) => {
+  const limit = parseIntStrict(req.query.limit ?? '50');
+  const cursor = req.query.cursor === undefined
+    ? null
+    : parseIntStrict(req.query.cursor);
+  if (
+    isNaN(limit) ||
+    limit < 1 ||
+    limit > 100 ||
+    (req.query.cursor !== undefined && isNaN(cursor))
+  ) {
+    return res.status(400).json({ error: 'Неверные параметры журнала' });
+  }
+  const entries = auditLog.getEntries({ before: cursor, limit });
+  res.json({
+    entries,
+    next_cursor: entries.length === limit ? entries.at(-1).id : null,
+  });
+});
+
+const changeUserRole = db.transaction((userId, role) => {
+  const target = db.prepare('SELECT id, role FROM users WHERE id = ?').get(userId);
+  if (!target) return { status: 'not-found' };
+  if (target.role === role) return { status: 'ok' };
+
+  if (target.role === 'admin' && role === 'member') {
+    const count = db.prepare(
+      "SELECT COUNT(*) AS count FROM users WHERE role = 'admin'"
+    ).get().count;
+    if (count <= 1) return { status: 'last-admin' };
+  }
+
+  db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, userId);
+  return { status: 'ok' };
+});
+
+app.patch('/api/admin/users/:id/role', requireAdmin, (req, res) => {
+  const userId = parseIntStrict(req.params.id);
+  const role = req.body?.role;
+  if (isNaN(userId) || !['member', 'admin'].includes(role)) {
+    return res.status(400).json({ error: 'Неверная роль или ID пользователя' });
+  }
+
+  const result = changeUserRole(userId, role);
+  if (result.status === 'not-found') {
+    return res.status(404).json({ error: 'Пользователь не найден' });
+  }
+  if (result.status === 'last-admin') {
+    return res.status(409).json({ error: 'Нельзя убрать роль у последнего администратора' });
+  }
+
+  const user = stmts.getAuthUser.get(userId);
+  io.emit('user-role-changed', { user_id: userId, role: user.role });
+  res.json({ success: true, user: serializeAuthUser(user) });
+});
+
+app.get('/api/2fa/status', requireMember, (req, res) => {
+  const userId = Number(req.tokenData.userId);
+  const row = authSecurityStmts.getTotp.get(userId);
+  const enabled = row?.enabled === 1;
+  const remaining = enabled
+    ? authSecurityStmts.countRecoveryCodes.get(userId).count
+    : 0;
+  res.json({
+    enabled,
+    recovery_codes_remaining: remaining,
+    setup_pending: Boolean(
+      row &&
+      row.enabled === 0 &&
+      row.pending_expires &&
+      row.pending_expires >= Date.now()
+    ),
+  });
+});
+
+app.post('/api/2fa/setup', requireMember, (req, res) => {
+  const userId = Number(req.tokenData.userId);
+  const currentPassword = req.body?.current_password ?? req.body?.password;
+  if (typeof currentPassword !== 'string') {
+    return res.status(400).json({ error: 'Введите текущий пароль' });
+  }
+
+  const limit = consumeRateLimit('2fa-setup', userId, 5, 10 * 60 * 1000);
+  if (!limit.allowed) return rejectRateLimited(res, limit);
+  const user = stmts.getUserWithPassword.get(userId);
+  if (!user || !verifyPassword(currentPassword, user.password_hash)) {
+    return res.status(401).json({ error: 'Неверный текущий пароль' });
+  }
+
+  const existing = authSecurityStmts.getTotp.get(userId);
+  if (existing?.enabled === 1) {
+    return res.status(409).json({ error: 'Двухфакторная защита уже включена' });
+  }
+
+  try {
+    const key = getTotpEncryptionKey(true);
+    const secret = generateTotpSecret();
+    const secretBase32 = base32Encode(secret);
+    const pendingExpires = Date.now() + 10 * 60 * 1000;
+    const result = authSecurityStmts.upsertPendingTotp.run(
+      userId,
+      encryptTotpSecret(secret, key, userId),
+      pendingExpires
+    );
+    if (result.changes !== 1) {
+      return res.status(409).json({ error: 'Двухфакторная защита уже включена' });
+    }
+    authSecurityStmts.deleteRecoveryCodes.run(userId);
+
+    const issuer = 'Сырное колесо';
+    const params = new URLSearchParams({
+      secret: secretBase32,
+      issuer,
+      algorithm: 'SHA1',
+      digits: '6',
+      period: '30',
+    });
+    const label = encodeURIComponent(`${issuer}:${user.name}`);
+    return res.json({
+      secret: secretBase32,
+      otpauth_uri: `otpauth://totp/${label}?${params.toString()}`,
+      expires_in: 10 * 60,
+    });
+  } catch (error) {
+    console.error('[cheese-wheel] 2FA setup failed:', error.message);
+    return res.status(503).json({ error: 'Двухфакторная защита пока не настроена на сервере' });
+  }
+});
+
+app.post('/api/2fa/enable', requireMember, (req, res) => {
+  const userId = Number(req.tokenData.userId);
+  const code = req.body?.code;
+  if (typeof code !== 'string') {
+    return res.status(400).json({ error: 'Введите шестизначный код' });
+  }
+  const limit = consumeRateLimit('2fa-enable', userId, 8, 10 * 60 * 1000);
+  if (!limit.allowed) return rejectRateLimited(res, limit);
+
+  try {
+    const result = enablePendingTotp(userId, code, req.authTokenHash);
+    if (result.status === 'not-pending') {
+      return res.status(409).json({ error: 'Сначала начните настройку двухфакторной защиты' });
+    }
+    if (result.status === 'expired') {
+      return res.status(410).json({ error: 'Время настройки истекло. Начните заново.' });
+    }
+    if (result.status !== 'ok') {
+      return res.status(401).json({ error: 'Неверный код' });
+    }
+    return res.json({
+      success: true,
+      recovery_codes: result.recoveryCodes,
+    });
+  } catch (error) {
+    console.error('[cheese-wheel] 2FA enable failed:', error.message);
+    return res.status(500).json({ error: 'Не удалось включить двухфакторную защиту' });
+  }
+});
+
+app.post('/api/2fa/disable', requireMember, (req, res) => {
+  const userId = Number(req.tokenData.userId);
+  const currentPassword = req.body?.current_password ?? req.body?.password;
+  const code = req.body?.code;
+  if (typeof currentPassword !== 'string' || typeof code !== 'string') {
+    return res.status(400).json({ error: 'Введите пароль и код' });
+  }
+
+  const limit = consumeRateLimit('2fa-disable', userId, 5, 10 * 60 * 1000);
+  if (!limit.allowed) return rejectRateLimited(res, limit);
+  const user = stmts.getUserWithPassword.get(userId);
+  if (!user || !verifyPassword(currentPassword, user.password_hash)) {
+    return res.status(401).json({ error: 'Неверный пароль или код' });
+  }
+
+  try {
+    if (!disableTwoFactor(userId, code, req.authTokenHash)) {
+      return res.status(401).json({ error: 'Неверный пароль или код' });
+    }
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('[cheese-wheel] 2FA disable failed:', error.message);
+    return res.status(500).json({ error: 'Не удалось отключить двухфакторную защиту' });
+  }
+});
+
+app.post('/api/2fa/recovery-codes/regenerate', requireMember, (req, res) => {
+  const userId = Number(req.tokenData.userId);
+  const currentPassword = req.body?.current_password ?? req.body?.password;
+  const code = req.body?.code;
+  if (typeof currentPassword !== 'string' || typeof code !== 'string') {
+    return res.status(400).json({ error: 'Введите пароль и код приложения' });
+  }
+
+  const limit = consumeRateLimit('2fa-recovery-regenerate', userId, 5, 10 * 60 * 1000);
+  if (!limit.allowed) return rejectRateLimited(res, limit);
+  const user = stmts.getUserWithPassword.get(userId);
+  if (!user || !verifyPassword(currentPassword, user.password_hash)) {
+    return res.status(401).json({ error: 'Неверный пароль или код' });
+  }
+
+  try {
+    const recoveryCodes = regenerateRecoveryCodeSet(userId, code);
+    if (!recoveryCodes) {
+      return res.status(401).json({ error: 'Неверный пароль или код' });
+    }
+    return res.json({ success: true, recovery_codes: recoveryCodes });
+  } catch (error) {
+    console.error('[cheese-wheel] recovery code regeneration failed:', error.message);
+    return res.status(500).json({ error: 'Не удалось создать новые резервные коды' });
+  }
 });
 
 app.get('/api/vpn/clients', requireMember, (req, res) => {
@@ -1425,7 +2300,7 @@ app.get('/api/wheel/status', (req, res) => {
   res.json(getWheelStatus());
 });
 
-app.post('/api/wheel/form', rejectWheelMutationDuringSpin, rejectFormedCurrentWheelMutation, (req, res) => {
+app.post('/api/wheel/form', requireAdmin, rejectWheelMutationDuringSpin, rejectFormedCurrentWheelMutation, (req, res) => {
   const movies = stmts.getUnwatched.all().map(toWheelSnapshotMovie);
   if (movies.length === 0) {
     return res.status(400).json({ error: 'Добавьте хотя бы один фильм' });
@@ -1437,7 +2312,7 @@ app.post('/api/wheel/form', rejectWheelMutationDuringSpin, rejectFormedCurrentWh
   res.json(status);
 });
 
-app.post('/api/wheel/form-next', rejectWheelMutationDuringSpin, (req, res) => {
+app.post('/api/wheel/form-next', requireAdmin, rejectWheelMutationDuringSpin, (req, res) => {
   if (readFormedWheel().length === 0) {
     return res.status(409).json({ error: 'Сначала сформируйте текущее колесо' });
   }
@@ -1524,7 +2399,7 @@ app.delete('/api/wheel/:id', rejectWheelMutationDuringSpin, rejectFormedCurrentW
   }
 });
 
-app.post('/api/wheel/:id/watched', (req, res) => {
+app.post('/api/wheel/:id/watched', requireAdmin, (req, res) => {
   const id = parseIntStrict(req.params.id);
   if (isNaN(id)) {
     return res.status(400).json({ error: 'Неверный ID' });
@@ -1610,7 +2485,7 @@ app.delete('/api/next-wheel/:id', rejectWheelMutationDuringSpin, (req, res) => {
   }
 });
 
-app.post('/api/watched', (req, res) => {
+app.post('/api/watched', requireAdmin, (req, res) => {
   const title = sanitizeTitle(req.body.title);
   if (!title) {
     return res.status(400).json({ error: 'Введите название фильма (до 200 символов)' });
@@ -1633,7 +2508,7 @@ app.get('/api/watched', (req, res) => {
   res.json(stmts.getWatched.all());
 });
 
-app.delete('/api/watched/:id', (req, res) => {
+app.delete('/api/watched/:id', requireAdmin, (req, res) => {
   const id = parseIntStrict(req.params.id);
   if (isNaN(id)) {
     return res.status(400).json({ error: 'Неверный ID' });
@@ -1665,6 +2540,9 @@ app.patch('/api/movies/:id', rejectWheelMutationDuringSpin, (req, res) => {
   }
   if (movie.is_watched === 0 && !canManageMovie(req, movie)) {
     return res.status(403).json({ error: 'Можно изменить только свой фильм' });
+  }
+  if (movie.is_watched === 1 && req.tokenData.role !== 'admin') {
+    return res.status(403).json({ error: 'Общую историю меняет только администратор' });
   }
 
   const title = req.body.title !== undefined ? sanitizeTitle(req.body.title) : movie.title;
@@ -1698,13 +2576,15 @@ app.patch('/api/movies/:id', rejectWheelMutationDuringSpin, (req, res) => {
 app.post('/api/ratings', (req, res) => {
   const movieId = parseIntStrict(req.body.movie_id);
   const requestedUserId = parseIntStrict(req.body.user_id);
-  const userId = req.tokenData.userId;
+  const authenticatedUserId = Number(req.tokenData.userId);
+  const isAdmin = req.tokenData.role === 'admin';
+  const targetUserId = isAdmin ? requestedUserId : authenticatedUserId;
   const rating = parseIntStrict(req.body.rating);
 
   if (isNaN(movieId) || isNaN(requestedUserId) || isNaN(rating)) {
     return res.status(400).json({ error: 'Неверный формат данных' });
   }
-  if (!userId || requestedUserId !== userId) {
+  if (!authenticatedUserId || (!isAdmin && requestedUserId !== authenticatedUserId)) {
     return res.status(403).json({ error: 'Можно изменять только свою оценку' });
   }
 
@@ -1713,18 +2593,22 @@ app.post('/api/ratings', (req, res) => {
   }
 
   // Проверяем что пользователь существует
-  if (!stmts.getUserById.get(userId)) {
+  if (!stmts.getUserById.get(targetUserId)) {
     return res.status(400).json({ error: 'Пользователь не найден' });
   }
 
-  // Проверяем что фильм существует
-  if (!stmts.getMovieById.get(movieId)) {
-    return res.status(400).json({ error: 'Фильм не найден' });
+  const ratedMovie = stmts.getMovieById.get(movieId);
+  if (!ratedMovie || Number(ratedMovie.is_watched) !== 1) {
+    return res.status(400).json({ error: 'Оценивать можно только просмотренные фильмы' });
   }
 
   try {
-    stmts.upsertRating.run(movieId, userId, rating);
-    io.emit('rating-updated', { movie_id: movieId, user_id: userId, rating });
+    stmts.upsertRating.run(movieId, targetUserId, rating);
+    io.emit('rating-updated', {
+      movie_id: movieId,
+      user_id: targetUserId,
+      rating,
+    });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Ошибка сохранения оценки' });
@@ -1733,13 +2617,37 @@ app.post('/api/ratings', (req, res) => {
 
 app.delete('/api/ratings/:movieId', (req, res) => {
   const movieId = parseIntStrict(req.params.movieId);
-  const userId = req.tokenData.userId;
-  if (isNaN(movieId) || !userId) {
+  const authenticatedUserId = Number(req.tokenData.userId);
+  const requestedUserId = req.body?.user_id !== undefined
+    ? parseIntStrict(req.body.user_id)
+    : req.query.user_id !== undefined
+      ? parseIntStrict(req.query.user_id)
+      : authenticatedUserId;
+  const isAdmin = req.tokenData.role === 'admin';
+  if (
+    isNaN(movieId) ||
+    !authenticatedUserId ||
+    isNaN(requestedUserId)
+  ) {
     return res.status(400).json({ error: 'Неверный формат данных' });
   }
+  if (!isAdmin && requestedUserId !== authenticatedUserId) {
+    return res.status(403).json({ error: 'Можно удалять только свою оценку' });
+  }
+  if (!stmts.getUserById.get(requestedUserId)) {
+    return res.status(404).json({ error: 'Пользователь не найден' });
+  }
+  const ratedMovie = stmts.getMovieById.get(movieId);
+  if (!ratedMovie || Number(ratedMovie.is_watched) !== 1) {
+    return res.status(400).json({ error: 'Оценка относится не к просмотренному фильму' });
+  }
 
-  stmts.deleteRating.run(movieId, userId);
-  io.emit('rating-updated', { movie_id: movieId, user_id: userId, rating: null });
+  stmts.deleteRating.run(movieId, requestedUserId);
+  io.emit('rating-updated', {
+    movie_id: movieId,
+    user_id: requestedUserId,
+    rating: null,
+  });
   res.json({ success: true });
 });
 
@@ -2230,13 +3138,14 @@ app.delete('/api/wine-reviews/:id', (req, res) => {
 
   const review = stmts.getWineReviewById.get(id);
   if (!review) return res.status(404).json({ error: 'Обзор не найден' });
-  if (Number(review.user_id) !== userId) {
+  const canManage = req.tokenData.role === 'admin' || Number(review.user_id) === userId;
+  if (!canManage) {
     return res.status(403).json({ error: 'Можно удалить только свой обзор' });
   }
 
   const deleteReview = db.transaction(() => {
     stmts.deleteReviewReactions.run('wine', id);
-    return stmts.deleteWineReview.run(id, userId);
+    return stmts.deleteWineReview.run(id, review.user_id);
   });
   const result = deleteReview();
   if (result.changes === 0) return res.status(403).json({ error: 'Нет доступа или обзор не найден' });
@@ -2252,7 +3161,8 @@ app.patch('/api/wine-reviews/:id', (req, res) => {
 
   const existing = stmts.getWineReviewById.get(id);
   if (!existing) return res.status(404).json({ error: 'Обзор не найден' });
-  if (Number(existing.user_id) !== userId) {
+  const canManage = req.tokenData.role === 'admin' || Number(existing.user_id) === userId;
+  if (!canManage) {
     return res.status(403).json({ error: 'Можно редактировать только свой обзор' });
   }
 
@@ -2265,10 +3175,21 @@ app.patch('/api/wine-reviews/:id', (req, res) => {
   const vintage = parseIntStrict(req.body.vintage);
   const vintageVal = !isNaN(vintage) && vintage >= 1900 && vintage <= 2100 ? vintage : null;
   const price = typeof req.body.price === 'string' ? req.body.price.trim().slice(0, 50) || null : null;
-  const result = stmts.updateWineReview.run(validated.title, validated.content, validated.recommend, wine_type, grape, region, vintageVal, price, id, userId);
+  const result = stmts.updateWineReview.run(
+    validated.title,
+    validated.content,
+    validated.recommend,
+    wine_type,
+    grape,
+    region,
+    vintageVal,
+    price,
+    id,
+    existing.user_id
+  );
   if (result.changes === 0) return res.status(403).json({ error: 'Нет доступа или обзор не найден' });
   const review = stmts.getWineReviewById.get(id);
-  const user = stmts.getUsers.all().find(u => u.id === userId);
+  const user = stmts.getUsers.all().find(u => u.id === Number(review.user_id));
   const reactions = stmts.getReviewReactions.all('wine', id);
   const updated = {
     ...review, user_name: user?.name, reactions,
@@ -2384,7 +3305,8 @@ app.patch('/api/movie-reviews/:id', (req, res) => {
 
   const existing = stmts.getMovieReviewById.get(id);
   if (!existing) return res.status(404).json({ error: 'Рецензия не найдена' });
-  if (Number(existing.user_id) !== userId) {
+  const canManage = req.tokenData.role === 'admin' || Number(existing.user_id) === userId;
+  if (!canManage) {
     return res.status(403).json({ error: 'Можно редактировать только свою рецензию' });
   }
 
@@ -2409,12 +3331,14 @@ app.patch('/api/movie-reviews/:id', (req, res) => {
     director,
     yearVal,
     id,
-    userId
+    existing.user_id
   );
   if (result.changes === 0) return res.status(403).json({ error: 'Нет доступа или рецензия не найдена' });
 
   const review = stmts.getMovieReviewById.get(id);
-  const user = stmts.getUsers.all().find(item => item.id === userId);
+  const user = stmts.getUsers.all().find(
+    item => item.id === Number(review.user_id)
+  );
   const reactions = stmts.getReviewReactions.all('movie', id);
   const updated = {
     ...review,
@@ -2435,13 +3359,14 @@ app.delete('/api/movie-reviews/:id', (req, res) => {
 
   const review = stmts.getMovieReviewById.get(id);
   if (!review) return res.status(404).json({ error: 'Рецензия не найдена' });
-  if (Number(review.user_id) !== userId) {
+  const canManage = req.tokenData.role === 'admin' || Number(review.user_id) === userId;
+  if (!canManage) {
     return res.status(403).json({ error: 'Можно удалить только свою рецензию' });
   }
 
   const deleteReview = db.transaction(() => {
     stmts.deleteReviewReactions.run('movie', id);
-    return stmts.deleteMovieReview.run(id, userId);
+    return stmts.deleteMovieReview.run(id, review.user_id);
   });
   const result = deleteReview();
   if (result.changes === 0) return res.status(403).json({ error: 'Нет доступа или рецензия не найдена' });
@@ -2599,7 +3524,37 @@ io.on('connection', (socket) => {
     const randomOffset = 0.08 + (crypto.randomInt(8401) / 10000);
     const turns = 8 + crypto.randomInt(5);
     const spinId = crypto.randomUUID();
-    activeSpinUntil = Date.now() + spinDuration * 1000 + 1200;
+    const winner = movies[winnerIndex];
+    const pendingSpin = {
+      spinId,
+      movieId: Number(winner.id),
+      actorUserId: Number(tokenData.userId),
+      completeAt: Date.now() + spinDuration * 1000 + 250,
+    };
+    try {
+      db.prepare(`
+        INSERT OR REPLACE INTO settings (key, value)
+        VALUES (?, ?)
+      `).run(PENDING_SPIN_SETTING, JSON.stringify(pendingSpin));
+      activeSpinUntil = pendingSpin.completeAt + 950;
+      schedulePendingSpin(pendingSpin);
+      auditLog.record({
+        actorUserId: tokenData.userId,
+        actorRole: tokenData.role,
+        action: 'wheel.spin_started',
+        targetType: 'movie',
+        targetId: winner.id,
+        result: 'success',
+        ip: getClientRateKey(socket.request),
+        userAgent: socket.request.headers['user-agent'],
+        details: { spin_id: spinId },
+      });
+    } catch (error) {
+      console.error('[cheese-wheel] Failed to persist spin:', error.message);
+      socket.emit('spin-rejected', { error: 'Не удалось сохранить результат вращения' });
+      return;
+    }
+
     io.emit('wheel-spinning', {
       spinId,
       winnerIndex,

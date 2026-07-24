@@ -10,6 +10,10 @@ export async function fetchUsers() {
   return res.json();
 }
 
+export async function fetchAuthSession() {
+  return apiFetch('/api/auth/session');
+}
+
 export async function fetchSettings() {
   const res = await apiFetch('/api/settings');
   return res.json();
@@ -56,10 +60,6 @@ export async function postMovie(title) {
 
 export async function deleteMovie(id) {
   return apiFetch(`/api/wheel/${id}`, { method: 'DELETE' });
-}
-
-export async function markWatched(id) {
-  return apiFetch(`/api/wheel/${id}/watched`, { method: 'POST' });
 }
 
 export async function fetchNextWheelMovies() {
@@ -112,8 +112,11 @@ export async function postRating(movieId, userId, rating) {
   });
 }
 
-export async function deleteRating(movieId) {
-  return apiFetch(`/api/ratings/${movieId}`, { method: 'DELETE' });
+export async function deleteRating(movieId, userId = null) {
+  const query = userId === null || userId === undefined
+    ? ''
+    : `?user_id=${encodeURIComponent(userId)}`;
+  return apiFetch(`/api/ratings/${movieId}${query}`, { method: 'DELETE' });
 }
 
 export async function fetchStats(scope = 'all', comparisonScope = 'all') {
@@ -135,6 +138,14 @@ export async function postAuth(userId, password) {
   });
 }
 
+export async function postAuthTwoFactor(challenge, code) {
+  return fetch('/api/auth/2fa', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ challenge, code })
+  });
+}
+
 export async function postGuestAuth() {
   return fetch('/api/auth/guest', { method: 'POST' });
 }
@@ -148,6 +159,42 @@ export async function changePassword(userId, oldPassword, newPassword) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ old_password: oldPassword, new_password: newPassword })
+  });
+}
+
+export async function fetchTwoFactorStatus() {
+  return apiFetch('/api/2fa/status');
+}
+
+export async function setupTwoFactor(password) {
+  return apiFetch('/api/2fa/setup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password })
+  });
+}
+
+export async function enableTwoFactor(code) {
+  return apiFetch('/api/2fa/enable', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code })
+  });
+}
+
+export async function disableTwoFactor(password, code) {
+  return apiFetch('/api/2fa/disable', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password, code })
+  });
+}
+
+export async function regenerateRecoveryCodes(password, code) {
+  return apiFetch('/api/2fa/recovery-codes/regenerate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password, code })
   });
 }
 
@@ -196,6 +243,26 @@ export async function uploadCenterImage(file) {
 
 export async function deleteCenterImage() {
   return apiFetch('/api/center-image', { method: 'DELETE' });
+}
+
+export async function fetchAdminUsers() {
+  return apiFetch('/api/admin/users');
+}
+
+export async function updateAdminUserRole(userId, role) {
+  return apiFetch(`/api/admin/users/${userId}/role`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role })
+  });
+}
+
+export async function fetchAdminAudit({ cursor, limit = 30 } = {}) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor !== undefined && cursor !== null && cursor !== '') {
+    params.set('cursor', String(cursor));
+  }
+  return apiFetch(`/api/admin/audit?${params.toString()}`);
 }
 
 export async function fetchWineReviews() {

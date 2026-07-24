@@ -44,7 +44,7 @@ function withScopedAverage(movie, scopedUsers) {
 }
 
 export default function WatchedPage() {
-  const { currentUser, isGuest, users, socket, showToast, page, connected } = useApp();
+  const { currentUser, isGuest, isAdmin, users, socket, showToast, page, connected } = useApp();
   const [movies, setMovies] = useState([]);
   const [searchQuery, setSearchQuery] = useState(() => sessionStorage.getItem('watchedSearch') || '');
   const [debouncedQuery, setDebouncedQuery] = useState(searchQuery);
@@ -262,7 +262,7 @@ export default function WatchedPage() {
   };
 
   const confirmDelete = async () => {
-    if (!pendingDelete || isGuest) return;
+    if (!pendingDelete || !isAdmin) return;
     setDeleteBusy(true);
     try {
       const response = await deleteWatched(pendingDelete.id);
@@ -278,14 +278,15 @@ export default function WatchedPage() {
     }
   };
 
-  const handleRating = async (movieId, value) => {
+  const handleRating = async (movieId, targetUserId, value) => {
     if (isGuest || !currentUser) return;
-    const savingKey = `${movieId}:${currentUser.id}`;
+    if (!isAdmin && Number(targetUserId) !== Number(currentUser.id)) return;
+    const savingKey = `${movieId}:${targetUserId}`;
     setSavingRating(savingKey);
     try {
       const response = value
-        ? await postRating(movieId, currentUser.id, Number(value))
-        : await deleteRating(movieId);
+        ? await postRating(movieId, targetUserId, Number(value))
+        : await deleteRating(movieId, targetUserId);
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Ошибка сохранения');
@@ -302,7 +303,7 @@ export default function WatchedPage() {
   };
 
   const startEditing = movie => {
-    if (isGuest) return;
+    if (!isAdmin) return;
     setEditingId(movie.id);
     setEditTitle(movie.title);
     setEditAddedAt(movie.added_at || '');
@@ -343,7 +344,7 @@ export default function WatchedPage() {
 
   const handleAddWatched = async event => {
     event.preventDefault();
-    if (isGuest || !connected) return;
+    if (!isAdmin || !connected) return;
     const title = movieInput.trim();
     if (!title) return;
     setAdding(true);
@@ -390,16 +391,22 @@ export default function WatchedPage() {
 
   const renderRatingCell = (movie, userId) => {
     const rating = movie[`rating_${userId}`];
-    if (currentUser?.id === userId) {
+    if (currentUser?.id === userId || isAdmin) {
       const saving = savingRating === `${movie.id}:${userId}`;
+      const targetUser = users.find(user => Number(user.id) === Number(userId));
       return (
         <div className="rating-control">
           <select
             className="rating-select"
             value={rating ?? ''}
-            onChange={event => handleRating(movie.id, event.target.value)}
+            onChange={event => handleRating(movie.id, userId, event.target.value)}
             disabled={saving || !connected}
-            aria-label={`Ваша оценка фильму ${movie.title}`}
+            aria-label={
+              currentUser?.id === userId
+                ? `Ваша оценка фильму ${movie.title}`
+                : `Оценка пользователя ${targetUser?.name || userId} фильму ${movie.title}`
+            }
+            title={currentUser?.id === userId ? 'Ваша оценка' : 'Редактирование администратором'}
           >
             <option value="">{rating == null ? '—' : 'Убрать'}</option>
             {[1,2,3,4,5,6,7,8,9,10].map(value => (
@@ -538,14 +545,14 @@ export default function WatchedPage() {
             }
           >
             <colgroup>
-              <col className="watched-action-col" />
+              {isAdmin && <col className="watched-action-col" />}
               <col className="watched-title-col" />
               {visibleUsers.map(user => <col key={user.id} className="watched-user-col" />)}
               {showAverageColumn && <col className="watched-avg-col" />}
             </colgroup>
             <thead>
               <tr>
-                <th aria-label="Действия" />
+                {isAdmin && <th aria-label="Действия" />}
                 <th aria-sort={getAriaSort(sortColumn, sortDirection, 'title')}>
                   <button className="table-sort-button" type="button" onClick={() => handleSort('title')}>
                     Фильм {sortIcon('title')}
@@ -573,14 +580,14 @@ export default function WatchedPage() {
             <tbody>
               {sorted.map(movie => (
                 <tr key={movie.id}>
-                  <td>
-                    {!isGuest && (
+                  {isAdmin && (
+                    <td>
                       <div className="row-actions">
                         <button className="row-action-button" type="button" onClick={() => startEditing(movie)} title="Редактировать" aria-label={`Редактировать ${movie.title}`}>✎</button>
                         <button className="row-action-button danger" type="button" onClick={() => setPendingDelete(movie)} title="Удалить" aria-label={`Удалить ${movie.title}`}>🗑</button>
                       </div>
-                    )}
-                  </td>
+                    </td>
+                  )}
                   <td>
                     {editingId === movie.id ? (
                       <div className="edit-movie-cell">
@@ -641,7 +648,13 @@ export default function WatchedPage() {
         )}
       </div>
 
-      {!isGuest && (
+      {!isGuest && !isAdmin && (
+        <p className="watched-history-permission" role="note">
+          Общую историю меняет администратор. Оценки и рецензии по-прежнему доступны всем участникам.
+        </p>
+      )}
+
+      {isAdmin && (
         <section className="watched-add-movie surface">
           <div>
             <p className="watched-add-kicker">Без прокрутки</p>

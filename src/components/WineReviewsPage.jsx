@@ -23,7 +23,7 @@ function getRecommendInfo(val) {
 }
 
 export default function WineReviewsPage() {
-  const { currentUser, isGuest, showToast, socket } = useApp();
+  const { currentUser, isGuest, isAdmin, showToast, socket } = useApp();
   const [reviews, setReviews] = useState([]);
   const [formTitle, setFormTitle]   = useState('');
   const [formContent, setFormContent] = useState('');
@@ -290,7 +290,7 @@ export default function WineReviewsPage() {
                   <span className={`review-badge ${getRecommendInfo(r.recommend).cls}`}>
                     {getRecommendInfo(r.recommend).label}
                   </span>
-                  {!isGuest && currentUser?.id === r.user_id && (
+                  {!isGuest && (currentUser?.id === r.user_id || isAdmin) && (
                     <>
                       <button className="review-edit-btn" onClick={() => startEdit(r)} title="Редактировать">✏️</button>
                       <button className="review-delete-btn" onClick={() => handleDelete(r.id)} title="Удалить">🗑️</button>

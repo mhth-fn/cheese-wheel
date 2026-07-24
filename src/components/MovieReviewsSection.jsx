@@ -38,7 +38,7 @@ function formatDate(value) {
 }
 
 export default function MovieReviewsSection({ movie = null, focusComposer = false }) {
-  const { currentUser, isGuest, showToast, socket, connected } = useApp();
+  const { currentUser, isGuest, isAdmin, showToast, socket, connected } = useApp();
   const [reviews, setReviews] = useState([]);
   const [reviewsState, setReviewsState] = useState('loading');
   const [watchedMovies, setWatchedMovies] = useState([]);
@@ -565,7 +565,7 @@ export default function MovieReviewsSection({ movie = null, focusComposer = fals
                     <span className={`review-badge ${getRecommendInfo(review.recommend).cls}`}>
                       {getRecommendInfo(review.recommend).label}
                     </span>
-                    {!isGuest && currentUser?.id === review.user_id && (
+                    {!isGuest && (currentUser?.id === review.user_id || isAdmin) && (
                       <div className="review-card-actions">
                         <button
                           className="review-edit-btn"
