@@ -36,6 +36,12 @@ import ThemeDecorations from './components/ThemeDecorations';
 export const AppContext = createContext(null);
 export const useApp = () => useContext(AppContext);
 
+const BROWSER_THEME_COLORS = {
+  cheese: '#f8dc78',
+  newyear: '#1a472a',
+  spring: '#e8f5e9',
+};
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isGuest, setIsGuest] = useState(false);
@@ -324,6 +330,9 @@ export default function App() {
     document.body.classList.remove('theme-cheese', 'theme-newyear', 'theme-spring');
     if (theme === 'newyear') document.body.classList.add('theme-newyear');
     else if (theme === 'spring') document.body.classList.add('theme-spring');
+    const browserThemeColor = BROWSER_THEME_COLORS[theme] || BROWSER_THEME_COLORS.cheese;
+    document.documentElement.style.backgroundColor = browserThemeColor;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', browserThemeColor);
     localStorage.setItem('theme', theme);
   }, [theme]);
 

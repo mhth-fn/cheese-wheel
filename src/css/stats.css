@@ -28,6 +28,21 @@
   box-shadow: inset 0 3px 0 var(--color-warning), var(--shadow-small);
 }
 
+.stats-match-grid {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.stat-card.closest {
+  box-shadow: inset 0 3px 0 var(--color-success), var(--shadow-small);
+}
+
+.stat-card.furthest {
+  box-shadow: inset 0 3px 0 var(--color-danger), var(--shadow-small);
+}
+
 .stat-card-value {
   max-width: 100%;
   margin-top: var(--space-2);
@@ -46,10 +61,65 @@
   font-weight: 700;
 }
 
+.stat-card-titles {
+  display: grid;
+  width: 100%;
+  gap: 3px;
+  overflow: visible;
+  font-size: 0.9rem;
+  white-space: normal;
+}
+
+.stat-card-title-item {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stat-card-more {
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
 .stat-card-sub {
   margin-top: var(--space-1);
   color: var(--color-text-muted);
   font-size: 0.68rem;
+}
+
+.stat-match-users {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  overflow: visible;
+  white-space: normal;
+}
+
+.stat-match-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stat-match-name:last-child {
+  text-align: right;
+}
+
+.stat-match-symbol {
+  color: var(--color-primary);
+  font-size: 0.9rem;
+}
+
+.stat-match-empty {
+  white-space: normal;
+}
+
+.stat-personal-match-name {
+  width: 100%;
 }
 
 .stats-users {
@@ -58,6 +128,14 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-2);
   margin-top: var(--space-3);
+}
+
+.stats-panel.core-scope .stats-users {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.stats-panel.personal-scope .stats-users {
+  grid-template-columns: 1fr;
 }
 
 .stats-user-item {
@@ -108,6 +186,11 @@
     gap: var(--space-2);
   }
 
+  .stats-match-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-2);
+  }
+
   .stat-card {
     min-height: 118px;
     padding: var(--space-3);
@@ -116,6 +199,10 @@
   .stat-card.averages {
     grid-column: 1 / -1;
     min-height: 112px;
+  }
+
+  .stats-panel.core-scope .stats-users {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .stat-card-value {

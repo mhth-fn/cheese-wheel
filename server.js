@@ -351,7 +351,10 @@ async function notifyDiscord(content) {
     const res = await fetch(DISCORD_WEBHOOK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content })
+      body: JSON.stringify({
+        content: String(content).slice(0, 2000),
+        allowed_mentions: { parse: [] },
+      })
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
@@ -551,11 +554,13 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS movie_reviews (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    movie_id INTEGER,
     user_id INTEGER NOT NULL,
     title TEXT NOT NULL,
     content TEXT NOT NULL,
     recommend INTEGER NOT NULL DEFAULT 1,
     created_at DATETIME DEFAULT (datetime('now')),
+    FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE SET NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
 `);
@@ -634,6 +639,42 @@ db.exec(`
 ['director TEXT', 'year INTEGER'].forEach(col => {
   try { db.exec(`ALTER TABLE movie_reviews ADD COLUMN ${col}`); } catch (e) {}
 });
+try {
+  db.exec('ALTER TABLE movie_reviews ADD COLUMN movie_id INTEGER REFERENCES movies(id) ON DELETE SET NULL');
+} catch (e) {
+  // колонка уже существует
+}
+db.exec('CREATE INDEX IF NOT EXISTS idx_movie_reviews_movie_id ON movie_reviews(movie_id)');
+
+// Связываем старые рецензии только с единственным фильмом с тем же названием.
+// Сравнение делаем в JS, потому что SQLite NOCASE не учитывает регистр кириллицы.
+const normalizeReviewMovieTitle = value => String(value || '').trim().toLocaleLowerCase('ru-RU');
+const movieReviewLinksMigrated = db.prepare(
+  "SELECT value FROM settings WHERE key = 'migration_movie_review_links_v1'"
+).get();
+if (!movieReviewLinksMigrated) {
+  const watchedMoviesForReviewLink = db.prepare(
+    'SELECT id, title FROM movies WHERE is_watched = 1'
+  ).all();
+  const unlinkedMovieReviews = db.prepare(
+    'SELECT id, title FROM movie_reviews WHERE movie_id IS NULL'
+  ).all();
+  const linkMovieReview = db.prepare('UPDATE movie_reviews SET movie_id = ? WHERE id = ?');
+  const markMovieReviewLinksMigrated = db.prepare(
+    "INSERT INTO settings (key, value) VALUES ('migration_movie_review_links_v1', '1')"
+  );
+  const linkLegacyMovieReviews = db.transaction(() => {
+    unlinkedMovieReviews.forEach(review => {
+      const normalizedTitle = normalizeReviewMovieTitle(review.title);
+      const matches = watchedMoviesForReviewLink.filter(
+        movie => normalizeReviewMovieTitle(movie.title) === normalizedTitle
+      );
+      if (matches.length === 1) linkMovieReview.run(matches[0].id, review.id);
+    });
+    markMovieReviewLinksMigrated.run();
+  });
+  linkLegacyMovieReviews();
+}
 
 // Разовая миграция: перевод старого recommend=0 (Не рекомендую) в recommend=-1,
 // чтобы освободить 0 для нового состояния "Сойдёт"
@@ -674,6 +715,7 @@ const seedUsers = [
   { id: 6, name: 'Женя' },
   { id: 7, name: 'Юлий' },
 ];
+const CORE_STATS_USER_NAMES = Object.freeze(['Антон', 'Митя', 'Пётр', 'Сергей']);
 const insertUser = db.prepare('INSERT OR IGNORE INTO users (id, name, password_hash) VALUES (?, ?, ?)');
 seedUsers.forEach(u => insertUser.run(u.id, u.name, hashPassword(DEFAULT_PASSWORD)));
 
@@ -735,6 +777,7 @@ const stmts = {
   deleteNextMovie: db.prepare('DELETE FROM movies WHERE id = ? AND is_watched = 0 AND is_next_wheel = 1'),
   markWatched: db.prepare("UPDATE movies SET is_watched = 1, watched_at = datetime('now') WHERE id = ?"),
   insertWatched: db.prepare("INSERT INTO movies (title, is_watched, added_by, watched_at) VALUES (?, 1, ?, datetime('now'))"),
+  getWatchedMoviesForReviewLink: db.prepare('SELECT id, title FROM movies WHERE is_watched = 1'),
   getWatched: null, // инициализируется ниже динамически
   updateMovie: db.prepare('UPDATE movies SET title = ?, added_at = ? WHERE id = ?'),
   deleteRatings: db.prepare('DELETE FROM ratings WHERE movie_id = ?'),
@@ -764,6 +807,21 @@ const stmts = {
     FROM users u LEFT JOIN ratings r ON u.id = r.user_id
     GROUP BY u.id ORDER BY u.id
   `),
+  ratingPairs: db.prepare(`
+    SELECT
+      u1.name as first_user,
+      u2.name as second_user,
+      COUNT(*) as common_movies,
+      ROUND(AVG(ABS(r1.rating - r2.rating)), 2) as average_difference
+    FROM ratings r1
+    JOIN ratings r2
+      ON r1.movie_id = r2.movie_id
+      AND r1.user_id < r2.user_id
+    JOIN movies m ON m.id = r1.movie_id AND m.is_watched = 1
+    JOIN users u1 ON u1.id = r1.user_id
+    JOIN users u2 ON u2.id = r2.user_id
+    GROUP BY r1.user_id, r2.user_id
+  `),
   getWineReviews: db.prepare(`
     SELECT wr.*, u.name as user_name,
       COALESCE((SELECT COUNT(*) FROM review_reactions WHERE review_type='wine' AND review_id=wr.id AND reaction=1), 0) as likes,
@@ -784,10 +842,21 @@ const stmts = {
     FROM movie_reviews mr JOIN users u ON mr.user_id = u.id
     ORDER BY mr.created_at DESC
   `),
-  insertMovieReview: db.prepare('INSERT INTO movie_reviews (user_id, title, content, recommend, director, year) VALUES (?, ?, ?, ?, ?, ?)'),
+  getMovieReviewsByMovie: db.prepare(`
+    SELECT mr.*, u.name as user_name,
+      COALESCE((SELECT COUNT(*) FROM review_reactions WHERE review_type='movie' AND review_id=mr.id AND reaction=1), 0) as likes,
+      COALESCE((SELECT COUNT(*) FROM review_reactions WHERE review_type='movie' AND review_id=mr.id AND reaction=-1), 0) as dislikes,
+      COALESCE((SELECT json_group_array(json_object('user_id', user_id, 'reaction', reaction)) FROM review_reactions WHERE review_type='movie' AND review_id=mr.id), '[]') as reactions_json
+    FROM movie_reviews mr
+    JOIN users u ON mr.user_id = u.id
+    WHERE mr.movie_id = ?
+    ORDER BY mr.created_at DESC
+  `),
+  insertMovieReview: db.prepare('INSERT INTO movie_reviews (movie_id, user_id, title, content, recommend, director, year) VALUES (?, ?, ?, ?, ?, ?, ?)'),
   getMovieReviewById: db.prepare('SELECT * FROM movie_reviews WHERE id = ?'),
   deleteMovieReview: db.prepare('DELETE FROM movie_reviews WHERE id = ? AND user_id = ?'),
-  updateMovieReview: db.prepare('UPDATE movie_reviews SET title=?, content=?, recommend=?, director=?, year=? WHERE id=? AND user_id=?'),
+  updateMovieReview: db.prepare('UPDATE movie_reviews SET movie_id=?, title=?, content=?, recommend=?, director=?, year=? WHERE id=? AND user_id=?'),
+  updateLinkedMovieReviewTitles: db.prepare('UPDATE movie_reviews SET title = ? WHERE movie_id = ?'),
   getReviewReactions: db.prepare('SELECT user_id, reaction FROM review_reactions WHERE review_type = ? AND review_id = ?'),
   deleteReviewReactions: db.prepare('DELETE FROM review_reactions WHERE review_type = ? AND review_id = ?'),
 };
@@ -833,7 +902,12 @@ const vpnStmts = {
       proposer.name as added_by_name,
       ${ratingCols},
       ROUND(AVG(r.rating), 1) as avg_rating,
-      COUNT(r.rating) as ratings_count
+      COUNT(r.rating) as ratings_count,
+      (
+        SELECT COUNT(*)
+        FROM movie_reviews mr
+        WHERE mr.movie_id = m.id
+      ) as review_count
     FROM movies m
     LEFT JOIN ratings r ON m.id = r.movie_id
     LEFT JOIN users proposer ON m.added_by = proposer.id
@@ -1444,7 +1518,11 @@ app.patch('/api/movies/:id', rejectWheelMutationDuringSpin, (req, res) => {
   }
 
   try {
-    stmts.updateMovie.run(title, addedAt, id);
+    const updateMovieAndReviews = db.transaction(() => {
+      stmts.updateMovie.run(title, addedAt, id);
+      stmts.updateLinkedMovieReviewTitles.run(title, id);
+    });
+    updateMovieAndReviews();
     const updated = stmts.getMovieWithAuthorById.get(id);
     io.emit(movie.is_watched === 0 && movie.is_next_wheel === 1 ? 'next-movie-updated' : 'movie-updated', updated);
     if (movie.is_watched === 0 && movie.is_next_wheel === 0) {
@@ -1504,12 +1582,270 @@ app.delete('/api/ratings/:movieId', (req, res) => {
   res.json({ success: true });
 });
 
+function roundRating(value, digits) {
+  if (!Number.isFinite(value)) return null;
+  return Number(value.toFixed(digits));
+}
+
+function serializeRatingPair(pair) {
+  if (!pair) return null;
+  return {
+    first_user: pair.first_user,
+    second_user: pair.second_user,
+    common_movies: pair.common_movies,
+    average_difference: roundRating(pair.raw_difference, 2),
+  };
+}
+
+function buildCoreStats(coreUsers) {
+  const watchedMovies = stmts.getWatched.all();
+  const ratedMovies = watchedMovies.flatMap(movie => {
+    const ratings = coreUsers
+      .map(user => movie[`rating_${user.id}`])
+      .filter(rating => rating !== null && rating !== undefined);
+    if (ratings.length === 0) return [];
+    return [{
+      id: movie.id,
+      title: movie.title,
+      ratings_count: ratings.length,
+      raw_average: ratings.reduce((sum, rating) => sum + Number(rating), 0) / ratings.length,
+    }];
+  });
+
+  const topRated = [...ratedMovies].sort((first, second) => (
+    second.raw_average - first.raw_average
+    || second.ratings_count - first.ratings_count
+    || first.id - second.id
+  ))[0] || null;
+  const lowestRated = [...ratedMovies].sort((first, second) => (
+    first.raw_average - second.raw_average
+    || second.ratings_count - first.ratings_count
+    || first.id - second.id
+  ))[0] || null;
+
+  const perUserAvg = coreUsers.map(user => {
+    const ratings = watchedMovies
+      .map(movie => movie[`rating_${user.id}`])
+      .filter(rating => rating !== null && rating !== undefined);
+    return {
+      name: user.name,
+      avg_rating: ratings.length
+        ? roundRating(ratings.reduce((sum, rating) => sum + Number(rating), 0) / ratings.length, 1)
+        : null,
+    };
+  });
+
+  const ratingPairs = [];
+  for (let firstIndex = 0; firstIndex < coreUsers.length; firstIndex++) {
+    for (let secondIndex = firstIndex + 1; secondIndex < coreUsers.length; secondIndex++) {
+      const firstUser = coreUsers[firstIndex];
+      const secondUser = coreUsers[secondIndex];
+      const differences = watchedMovies.flatMap(movie => {
+        const firstRating = movie[`rating_${firstUser.id}`];
+        const secondRating = movie[`rating_${secondUser.id}`];
+        if (
+          firstRating === null || firstRating === undefined
+          || secondRating === null || secondRating === undefined
+        ) {
+          return [];
+        }
+        return [Math.abs(Number(firstRating) - Number(secondRating))];
+      });
+      if (differences.length === 0) continue;
+      ratingPairs.push({
+        first_user: firstUser.name,
+        second_user: secondUser.name,
+        common_movies: differences.length,
+        raw_difference: differences.reduce((sum, difference) => sum + difference, 0) / differences.length,
+        order: ratingPairs.length,
+      });
+    }
+  }
+
+  const closestRatingPair = [...ratingPairs].sort((first, second) => (
+    first.raw_difference - second.raw_difference
+    || second.common_movies - first.common_movies
+    || first.order - second.order
+  ))[0] || null;
+  const furthestRatingPair = [...ratingPairs].sort((first, second) => (
+    second.raw_difference - first.raw_difference
+    || second.common_movies - first.common_movies
+    || first.order - second.order
+  ))[0] || null;
+
+  return {
+    scope: 'core',
+    total_watched: ratedMovies.length,
+    top_rated: topRated ? {
+      title: topRated.title,
+      avg_rating: roundRating(topRated.raw_average, 1),
+    } : null,
+    lowest_rated: lowestRated ? {
+      title: lowestRated.title,
+      avg_rating: roundRating(lowestRated.raw_average, 1),
+    } : null,
+    per_user_avg: perUserAvg,
+    closest_rating_pair: serializeRatingPair(closestRatingPair),
+    furthest_rating_pair: serializeRatingPair(furthestRatingPair),
+  };
+}
+
+function buildPersonalStats(currentUser, comparisonScope = 'all') {
+  const watchedMovies = stmts.getWatched.all();
+  const ratingKey = `rating_${currentUser.id}`;
+  const ratedMovies = watchedMovies.flatMap(movie => {
+    const rating = movie[ratingKey];
+    if (rating === null || rating === undefined) return [];
+    return [{
+      id: movie.id,
+      title: movie.title,
+      raw_average: Number(rating),
+    }];
+  });
+
+  const highestRating = ratedMovies.length
+    ? Math.max(...ratedMovies.map(movie => movie.raw_average))
+    : null;
+  const lowestRating = ratedMovies.length
+    ? Math.min(...ratedMovies.map(movie => movie.raw_average))
+    : null;
+  const personalExtremesAreEqual = ratedMovies.length > 0 && highestRating === lowestRating;
+  const topRatedMovies = ratedMovies
+    .filter(movie => movie.raw_average === highestRating)
+    .sort((first, second) => first.id - second.id);
+  const lowestRatedMovies = ratedMovies
+    .filter(movie => !personalExtremesAreEqual && movie.raw_average === lowestRating)
+    .sort((first, second) => first.id - second.id);
+  const topRated = topRatedMovies[0] || null;
+  const lowestRated = lowestRatedMovies[0] || null;
+  const personalAverage = ratedMovies.length
+    ? ratedMovies.reduce((sum, movie) => sum + movie.raw_average, 0) / ratedMovies.length
+    : null;
+
+  const comparisonUsers = stmts.getUsers.all()
+    .filter(user => Number(user.id) !== Number(currentUser.id))
+    .filter(user => (
+      comparisonScope !== 'core'
+      || CORE_STATS_USER_NAMES.includes(user.name)
+    ));
+  const ratingPairs = comparisonUsers.flatMap((otherUser, order) => {
+    const differences = watchedMovies.flatMap(movie => {
+      const currentRating = movie[ratingKey];
+      const otherRating = movie[`rating_${otherUser.id}`];
+      if (
+        currentRating === null || currentRating === undefined
+        || otherRating === null || otherRating === undefined
+      ) {
+        return [];
+      }
+      return [Math.abs(Number(currentRating) - Number(otherRating))];
+    });
+    if (differences.length === 0) return [];
+    return [{
+      first_user: currentUser.name,
+      second_user: otherUser.name,
+      common_movies: differences.length,
+      raw_difference: differences.reduce((sum, difference) => sum + difference, 0) / differences.length,
+      order,
+    }];
+  });
+
+  const closestRatingPair = [...ratingPairs].sort((first, second) => (
+    first.raw_difference - second.raw_difference
+    || second.common_movies - first.common_movies
+    || first.order - second.order
+  ))[0] || null;
+  const furthestRatingPair = [...ratingPairs].sort((first, second) => (
+    second.raw_difference - first.raw_difference
+    || second.common_movies - first.common_movies
+    || first.order - second.order
+  ))[0] || null;
+
+  return {
+    scope: 'personal',
+    comparison_scope: comparisonScope,
+    subject_name: currentUser.name,
+    total_watched: ratedMovies.length,
+    personal_extremes_equal: personalExtremesAreEqual,
+    top_rated: topRated ? {
+      id: topRated.id,
+      title: topRated.title,
+      avg_rating: roundRating(topRated.raw_average, 1),
+    } : null,
+    top_rated_movies: topRatedMovies.map(movie => ({
+      id: movie.id,
+      title: movie.title,
+      avg_rating: roundRating(movie.raw_average, 1),
+    })),
+    lowest_rated: lowestRated ? {
+      id: lowestRated.id,
+      title: lowestRated.title,
+      avg_rating: roundRating(lowestRated.raw_average, 1),
+    } : null,
+    lowest_rated_movies: lowestRatedMovies.map(movie => ({
+      id: movie.id,
+      title: movie.title,
+      avg_rating: roundRating(movie.raw_average, 1),
+    })),
+    per_user_avg: [{
+      name: currentUser.name,
+      avg_rating: roundRating(personalAverage, 1),
+    }],
+    closest_rating_pair: serializeRatingPair(closestRatingPair),
+    furthest_rating_pair: serializeRatingPair(furthestRatingPair),
+  };
+}
+
 app.get('/api/stats', (req, res) => {
+  const scope = req.query.scope || 'all';
+  if (!['all', 'core', 'personal'].includes(scope)) {
+    return res.status(400).json({ error: 'Неизвестный режим статистики' });
+  }
+  if (scope === 'personal') {
+    const comparisonScope = req.query.comparison_scope || 'all';
+    if (!['all', 'core'].includes(comparisonScope)) {
+      return res.status(400).json({ error: 'Неизвестный круг сравнения' });
+    }
+    const currentUser = stmts.getUsers.all()
+      .find(user => Number(user.id) === Number(req.tokenData.userId));
+    if (!currentUser) {
+      return res.status(403).json({ error: 'Требуется вход участника' });
+    }
+    res.set('Cache-Control', 'private, no-store');
+    res.vary('Authorization');
+    return res.json(buildPersonalStats(currentUser, comparisonScope));
+  }
+  if (scope === 'core') {
+    const usersByName = new Map(stmts.getUsers.all().map(user => [user.name, user]));
+    const coreUsers = CORE_STATS_USER_NAMES.map(name => usersByName.get(name)).filter(Boolean);
+    if (coreUsers.length !== CORE_STATS_USER_NAMES.length) {
+      return res.status(503).json({ error: 'Не удалось собрать основной состав' });
+    }
+    return res.json(buildCoreStats(coreUsers));
+  }
+
+  const ratingPairs = stmts.ratingPairs.all();
+  const closestRatingPair = [...ratingPairs].sort((first, second) => (
+    first.average_difference - second.average_difference
+    || second.common_movies - first.common_movies
+    || first.first_user.localeCompare(second.first_user, 'ru')
+    || first.second_user.localeCompare(second.second_user, 'ru')
+  ))[0] || null;
+  const furthestRatingPair = [...ratingPairs].sort((first, second) => (
+    second.average_difference - first.average_difference
+    || second.common_movies - first.common_movies
+    || first.first_user.localeCompare(second.first_user, 'ru')
+    || first.second_user.localeCompare(second.second_user, 'ru')
+  ))[0] || null;
+
   res.json({
+    scope: 'all',
     total_watched: stmts.totalWatched.get().count,
     top_rated: stmts.topRated.get() || null,
     lowest_rated: stmts.lowestRated.get() || null,
-    per_user_avg: stmts.perUserAvg.all()
+    per_user_avg: stmts.perUserAvg.all(),
+    closest_rating_pair: closestRatingPair,
+    furthest_rating_pair: furthestRatingPair,
   });
 });
 
@@ -1671,9 +2007,9 @@ app.get('/api/wine-reviews', (req, res) => {
 });
 
 app.post('/api/wine-reviews', (req, res) => {
-  const userId = parseIntStrict(req.body.user_id);
-  if (isNaN(userId) || !stmts.getUserById.get(userId)) {
-    return res.status(400).json({ error: 'Неверный пользователь' });
+  const userId = Number(req.tokenData.userId);
+  if (!Number.isInteger(userId) || !stmts.getUserById.get(userId)) {
+    return res.status(403).json({ error: 'Требуется вход участника' });
   }
   const validated = validateReview(req.body);
   if (validated.error) return res.status(400).json({ error: validated.error });
@@ -1690,6 +2026,10 @@ app.post('/api/wine-reviews', (req, res) => {
     const user = stmts.getUsers.all().find(u => u.id === userId);
     const reviewOut = { ...review, user_name: user?.name, likes: 0, dislikes: 0, reactions: [] };
     io.emit('wine-review-added', reviewOut);
+    void notifyDiscord(
+      '🍷 Новый обзор вина *' + escapeDiscordMarkdown(review.title)
+      + '*. Автор — *' + escapeDiscordMarkdown(user?.name || 'Пользователь') + '*'
+    );
     res.json(reviewOut);
   } catch (err) {
     res.status(500).json({ error: 'Ошибка сохранения' });
@@ -1734,29 +2074,97 @@ app.patch('/api/wine-reviews/:id', (req, res) => {
   res.json(updated);
 });
 
+function serializeMovieReview({ reactions_json, ...review }) {
+  return {
+    ...review,
+    reactions: JSON.parse(reactions_json || '[]'),
+  };
+}
+
+function getReviewedMovie(value) {
+  const movieId = parseIntStrict(value);
+  if (isNaN(movieId)) return { error: 'Неверный ID фильма' };
+  const movie = stmts.getMovieById.get(movieId);
+  if (!movie || Number(movie.is_watched) !== 1) {
+    return { error: 'Рецензию можно привязать только к просмотренному фильму' };
+  }
+  return { movieId, movie };
+}
+
+function findUniqueWatchedMovieByTitle(title) {
+  const normalizedTitle = normalizeReviewMovieTitle(title);
+  const matches = stmts.getWatchedMoviesForReviewLink.all().filter(
+    movie => normalizeReviewMovieTitle(movie.title) === normalizedTitle
+  );
+  return matches.length === 1 ? matches[0] : null;
+}
+
 app.get('/api/movie-reviews', (req, res) => {
-  const reviews = stmts.getMovieReviews.all().map(({ reactions_json, ...r }) => ({
-    ...r, reactions: JSON.parse(reactions_json || '[]')
-  }));
-  res.json(reviews);
+  let rows;
+  if (req.query.movie_id !== undefined) {
+    const movieId = parseIntStrict(req.query.movie_id);
+    if (isNaN(movieId)) return res.status(400).json({ error: 'Неверный ID фильма' });
+    rows = stmts.getMovieReviewsByMovie.all(movieId);
+  } else {
+    rows = stmts.getMovieReviews.all();
+  }
+  res.json(rows.map(serializeMovieReview));
 });
 
 app.post('/api/movie-reviews', (req, res) => {
-  const userId = parseIntStrict(req.body.user_id);
-  if (isNaN(userId) || !stmts.getUserById.get(userId)) {
-    return res.status(400).json({ error: 'Неверный пользователь' });
+  const userId = Number(req.tokenData.userId);
+  if (!Number.isInteger(userId) || !stmts.getUserById.get(userId)) {
+    return res.status(403).json({ error: 'Требуется вход участника' });
   }
-  const validated = validateReview(req.body);
+
+  let movieId = null;
+  let movie = null;
+  let validated;
+  if (req.body.movie_id !== undefined && req.body.movie_id !== null && req.body.movie_id !== '') {
+    const resolved = getReviewedMovie(req.body.movie_id);
+    if (resolved.error) return res.status(400).json({ error: resolved.error });
+    ({ movieId, movie } = resolved);
+    validated = validateReview({ ...req.body, title: movie.title });
+  } else {
+    validated = validateReview(req.body);
+    if (!validated.error && req.body.link_by_title !== false) {
+      movie = findUniqueWatchedMovieByTitle(validated.title);
+      if (movie) {
+        movieId = movie.id;
+        validated = { ...validated, title: movie.title };
+      }
+    }
+  }
+
   if (validated.error) return res.status(400).json({ error: validated.error });
   const director = typeof req.body.director === 'string' ? req.body.director.trim().slice(0, 100) || null : null;
   const year = parseIntStrict(req.body.year);
   const yearVal = !isNaN(year) && year >= 1888 && year <= 2100 ? year : null;
+
   try {
-    const result = stmts.insertMovieReview.run(userId, validated.title, validated.content, validated.recommend, director, yearVal);
+    const result = stmts.insertMovieReview.run(
+      movieId,
+      userId,
+      validated.title,
+      validated.content,
+      validated.recommend,
+      director,
+      yearVal
+    );
     const review = stmts.getMovieReviewById.get(result.lastInsertRowid);
-    const user = stmts.getUsers.all().find(u => u.id === userId);
-    const reviewOut = { ...review, user_name: user?.name, likes: 0, dislikes: 0, reactions: [] };
+    const user = stmts.getUsers.all().find(item => item.id === userId);
+    const reviewOut = {
+      ...review,
+      user_name: user?.name,
+      likes: 0,
+      dislikes: 0,
+      reactions: [],
+    };
     io.emit('movie-review-added', reviewOut);
+    void notifyDiscord(
+      '🎬 Новый обзор фильма *' + escapeDiscordMarkdown(review.title)
+      + '*. Автор — *' + escapeDiscordMarkdown(user?.name || 'Пользователь') + '*'
+    );
     res.json(reviewOut);
   } catch (err) {
     res.status(500).json({ error: 'Ошибка сохранения' });
@@ -1765,22 +2173,50 @@ app.post('/api/movie-reviews', (req, res) => {
 
 app.patch('/api/movie-reviews/:id', (req, res) => {
   const id = parseIntStrict(req.params.id);
-  const userId = parseIntStrict(req.body.user_id);
-  if (isNaN(id) || isNaN(userId)) return res.status(400).json({ error: 'Неверный ID' });
-  const validated = validateReview(req.body);
+  const userId = Number(req.tokenData.userId);
+  if (isNaN(id)) return res.status(400).json({ error: 'Неверный ID' });
+  if (!Number.isInteger(userId)) return res.status(403).json({ error: 'Требуется вход участника' });
+
+  const existing = stmts.getMovieReviewById.get(id);
+  if (!existing) return res.status(404).json({ error: 'Рецензия не найдена' });
+  if (Number(existing.user_id) !== userId) {
+    return res.status(403).json({ error: 'Можно редактировать только свою рецензию' });
+  }
+
+  let movieId = existing.movie_id || null;
+  let movie = movieId ? stmts.getMovieById.get(movieId) : null;
+  if (req.body.movie_id !== undefined && req.body.movie_id !== null && req.body.movie_id !== '') {
+    const resolved = getReviewedMovie(req.body.movie_id);
+    if (resolved.error) return res.status(400).json({ error: resolved.error });
+    ({ movieId, movie } = resolved);
+  }
+
+  const validated = validateReview(movie ? { ...req.body, title: movie.title } : req.body);
   if (validated.error) return res.status(400).json({ error: validated.error });
   const director = typeof req.body.director === 'string' ? req.body.director.trim().slice(0, 100) || null : null;
   const year = parseIntStrict(req.body.year);
   const yearVal = !isNaN(year) && year >= 1888 && year <= 2100 ? year : null;
-  const result = stmts.updateMovieReview.run(validated.title, validated.content, validated.recommend, director, yearVal, id, userId);
-  if (result.changes === 0) return res.status(403).json({ error: 'Нет доступа или обзор не найден' });
+  const result = stmts.updateMovieReview.run(
+    movieId,
+    validated.title,
+    validated.content,
+    validated.recommend,
+    director,
+    yearVal,
+    id,
+    userId
+  );
+  if (result.changes === 0) return res.status(403).json({ error: 'Нет доступа или рецензия не найдена' });
+
   const review = stmts.getMovieReviewById.get(id);
-  const user = stmts.getUsers.all().find(u => u.id === userId);
+  const user = stmts.getUsers.all().find(item => item.id === userId);
   const reactions = stmts.getReviewReactions.all('movie', id);
   const updated = {
-    ...review, user_name: user?.name, reactions,
-    likes: reactions.filter(r => r.reaction === 1).length,
-    dislikes: reactions.filter(r => r.reaction === -1).length
+    ...review,
+    user_name: user?.name,
+    reactions,
+    likes: reactions.filter(reaction => reaction.reaction === 1).length,
+    dislikes: reactions.filter(reaction => reaction.reaction === -1).length,
   };
   io.emit('movie-review-updated', updated);
   res.json(updated);
@@ -1788,12 +2224,23 @@ app.patch('/api/movie-reviews/:id', (req, res) => {
 
 app.delete('/api/movie-reviews/:id', (req, res) => {
   const id = parseIntStrict(req.params.id);
-  const userId = parseIntStrict(req.body.user_id);
-  if (isNaN(id) || isNaN(userId)) return res.status(400).json({ error: 'Неверный ID' });
-  const result = stmts.deleteMovieReview.run(id, userId);
-  if (result.changes === 0) return res.status(403).json({ error: 'Нет доступа или обзор не найден' });
-  stmts.deleteReviewReactions.run('movie', id);
-  io.emit('movie-review-deleted', { id });
+  const userId = Number(req.tokenData.userId);
+  if (isNaN(id)) return res.status(400).json({ error: 'Неверный ID' });
+  if (!Number.isInteger(userId)) return res.status(403).json({ error: 'Требуется вход участника' });
+
+  const review = stmts.getMovieReviewById.get(id);
+  if (!review) return res.status(404).json({ error: 'Рецензия не найдена' });
+  if (Number(review.user_id) !== userId) {
+    return res.status(403).json({ error: 'Можно удалить только свою рецензию' });
+  }
+
+  const deleteReview = db.transaction(() => {
+    stmts.deleteReviewReactions.run('movie', id);
+    return stmts.deleteMovieReview.run(id, userId);
+  });
+  const result = deleteReview();
+  if (result.changes === 0) return res.status(403).json({ error: 'Нет доступа или рецензия не найдена' });
+  io.emit('movie-review-deleted', { id, movie_id: review.movie_id || null });
   res.json({ success: true });
 });
 

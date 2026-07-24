@@ -9,6 +9,15 @@ const FOCUSABLE = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
+function getVisibleFocusable(dialog) {
+  if (!dialog) return [];
+  return [...dialog.querySelectorAll(FOCUSABLE)].filter(element => (
+    !element.closest('[hidden]') &&
+    !element.closest('[inert]') &&
+    element.getAttribute('aria-hidden') !== 'true'
+  ));
+}
+
 export function useDialogA11y(open, onClose) {
   const dialogRef = useRef(null);
   const returnFocusRef = useRef(null);
@@ -21,7 +30,7 @@ export function useDialogA11y(open, onClose) {
     document.body.style.overflow = 'hidden';
 
     const dialog = dialogRef.current;
-    const initialFocusable = dialog ? [...dialog.querySelectorAll(FOCUSABLE)] : [];
+    const initialFocusable = getVisibleFocusable(dialog);
     (initialFocusable[0] || dialog)?.focus();
 
     const handleKeyDown = (event) => {
@@ -32,7 +41,7 @@ export function useDialogA11y(open, onClose) {
       }
       if (event.key !== 'Tab') return;
 
-      const focusable = dialog ? [...dialog.querySelectorAll(FOCUSABLE)] : [];
+      const focusable = getVisibleFocusable(dialog);
       if (focusable.length === 0) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];

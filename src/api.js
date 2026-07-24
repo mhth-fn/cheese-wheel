@@ -116,8 +116,14 @@ export async function deleteRating(movieId) {
   return apiFetch(`/api/ratings/${movieId}`, { method: 'DELETE' });
 }
 
-export async function fetchStats() {
-  const res = await apiFetch('/api/stats');
+export async function fetchStats(scope = 'all', comparisonScope = 'all') {
+  const query = scope === 'personal'
+    ? `?scope=personal${comparisonScope === 'core' ? '&comparison_scope=core' : ''}`
+    : scope === 'core'
+      ? '?scope=core'
+      : '';
+  const res = await apiFetch(`/api/stats${query}`);
+  if (!res.ok) throw new Error('Не удалось загрузить статистику');
   return res.json();
 }
 
@@ -221,32 +227,31 @@ export async function deleteWineReview(id, userId) {
   });
 }
 
-export async function fetchMovieReviews() {
-  const res = await apiFetch('/api/movie-reviews');
+export async function fetchMovieReviews(movieId = null) {
+  const query = movieId ? `?movie_id=${encodeURIComponent(movieId)}` : '';
+  const res = await apiFetch(`/api/movie-reviews${query}`);
   return res.json();
 }
 
-export async function postMovieReview(userId, title, content, recommend, director, year) {
+export async function postMovieReview({ movieId, title, content, recommend, director, year, autoLink = true }) {
   return apiFetch('/api/movie-reviews', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: userId, title, content, recommend, director, year })
+    body: JSON.stringify({ movie_id: movieId, title, content, recommend, director, year, link_by_title: autoLink })
   });
 }
 
-export async function patchMovieReview(id, userId, title, content, recommend, director, year) {
+export async function patchMovieReview(id, { movieId, title, content, recommend, director, year }) {
   return apiFetch(`/api/movie-reviews/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: userId, title, content, recommend, director, year })
+    body: JSON.stringify({ movie_id: movieId, title, content, recommend, director, year })
   });
 }
 
-export async function deleteMovieReview(id, userId) {
+export async function deleteMovieReview(id) {
   return apiFetch(`/api/movie-reviews/${id}`, {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: userId })
+    method: 'DELETE'
   });
 }
 

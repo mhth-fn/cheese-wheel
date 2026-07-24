@@ -151,7 +151,19 @@
 }
 
 .movie-details-dialog {
-  width: min(540px, 100%);
+  display: flex;
+  width: min(640px, calc(100vw - 32px));
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  flex-direction: column;
+  border-radius: var(--radius-large) 0 0 var(--radius-large);
+  animation: moviePanelEnter 0.24s ease-out;
+}
+
+.dialog-backdrop.movie-details-backdrop {
+  padding: 0;
+  place-items: stretch end;
 }
 
 .movie-details-header {
@@ -161,6 +173,7 @@
   gap: var(--space-4);
   padding: var(--space-5);
   border-bottom: 1px solid var(--color-border-soft);
+  background: var(--color-surface);
 }
 
 .movie-details-header p {
@@ -178,7 +191,7 @@
 
 .movie-details-meta {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-2);
   padding: var(--space-4) var(--space-5);
   background: var(--color-surface-muted);
@@ -198,6 +211,60 @@
   overflow: hidden;
   font-size: 0.82rem;
   text-overflow: ellipsis;
+}
+
+.movie-details-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border-soft);
+  background: var(--color-surface);
+}
+
+.movie-details-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  gap: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-medium);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.movie-details-tabs button:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.movie-details-tabs button.active {
+  border-color: var(--color-border);
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+}
+
+.movie-details-tabs button span {
+  display: inline-grid;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  background: rgba(217, 134, 47, 0.16);
+  color: var(--color-primary-active);
+  font-size: 0.7rem;
+}
+
+.movie-details-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--color-border) transparent;
 }
 
 .movie-details-ratings {
@@ -409,10 +476,25 @@
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+@keyframes moviePanelEnter {
+  from { opacity: 0; transform: translateX(32px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
 @media (max-width: 720px) {
   .dialog-backdrop,
   .admin-modal {
     padding: var(--space-2);
+  }
+
+  .dialog-backdrop.movie-details-backdrop {
+    padding: 0;
+  }
+
+  .movie-details-dialog {
+    width: 100%;
+    border: 0;
+    border-radius: 0;
   }
 
   .admin-btn {
@@ -435,7 +517,7 @@
   }
 
   .movie-details-meta {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .confirm-dialog-actions {

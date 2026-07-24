@@ -1,3 +1,45 @@
+.watched-scope-control {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.watched-scope-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.scope-filter-toggle {
+  min-height: 40px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-primary-active);
+  box-shadow: var(--shadow-small);
+  font-size: 0.75rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.scope-filter-toggle:hover {
+  background: var(--color-surface-hover);
+}
+
+.scope-filter-toggle.active {
+  border-color: var(--theme-btn-border);
+  background: var(--theme-btn);
+  color: #fff;
+}
+
 .watched-toolbar {
   position: relative;
   margin-bottom: var(--space-3);
@@ -143,7 +185,7 @@
 }
 
 .watched-table td {
-  height: 62px;
+  height: 82px;
   padding: var(--space-2);
   border-bottom: 1px solid var(--color-border-soft);
   background: var(--color-surface);
@@ -223,6 +265,12 @@
   cursor: pointer;
 }
 
+.movie-title-stack {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
 .movie-title-cell:hover {
   background: rgba(217, 134, 47, 0.08);
 }
@@ -242,6 +290,38 @@
   margin-top: 2px;
   color: var(--color-text-muted);
   font-size: 0.68rem;
+}
+
+.movie-review-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 6px;
+}
+
+.movie-review-trigger,
+.movie-review-write {
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 0.68rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.movie-review-trigger {
+  color: var(--color-primary-active);
+}
+
+.movie-review-write {
+  color: var(--color-info);
+}
+
+.movie-review-trigger:hover,
+.movie-review-write:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .rating-control {
@@ -410,6 +490,27 @@
 }
 
 @media (max-width: 430px) {
+  .watched-scope-control {
+    align-items: stretch;
+    justify-content: stretch;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .watched-scope-control span {
+    text-align: center;
+  }
+
+  .watched-scope-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .scope-filter-toggle {
+    width: 100%;
+    min-height: 44px;
+  }
+
   .search-shortcut {
     display: none;
   }

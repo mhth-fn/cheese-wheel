@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useApp } from '../App';
 import {
   fetchWatched,
@@ -24,6 +24,25 @@ function getAriaSort(sortColumn, sortDirection, column) {
   return sortDirection === 'asc' ? 'ascending' : 'descending';
 }
 
+const CORE_USER_NAMES = ['Антон', 'Митя', 'Пётр', 'Сергей'];
+
+function normalizeUserName(value) {
+  return String(value || '').trim().toLocaleLowerCase('ru').replaceAll('ё', 'е');
+}
+
+function withScopedAverage(movie, scopedUsers) {
+  const ratings = scopedUsers
+    .map(user => movie[`rating_${user.id}`])
+    .filter(rating => rating !== null && rating !== undefined && rating !== '');
+  if (ratings.length === 0) return null;
+  const average = ratings.reduce((sum, rating) => sum + Number(rating), 0) / ratings.length;
+  return {
+    ...movie,
+    avg_rating: Math.round(average * 10) / 10,
+    ratings_count: ratings.length,
+  };
+}
+
 export default function WatchedPage() {
   const { currentUser, isGuest, users, socket, showToast, page, connected } = useApp();
   const [movies, setMovies] = useState([]);
@@ -40,9 +59,12 @@ export default function WatchedPage() {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [detailsMovie, setDetailsMovie] = useState(null);
+  const [detailsView, setDetailsView] = useState('details');
   const [editingId, setEditingId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [editAddedAt, setEditAddedAt] = useState('');
+  const [baseScope, setBaseScope] = useState('all');
+  const [personalModeEnabled, setPersonalModeEnabled] = useState(false);
   const searchRef = useRef(null);
 
   const loadMovies = useCallback(async () => {
@@ -99,13 +121,131 @@ export default function WatchedPage() {
     socket.on('watched-added', reload);
     socket.on('watched-deleted', reload);
     socket.on('movie-updated', reload);
+    socket.on('movie-review-added', reload);
+    socket.on('movie-review-updated', reload);
+    socket.on('movie-review-deleted', reload);
     return () => {
       socket.off('rating-updated', reload);
       socket.off('watched-added', reload);
       socket.off('watched-deleted', reload);
       socket.off('movie-updated', reload);
+      socket.off('movie-review-added', reload);
+      socket.off('movie-review-updated', reload);
+      socket.off('movie-review-deleted', reload);
     };
   }, [socket, loadMovies]);
+
+  const coreUsers = useMemo(() => {
+    const usersByName = new Map(users.map(user => [normalizeUserName(user.name), user]));
+    return CORE_USER_NAMES
+      .map(name => usersByName.get(normalizeUserName(name)))
+      .filter(Boolean);
+  }, [users]);
+  const currentParticipant = useMemo(
+    () => users.find(user => Number(user.id) === Number(currentUser?.id)) || null,
+    [users, currentUser?.id]
+  );
+  const currentUserIsCore = CORE_USER_NAMES
+    .some(name => normalizeUserName(name) === normalizeUserName(currentUser?.name));
+  const canUseCoreFilter = currentUserIsCore && coreUsers.length === CORE_USER_NAMES.length;
+  const canUsePersonalFilter = !isGuest && Boolean(currentParticipant);
+  const coreFilterEnabled = canUseCoreFilter && baseScope === 'core';
+  const personalMode = canUsePersonalFilter && personalModeEnabled;
+  const coreMode = coreFilterEnabled && !personalMode;
+  const activeScope = personalMode ? 'personal' : coreMode ? 'core' : 'all';
+  const personalComparisonScope = personalMode && coreFilterEnabled ? 'core' : 'all';
+  const visibleUsers = useMemo(() => {
+    if (personalMode) return [currentParticipant];
+    if (coreMode) return coreUsers;
+    return users;
+  }, [personalMode, currentParticipant, coreMode, coreUsers, users]);
+
+  useEffect(() => {
+    if (!currentUser?.id || isGuest) {
+      setBaseScope('all');
+      setPersonalModeEnabled(false);
+      return;
+    }
+
+    const storageKey = `watchedStatsScope:${currentUser.id}`;
+    const baseStorageKey = `watchedStatsBaseScope:${currentUser.id}`;
+    const storedScope = localStorage.getItem(storageKey);
+    const storedBaseScope = localStorage.getItem(baseStorageKey);
+    const legacyCoreEnabled = localStorage.getItem(`watchedCoreOnly:${currentUser.id}`) === '1';
+    const nextBaseScope = currentUserIsCore && (
+      storedBaseScope === 'core'
+      || (!storedBaseScope && storedScope === 'core')
+      || (!storedBaseScope && storedScope === 'personal' && legacyCoreEnabled)
+      || (!storedBaseScope && !storedScope && legacyCoreEnabled)
+    )
+      ? 'core'
+      : 'all';
+    const nextPersonalMode = storedScope === 'personal';
+
+    setBaseScope(nextBaseScope);
+    setPersonalModeEnabled(nextPersonalMode);
+    localStorage.setItem(baseStorageKey, nextBaseScope);
+    localStorage.setItem(storageKey, nextPersonalMode ? 'personal' : nextBaseScope);
+  }, [currentUser?.id, currentUserIsCore, isGuest]);
+
+  const scopedMovies = useMemo(() => {
+    if (activeScope === 'all') return movies;
+    return movies.flatMap(movie => {
+      const scopedMovie = withScopedAverage(movie, visibleUsers);
+      return scopedMovie ? [scopedMovie] : [];
+    });
+  }, [movies, activeScope, visibleUsers]);
+
+  useEffect(() => {
+    const personalRatingColumn = currentParticipant
+      ? `rating_${currentParticipant.id}`
+      : null;
+    if (personalMode && sortColumn === 'avg_rating' && personalRatingColumn) {
+      setSortColumn(personalRatingColumn);
+      setSortDirection('desc');
+      return;
+    }
+    if (activeScope === 'all' || !sortColumn?.startsWith('rating_')) return;
+    const visibleColumns = new Set(visibleUsers.map(user => `rating_${user.id}`));
+    if (!visibleColumns.has(sortColumn)) {
+      setSortColumn(personalRatingColumn && personalMode ? personalRatingColumn : 'avg_rating');
+      setSortDirection('desc');
+    }
+  }, [activeScope, personalMode, currentParticipant, visibleUsers, sortColumn]);
+
+  const toggleCoreFilter = () => {
+    if (!currentUser || !canUseCoreFilter) return;
+    const nextBaseScope = coreFilterEnabled ? 'all' : 'core';
+    setBaseScope(nextBaseScope);
+    localStorage.setItem(`watchedStatsBaseScope:${currentUser.id}`, nextBaseScope);
+    localStorage.setItem(`watchedCoreOnly:${currentUser.id}`, nextBaseScope === 'core' ? '1' : '0');
+    localStorage.setItem(
+      `watchedStatsScope:${currentUser.id}`,
+      personalMode ? 'personal' : nextBaseScope
+    );
+    setDetailsMovie(null);
+  };
+
+  const togglePersonalFilter = () => {
+    if (!currentUser || !canUsePersonalFilter) return;
+    const nextPersonalMode = !personalMode;
+    const fallbackScope = coreFilterEnabled ? 'core' : 'all';
+    setPersonalModeEnabled(nextPersonalMode);
+    localStorage.setItem(
+      `watchedStatsScope:${currentUser.id}`,
+      nextPersonalMode ? 'personal' : fallbackScope
+    );
+    setDetailsMovie(null);
+  };
+
+  const openMoviePanel = (movie, view = 'details') => {
+    setDetailsView(view);
+    setDetailsMovie(movie);
+  };
+
+  const closeMoviePanel = useCallback(() => {
+    setDetailsMovie(null);
+  }, []);
 
   const handleSort = column => {
     if (sortColumn !== column) {
@@ -224,8 +364,8 @@ export default function WatchedPage() {
 
   const query = debouncedQuery.trim().toLocaleLowerCase('ru');
   const filtered = query
-    ? movies.filter(movie => movie.title.toLocaleLowerCase('ru').includes(query))
-    : movies;
+    ? scopedMovies.filter(movie => movie.title.toLocaleLowerCase('ru').includes(query))
+    : scopedMovies;
   const sorted = sortColumn ? [...filtered].sort((a, b) => {
     let aValue = a[sortColumn];
     let bValue = b[sortColumn];
@@ -234,10 +374,15 @@ export default function WatchedPage() {
         ? (aValue || '').localeCompare(bValue || '', 'ru')
         : (bValue || '').localeCompare(aValue || '', 'ru');
     }
-    aValue = aValue ?? -1;
-    bValue = bValue ?? -1;
+    if (aValue == null && bValue == null) return (a.title || '').localeCompare(b.title || '', 'ru');
+    if (aValue == null) return 1;
+    if (bValue == null) return -1;
     return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
   }) : filtered;
+  const detailsMovieForDisplay = detailsMovie
+    ? scopedMovies.find(movie => movie.id === detailsMovie.id) || null
+    : null;
+  const showAverageColumn = !personalMode;
 
   const sortIcon = column => sortColumn === column
     ? <span className="sort-icon active" aria-hidden="true">{sortDirection === 'asc' ? '↑' : '↓'}</span>
@@ -273,16 +418,53 @@ export default function WatchedPage() {
     const value = Number(movie.avg_rating);
     const className = value >= 9 ? 'rating-cheese' : value >= 7 ? 'rating-good' : value >= 4 ? 'rating-mid' : 'rating-bad';
     return (
-      <span className={`rating-avg ${className}`} title={`${movie.ratings_count} из ${users.length} оценок`}>
+      <span className={`rating-avg ${className}`} title={`${movie.ratings_count} из ${visibleUsers.length} оценок`}>
         <strong>{value.toFixed(1)}</strong>
-        <small>{movie.ratings_count}/{users.length}</small>
+        <small>{movie.ratings_count}/{visibleUsers.length}</small>
       </span>
     );
   };
 
   return (
     <>
-      <StatsPanel refreshKey={statsKey} />
+      {canUsePersonalFilter && (
+        <div className="watched-scope-control">
+          <span aria-live="polite">
+            {personalMode
+              ? `Только мои оценки: ${scopedMovies.length} фильмов${coreFilterEnabled ? ' · сравнение только с основной тройкой' : ''}`
+              : coreMode
+                ? 'Основной состав: 4 участника'
+                : 'Сейчас показаны все участники'}
+          </span>
+          <div className="watched-scope-actions" role="group" aria-label="Фильтры статистики">
+            {canUseCoreFilter && (
+              <button
+                className={`scope-filter-toggle${coreFilterEnabled ? ' active' : ''}`}
+                type="button"
+                aria-pressed={coreFilterEnabled}
+                onClick={toggleCoreFilter}
+              >
+                {coreFilterEnabled ? 'Показать лишних' : 'Убрать лишних'}
+              </button>
+            )}
+            <button
+              className={`scope-filter-toggle${personalMode ? ' active' : ''}`}
+              type="button"
+              aria-pressed={personalMode}
+              onClick={togglePersonalFilter}
+            >
+              {personalMode ? 'Закрыть личную' : 'Личная статистика'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <StatsPanel
+        key={`${activeScope}-${personalComparisonScope}-stats`}
+        refreshKey={statsKey}
+        scope={activeScope}
+        comparisonScope={personalComparisonScope}
+      />
 
       <div className="watched-toolbar">
         <label className="search-bar">
@@ -322,6 +504,21 @@ export default function WatchedPage() {
             <div className="empty-state-title">Пока нет просмотренных фильмов</div>
             <p>Крутите колесо или добавьте фильм вручную.</p>
           </div>
+        ) : personalMode && scopedMovies.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-icon" aria-hidden="true">🎟</div>
+            <div className="empty-state-title">Вы ещё ничего не оценили</div>
+            <p>Вернитесь к полному списку, чтобы поставить первую оценку.</p>
+            <button className="button-ghost" type="button" onClick={togglePersonalFilter}>
+              {coreFilterEnabled ? 'Вернуться к основной четвёрке' : 'Показать все фильмы'}
+            </button>
+          </div>
+        ) : coreMode && scopedMovies.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-icon" aria-hidden="true">👥</div>
+            <div className="empty-state-title">У основной четвёрки пока нет оценок</div>
+            <p>Вернитесь к полному списку, чтобы поставить первую оценку.</p>
+          </div>
         ) : filtered.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon" aria-hidden="true">⌕</div>
@@ -329,12 +526,22 @@ export default function WatchedPage() {
             <p>По запросу «{debouncedQuery}» фильмов нет.</p>
           </div>
         ) : (
-          <table className="watched-table" style={{ minWidth: `${400 + users.length * 88}px` }}>
+          <table
+            className="watched-table"
+            style={{ minWidth: `${292 + visibleUsers.length * 88 + (showAverageColumn ? 108 : 0)}px` }}
+            aria-label={
+              personalMode
+                ? 'Фильмы, которые я оценил'
+                : coreMode
+                  ? 'Просмотренные фильмы основной четвёрки'
+                  : 'Все просмотренные фильмы'
+            }
+          >
             <colgroup>
               <col className="watched-action-col" />
               <col className="watched-title-col" />
-              {users.map(user => <col key={user.id} className="watched-user-col" />)}
-              <col className="watched-avg-col" />
+              {visibleUsers.map(user => <col key={user.id} className="watched-user-col" />)}
+              {showAverageColumn && <col className="watched-avg-col" />}
             </colgroup>
             <thead>
               <tr>
@@ -344,21 +551,23 @@ export default function WatchedPage() {
                     Фильм {sortIcon('title')}
                   </button>
                 </th>
-                {users.map(user => {
+                {visibleUsers.map(user => {
                   const column = `rating_${user.id}`;
                   return (
                     <th key={user.id} aria-sort={getAriaSort(sortColumn, sortDirection, column)}>
                       <button className="table-sort-button" type="button" onClick={() => handleSort(column)}>
-                        {user.name} {sortIcon(column)}
+                        {personalMode ? 'Моя оценка' : user.name} {sortIcon(column)}
                       </button>
                     </th>
                   );
                 })}
-                <th aria-sort={getAriaSort(sortColumn, sortDirection, 'avg_rating')}>
-                  <button className="table-sort-button" type="button" onClick={() => handleSort('avg_rating')}>
-                    Средняя {sortIcon('avg_rating')}
-                  </button>
-                </th>
+                {showAverageColumn && (
+                  <th aria-sort={getAriaSort(sortColumn, sortDirection, 'avg_rating')}>
+                    <button className="table-sort-button" type="button" onClick={() => handleSort('avg_rating')}>
+                      Средняя {sortIcon('avg_rating')}
+                    </button>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -386,16 +595,45 @@ export default function WatchedPage() {
                         </div>
                       </div>
                     ) : (
-                      <button className="movie-title-cell" type="button" onClick={() => setDetailsMovie(movie)}>
-                        <strong>{movie.title}</strong>
-                        <span>
-                          {movie.watched_at ? `просмотрен ${formatDate(movie.watched_at)}` : movie.added_at ? `добавлен ${formatDate(movie.added_at)}` : 'дата не указана'}
-                        </span>
-                      </button>
+                      <div className="movie-title-stack">
+                        <button
+                          className="movie-title-cell"
+                          type="button"
+                          onClick={() => openMoviePanel(movie, 'details')}
+                          aria-haspopup="dialog"
+                        >
+                          <strong>{movie.title}</strong>
+                          <span>
+                            {movie.watched_at ? `просмотрен ${formatDate(movie.watched_at)}` : movie.added_at ? `добавлен ${formatDate(movie.added_at)}` : 'дата не указана'}
+                          </span>
+                        </button>
+                        <div className="movie-review-actions">
+                          <button
+                            className="movie-review-trigger"
+                            type="button"
+                            onClick={() => openMoviePanel(movie, 'reviews')}
+                            aria-haspopup="dialog"
+                            aria-label={`Открыть рецензии на ${movie.title}, ${Number(movie.review_count) || 0}`}
+                          >
+                            Рецензии · {Number(movie.review_count) || 0}
+                          </button>
+                          {!isGuest && (
+                            <button
+                              className="movie-review-write"
+                              type="button"
+                              onClick={() => openMoviePanel(movie, 'compose')}
+                              aria-haspopup="dialog"
+                              aria-label={`Написать рецензию на ${movie.title}`}
+                            >
+                              Написать
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     )}
                   </td>
-                  {users.map(user => <td key={user.id}>{renderRatingCell(movie, user.id)}</td>)}
-                  <td>{renderAvgRating(movie)}</td>
+                  {visibleUsers.map(user => <td key={user.id}>{renderRatingCell(movie, user.id)}</td>)}
+                  {showAverageColumn && <td>{renderAvgRating(movie)}</td>}
                 </tr>
               ))}
             </tbody>
@@ -436,7 +674,13 @@ export default function WatchedPage() {
         onConfirm={confirmDelete}
         onClose={() => !deleteBusy && setPendingDelete(null)}
       />
-      <MovieDetailsDialog movie={detailsMovie} users={users} onClose={() => setDetailsMovie(null)} />
+      <MovieDetailsDialog
+        key={detailsMovieForDisplay ? `${detailsMovieForDisplay.id}:${detailsView}` : 'closed'}
+        movie={detailsMovieForDisplay}
+        users={visibleUsers}
+        initialView={detailsView}
+        onClose={closeMoviePanel}
+      />
     </>
   );
 }
