@@ -26,15 +26,25 @@ Production запускается только через [`ecosystem.config.js`
 `server.js` от `root`.
 
 Первичная защищённая установка и порядок миграции описаны в
-[`deploy/README-security.md`](deploy/README-security.md). Основные команды после
-сборки:
+[`deploy/README-security.md`](deploy/README-security.md). Первую миграцию нужно
+выполнять целиком из root-shell, чтобы использовать тот же PM2 daemon и
+прочитать закрытый `.env`:
 
 ```bash
-sudo ./deploy/install-security.sh
+sudo -i
+cd /opt/cheese-wheel
+git rev-parse HEAD
 pm2 stop cheese-wheel
+git pull --ff-only origin main
+npm ci
+npm run build
+./deploy/install-security.sh
 pm2 startOrRestart ecosystem.config.js --only cheese-wheel --update-env
 pm2 save
 ```
+
+Остановка до обновления файлов обязательна: так старая версия не запустится на
+новом коде, а откатная копия базы будет содержать все последние изменения.
 
 ## Структура файлов
 

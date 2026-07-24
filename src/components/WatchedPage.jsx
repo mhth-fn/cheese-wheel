@@ -62,7 +62,7 @@ export default function WatchedPage() {
   const [detailsView, setDetailsView] = useState('details');
   const [editingId, setEditingId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
-  const [editAddedAt, setEditAddedAt] = useState('');
+  const [editWatchedAt, setEditWatchedAt] = useState('');
   const [baseScope, setBaseScope] = useState('all');
   const [personalModeEnabled, setPersonalModeEnabled] = useState(false);
   const searchRef = useRef(null);
@@ -306,13 +306,17 @@ export default function WatchedPage() {
     if (!isAdmin) return;
     setEditingId(movie.id);
     setEditTitle(movie.title);
-    setEditAddedAt(movie.added_at || '');
+    setEditWatchedAt(
+      movie.watched_at
+        ? String(movie.watched_at).slice(0, 10)
+        : movie.added_at || ''
+    );
   };
 
   const cancelEditing = () => {
     setEditingId(null);
     setEditTitle('');
-    setEditAddedAt('');
+    setEditWatchedAt('');
   };
 
   const saveEditing = async () => {
@@ -323,7 +327,7 @@ export default function WatchedPage() {
     try {
       const response = await updateMovie(editingId, {
         title: editTitle.trim(),
-        added_at: editAddedAt || null,
+        watched_at: editWatchedAt || null,
       });
       if (!response.ok) {
         const data = await response.json();
@@ -593,8 +597,8 @@ export default function WatchedPage() {
                       <div className="edit-movie-cell">
                         <input className="edit-movie-title" value={editTitle} onChange={event => setEditTitle(event.target.value)} onKeyDown={handleEditKeyDown} autoFocus />
                         <div className="edit-movie-date-row">
-                          <label htmlFor={`edit-date-${movie.id}`}>Дата:</label>
-                          <input id={`edit-date-${movie.id}`} type="date" className="edit-movie-date" value={editAddedAt} onChange={event => setEditAddedAt(event.target.value)} onKeyDown={handleEditKeyDown} />
+                          <label htmlFor={`edit-date-${movie.id}`}>Дата просмотра:</label>
+                          <input id={`edit-date-${movie.id}`} type="date" className="edit-movie-date" value={editWatchedAt} onChange={event => setEditWatchedAt(event.target.value)} onKeyDown={handleEditKeyDown} />
                         </div>
                         <div className="edit-movie-actions">
                           <button className="button-primary" type="button" onClick={saveEditing}>Сохранить</button>

@@ -77,29 +77,47 @@ cleanup_nginx_rollback() {
 }
 
 rollback_nginx() {
-  local exit_status=$?
-  trap - ERR
+  local exit_status=${1:-1}
+  local restore_ok=1
+  if [[ $exit_status -eq 0 ]]; then exit_status=1; fi
+  trap - EXIT ERR HUP INT TERM
   set +e
   if [[ $REALIP_EXISTED -eq 1 ]]; then
-    rm -f -- "$NGINX_REALIP_TARGET"
-    cp -a -- "$NGINX_ROLLBACK_DIR/cloudflare-realip.conf" "$NGINX_REALIP_TARGET"
+    rm -f -- "$NGINX_REALIP_TARGET" || restore_ok=0
+    cp -a -- \
+      "$NGINX_ROLLBACK_DIR/cloudflare-realip.conf" \
+      "$NGINX_REALIP_TARGET" || restore_ok=0
   else
-    rm -f -- "$NGINX_REALIP_TARGET"
+    rm -f -- "$NGINX_REALIP_TARGET" || restore_ok=0
   fi
   if [[ $SITE_EXISTED -eq 1 ]]; then
-    rm -f -- "$NGINX_SITE_TARGET"
-    cp -a -- "$NGINX_ROLLBACK_DIR/cheese-wheel.conf" "$NGINX_SITE_TARGET"
+    rm -f -- "$NGINX_SITE_TARGET" || restore_ok=0
+    cp -a -- \
+      "$NGINX_ROLLBACK_DIR/cheese-wheel.conf" \
+      "$NGINX_SITE_TARGET" || restore_ok=0
   else
-    rm -f -- "$NGINX_SITE_TARGET"
+    rm -f -- "$NGINX_SITE_TARGET" || restore_ok=0
   fi
-  if nginx -t; then
-    systemctl reload nginx
+
+  if [[ $restore_ok -eq 1 ]]; then
+    nginx -t || restore_ok=0
   fi
-  cleanup_nginx_rollback
+  if [[ $restore_ok -eq 1 ]]; then
+    systemctl reload nginx || restore_ok=0
+  fi
+
+  if [[ $restore_ok -eq 1 ]]; then
+    cleanup_nginx_rollback
+  else
+    echo "Nginx rollback was incomplete; recovery copies remain in $NGINX_ROLLBACK_DIR." >&2
+  fi
   exit "$exit_status"
 }
 
-trap rollback_nginx ERR
+trap 'rollback_nginx $?' EXIT
+trap 'rollback_nginx 129' HUP
+trap 'rollback_nginx 130' INT
+trap 'rollback_nginx 143' TERM
 install -o root -g root -m 0644 \
   "$APP_DIR/deploy/nginx/cloudflare-realip.conf" \
   "$NGINX_REALIP_TARGET"
@@ -109,7 +127,7 @@ install -o root -g root -m 0644 \
 
 nginx -t
 systemctl reload nginx
-trap - ERR
+trap - EXIT ERR HUP INT TERM
 cleanup_nginx_rollback
 
 systemctl daemon-reload

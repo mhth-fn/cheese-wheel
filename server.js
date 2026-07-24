@@ -1165,6 +1165,7 @@ const stmts = {
   getWatchedMoviesForReviewLink: db.prepare('SELECT id, title FROM movies WHERE is_watched = 1'),
   getWatched: null, // инициализируется ниже динамически
   updateMovie: db.prepare('UPDATE movies SET title = ?, added_at = ? WHERE id = ?'),
+  updateWatchedMovie: db.prepare('UPDATE movies SET title = ?, watched_at = ? WHERE id = ? AND is_watched = 1'),
   deleteRatings: db.prepare('DELETE FROM ratings WHERE movie_id = ?'),
   deleteMovie: db.prepare('DELETE FROM movies WHERE id = ?'),
   upsertRating: db.prepare(`
@@ -1741,6 +1742,22 @@ function canManageMovie(req, movie) {
 
 function isMovieInFormedWheel(movieId) {
   return readFormedWheel().some(movie => Number(movie.id) === Number(movieId));
+}
+
+function updateFormedWheelSnapshot(movieId, updater) {
+  const wheel = readFormedWheel();
+  const index = wheel.findIndex(movie => Number(movie.id) === Number(movieId));
+  if (index < 0) return false;
+
+  const nextWheel = [...wheel];
+  const updated = updater(nextWheel[index]);
+  if (updated === null) {
+    nextWheel.splice(index, 1);
+  } else {
+    nextWheel[index] = toWheelSnapshotMovie(updated);
+  }
+  stmts.setFormedWheel.run(JSON.stringify(nextWheel));
+  return true;
 }
 
 function rejectFormedCurrentWheelMutation(req, res, next) {
@@ -2437,7 +2454,7 @@ app.post('/api/wheel', rejectWheelMutationDuringSpin, rejectFormedCurrentWheelMu
   }
 });
 
-app.delete('/api/wheel/:id', rejectWheelMutationDuringSpin, rejectFormedCurrentWheelMutation, (req, res) => {
+app.delete('/api/wheel/:id', rejectWheelMutationDuringSpin, (req, res) => {
   const id = parseIntStrict(req.params.id);
   if (isNaN(id)) {
     return res.status(400).json({ error: 'Неверный ID' });
@@ -2449,9 +2466,16 @@ app.delete('/api/wheel/:id', rejectWheelMutationDuringSpin, rejectFormedCurrentW
   if (!canManageMovie(req, movie)) {
     return res.status(403).json({ error: 'Можно удалить только свой фильм' });
   }
+  if (isMovieInFormedWheel(id) && req.tokenData.role !== 'admin') {
+    return res.status(409).json({ error: 'Текущее колесо уже сформировано' });
+  }
 
   try {
-    stmts.deleteUnwatched.run(id);
+    const deleteChoice = db.transaction(() => {
+      updateFormedWheelSnapshot(id, () => null);
+      stmts.deleteUnwatched.run(id);
+    });
+    deleteChoice();
     io.emit('movie-removed', { id });
     broadcastWheelStatus();
     res.json({ success: true });
@@ -2569,21 +2593,20 @@ app.get('/api/watched', (req, res) => {
   res.json(stmts.getWatched.all());
 });
 
-app.delete('/api/watched/:id', requireAdmin, (req, res) => {
+app.delete('/api/watched/:id', requireAdmin, rejectWheelMutationDuringSpin, (req, res) => {
   const id = parseIntStrict(req.params.id);
   if (isNaN(id)) {
     return res.status(400).json({ error: 'Неверный ID' });
   }
-  if (isMovieInFormedWheel(id)) {
-    return res.status(409).json({ error: 'Фильм входит в текущее сформированное колесо' });
-  }
   try {
     const deleteAll = db.transaction((movieId) => {
+      updateFormedWheelSnapshot(movieId, () => null);
       stmts.deleteRatings.run(movieId);
       stmts.deleteMovie.run(movieId);
     });
     deleteAll(id);
     io.emit('watched-deleted', { id });
+    broadcastWheelStatus();
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Ошибка удаления' });
@@ -2596,7 +2619,11 @@ app.patch('/api/movies/:id', rejectWheelMutationDuringSpin, (req, res) => {
 
   const movie = stmts.getMovieById.get(id);
   if (!movie) return res.status(404).json({ error: 'Фильм не найден' });
-  if (isMovieInFormedWheel(id)) {
+  if (
+    movie.is_watched === 0
+    && isMovieInFormedWheel(id)
+    && req.tokenData.role !== 'admin'
+  ) {
     return res.status(409).json({ error: 'Текущее колесо уже сформировано' });
   }
   if (movie.is_watched === 0 && !canManageMovie(req, movie)) {
@@ -2610,7 +2637,16 @@ app.patch('/api/movies/:id', rejectWheelMutationDuringSpin, (req, res) => {
   if (!title) return res.status(400).json({ error: 'Название не может быть пустым' });
 
   let addedAt = movie.added_at || null;
-  if (req.body.added_at !== undefined) {
+  let watchedAt = movie.watched_at || null;
+  const submittedWatchedAt = req.body.watched_at !== undefined
+    ? req.body.watched_at
+    : movie.is_watched === 1 ? req.body.added_at : undefined;
+  if (movie.is_watched === 1 && submittedWatchedAt !== undefined) {
+    if (submittedWatchedAt && !/^\d{4}-\d{2}-\d{2}$/.test(submittedWatchedAt)) {
+      return res.status(400).json({ error: 'Неверный формат даты (YYYY-MM-DD)' });
+    }
+    watchedAt = submittedWatchedAt || null;
+  } else if (req.body.added_at !== undefined) {
     if (req.body.added_at && !/^\d{4}-\d{2}-\d{2}$/.test(req.body.added_at)) {
       return res.status(400).json({ error: 'Неверный формат даты (YYYY-MM-DD)' });
     }
@@ -2619,13 +2655,28 @@ app.patch('/api/movies/:id', rejectWheelMutationDuringSpin, (req, res) => {
 
   try {
     const updateMovieAndReviews = db.transaction(() => {
-      stmts.updateMovie.run(title, addedAt, id);
+      if (movie.is_watched === 1) {
+        stmts.updateWatchedMovie.run(title, watchedAt, id);
+        updateFormedWheelSnapshot(id, snapshotMovie => ({
+          ...snapshotMovie,
+          title,
+        }));
+      } else {
+        stmts.updateMovie.run(title, addedAt, id);
+        updateFormedWheelSnapshot(id, snapshotMovie => ({
+          ...snapshotMovie,
+          title,
+        }));
+      }
       stmts.updateLinkedMovieReviewTitles.run(title, id);
     });
     updateMovieAndReviews();
     const updated = stmts.getMovieWithAuthorById.get(id);
     io.emit(movie.is_watched === 0 && movie.is_next_wheel === 1 ? 'next-movie-updated' : 'movie-updated', updated);
-    if (movie.is_watched === 0 && movie.is_next_wheel === 0) {
+    if (
+      (movie.is_watched === 0 && movie.is_next_wheel === 0)
+      || isMovieInFormedWheel(id)
+    ) {
       broadcastWheelStatus();
     }
     res.json(updated);
@@ -3543,19 +3594,27 @@ io.on('connection', (socket) => {
       return;
     }
     socket.data.lastSpinAttemptAt = now;
-    const sessionSpinLimit = consumeRateLimit(
-      'socket-spin-session',
-      hashSessionToken(socket.data.authToken),
+    const userSpinLimit = consumeRateLimit(
+      'socket-spin-user',
+      tokenData.userId,
       12,
       60 * 1000
     );
+    if (!userSpinLimit.allowed) {
+      socket.emit('spin-rejected', { error: 'Слишком много прокруток' });
+      return;
+    }
+    if (tokenData.role !== 'admin') {
+      socket.emit('spin-rejected', { error: 'Прокрутку запускает администратор' });
+      return;
+    }
     const globalSpinLimit = consumeRateLimit(
       'socket-spin-global',
       'all',
       60,
       60 * 1000
     );
-    if (!sessionSpinLimit.allowed || !globalSpinLimit.allowed) {
+    if (!globalSpinLimit.allowed) {
       socket.emit('spin-rejected', { error: 'Слишком много прокруток' });
       return;
     }

@@ -69,7 +69,11 @@ export default function DrawerPanel({
     && Boolean(movie)
     && (movie.added_by === currentUser?.id || isAdmin)
   );
-  const canManageCurrentMovie = movie => !wheelStatus.formed && canManageMovie(movie);
+  const canManageCurrentMovie = movie => (
+    !movie?.is_watched
+    && canManageMovie(movie)
+    && (!wheelStatus.formed || isAdmin)
+  );
 
   const handleCurrentAdd = async event => {
     event.preventDefault();
@@ -280,8 +284,8 @@ export default function DrawerPanel({
               {users.map(user => {
                 const movie = primaryMovies.get(user.id);
                 const watched = Boolean(movie?.is_watched);
-                const editing = !wheelStatus.formed && movie && editingId === movie.id;
                 const manageable = canManageCurrentMovie(movie);
+                const editing = manageable && editingId === movie.id;
                 return (
                   <article key={user.id} className={`wm-participant ${movie ? 'is-ready' : 'is-waiting'}${watched ? ' is-watched' : ''}${editing ? ' is-editing' : ''}${manageable ? ' has-actions' : ''}`}>
                     <span className="wm-avatar" aria-hidden="true">{user.name.slice(0, 1)}</span>
@@ -336,8 +340,8 @@ export default function DrawerPanel({
               })}
 
               {extraMovies.map(movie => {
-                const editing = !wheelStatus.formed && editingId === movie.id;
                 const manageable = canManageCurrentMovie(movie);
+                const editing = manageable && editingId === movie.id;
                 return (
                 <article key={movie.id} className={`wm-participant is-ready${editing ? ' is-editing' : ''}${manageable ? ' has-actions' : ''}`}>
                   <span className="wm-avatar" aria-hidden="true">?</span>

@@ -28,25 +28,32 @@ started against the migrated database.
 
 ## First production deployment
 
-Build the checked-out release first, while the old process is still serving:
+Run every command in this section as `root`, using the existing root-owned PM2
+daemon. Record the deployed commit, then stop the old process before changing
+any file in `/opt/cheese-wheel`:
 
 ```bash
 cd /opt/cheese-wheel
+git rev-parse HEAD
+pm2 stop cheese-wheel
+git pull --ff-only origin main
 npm ci
 npm run build
 ./deploy/install-security.sh
 ```
 
-The installer generates missing secrets, creates and verifies a pre-migration
+Stopping first is mandatory: PM2 must not restart old code from a directory
+whose `server.js` or `dist` has already been replaced, and the authoritative
+rollback snapshot must be taken after all application writes have stopped. The
+installer generates missing secrets, creates and verifies that pre-migration
 snapshot, installs the backup timer, and replaces the two Nginx files only after
-keeping rollback copies. A failed `nginx -t` or reload restores the previous
-files.
+keeping rollback copies. A failed validation, reload, termination signal or
+interrupt restores the previous Nginx files. If restoration itself fails, the
+installer preserves its recovery copies and prints their path.
 
-Only after the installer succeeds, stop the old process and start the new
-release:
+Only after the installer succeeds, start the new release:
 
 ```bash
-pm2 stop cheese-wheel
 pm2 startOrRestart ecosystem.config.js --only cheese-wheel --update-env
 pm2 save
 ```

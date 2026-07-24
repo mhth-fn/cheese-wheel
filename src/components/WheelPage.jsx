@@ -5,6 +5,7 @@ import CheeseWheel from './CheeseWheel';
 export default function WheelPage() {
   const {
     isGuest,
+    isAdmin,
     socket,
     connected,
     showToast,
@@ -97,6 +98,10 @@ export default function WheelPage() {
       showToast('Нет соединения с сервером', 'error');
       return;
     }
+    if (!isAdmin) {
+      showToast('Прокрутку запускает администратор', 'info');
+      return;
+    }
     if (!wheelReady) {
       showToast('Сначала сформируйте колесо', 'info');
       return;
@@ -123,6 +128,7 @@ export default function WheelPage() {
 
   const spinDisabled = (
     isGuest ||
+    !isAdmin ||
     !connected ||
     !wheelReady ||
     isSpinning ||
@@ -166,7 +172,11 @@ export default function WheelPage() {
               aria-label="Крутить колесо"
               aria-disabled={spinDisabled}
               aria-busy={spinPending || isSpinning}
-              title={wheelReady ? 'Крутить колесо' : 'Сначала сформируйте колесо'}
+              title={
+                !isAdmin
+                  ? 'Прокрутку запускает администратор'
+                  : wheelReady ? 'Крутить колесо' : 'Сначала сформируйте колесо'
+              }
             >
               {centerImage
                 ? <img src={centerImage} alt="" className="wheel-center-img" />
