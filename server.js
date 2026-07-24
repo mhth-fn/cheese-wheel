@@ -572,8 +572,10 @@ app.use('/api', (req, res, next) => {
 const fs = require('fs');
 const distPath = path.join(__dirname, 'dist');
 const publicPath = path.join(__dirname, 'public');
-const uploadsPath = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsPath)) fs.mkdirSync(uploadsPath, { mode: 0o750 });
+const uploadsPath = process.env.UPLOADS_PATH
+  ? path.resolve(process.env.UPLOADS_PATH)
+  : path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsPath)) fs.mkdirSync(uploadsPath, { recursive: true, mode: 0o750 });
 app.use('/uploads', express.static(uploadsPath, {
   dotfiles: 'deny',
   setHeaders: (res) => {
@@ -594,7 +596,11 @@ app.use(express.static(fs.existsSync(distPath) ? distPath : publicPath, {
 }));
 
 // База данных
-const db = new Database('cheese_wheel.db');
+const dataDir = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : __dirname;
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+const db = new Database(path.join(dataDir, 'cheese_wheel.db'));
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
@@ -1238,6 +1244,13 @@ app.get('/api/vpn/clients', requireMember, (req, res) => {
 });
 
 app.get('/api/vpn/status', requireMember, async (req, res) => {
+  const statusLimit = consumeRateLimit(
+    'vpn-status',
+    req.tokenData.userId,
+    10,
+    60 * 1000
+  );
+  if (!statusLimit.allowed) return rejectRateLimited(res, statusLimit);
   const statuses = await Promise.all(VPN_SERVERS.map(checkVpnServer));
   res.json({ statuses });
 });

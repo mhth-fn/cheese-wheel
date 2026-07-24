@@ -20,12 +20,16 @@ module.exports = {
     name: 'cheese-wheel',
     script: 'server.js',
     cwd: '/opt/cheese-wheel',
+    uid: 'cheese-wheel',
+    gid: 'cheese-wheel',
     env: {
       ...localEnv,
       NODE_ENV: 'production',
       HOST: '127.0.0.1',
       APP_ORIGIN: 'https://cheese-wheel.ru',
       ADMIN_USER_ID: '2',
+      DATA_DIR: '/var/lib/cheese-wheel',
+      UPLOADS_PATH: '/var/lib/cheese-wheel/uploads',
       PORT: 3000,
       DEFAULT_PASSWORD: process.env.DEFAULT_PASSWORD || localEnv.DEFAULT_PASSWORD || '',
       DISCORD_WEBHOOK_URL: process.env.DISCORD_WEBHOOK_URL || localEnv.DISCORD_WEBHOOK_URL || ''
