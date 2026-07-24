@@ -28,6 +28,7 @@ export default function WheelPage() {
 
   const movies = wheelStatus.movies || [];
   const wheelReady = wheelStatus.formed;
+  const serverSpinPending = Number(wheelStatus.pending_spin?.complete_at) > Date.now();
 
   useEffect(() => {
     if (!socket) return undefined;
@@ -45,16 +46,28 @@ export default function WheelPage() {
 
   useEffect(() => {
     if (!remoteSpin || !wheelRef.current) return;
+    const resolvedWinnerIndex = remoteSpin.winnerMovieId !== undefined
+      ? movies.findIndex(movie => Number(movie.id) === Number(remoteSpin.winnerMovieId))
+      : remoteSpin.winnerIndex;
+    if (!Number.isInteger(resolvedWinnerIndex) || resolvedWinnerIndex < 0) {
+      setSpinPending(false);
+      setIsSpinning(false);
+      setWheelIsSpinning(false);
+      showToast('Состав колеса изменился — обновляем данные', 'info');
+      void refreshWheelData();
+      setRemoteSpin(null);
+      return;
+    }
     if (!wheelRef.current.isSpinning) {
       setSpinPending(false);
       isRemoteSpinRef.current = !remoteSpin.initiatedByThisClient;
-      wheelRef.current.spin(remoteSpin.winnerIndex, remoteSpin.spinDuration, remoteSpin.randomOffset, remoteSpin.turns);
+      wheelRef.current.spin(resolvedWinnerIndex, remoteSpin.spinDuration, remoteSpin.randomOffset, remoteSpin.turns);
       setIsSpinning(true);
       setWheelIsSpinning(true);
       setSecondsLeft(remoteSpin.spinDuration);
     }
     setRemoteSpin(null);
-  }, [remoteSpin, setRemoteSpin, setWheelIsSpinning]);
+  }, [movies, refreshWheelData, remoteSpin, setRemoteSpin, setWheelIsSpinning, showToast]);
 
   useEffect(() => {
     if (!isSpinning || secondsLeft <= 0) return undefined;
@@ -114,13 +127,16 @@ export default function WheelPage() {
     !wheelReady ||
     isSpinning ||
     spinPending ||
+    serverSpinPending ||
     movies.length === 0 ||
     !spinEnabled
   );
 
   const readinessText = isSpinning
     ? `Колесо крутится${secondsLeft ? ` · ${secondsLeft} сек` : ''}`
-    : !wheelStatus.formed
+    : serverSpinPending
+      ? 'Результат вращения сохраняется'
+      : !wheelStatus.formed
       ? 'Колесо не готово'
       : '';
 

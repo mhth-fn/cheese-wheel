@@ -55,6 +55,18 @@ test('backup creates and verifies an atomic SQLite and uploads snapshot', async 
   });
   assert.equal(restored.prepare('SELECT name FROM users').get().name, 'Сергей');
   restored.close();
+
+  await assert.rejects(
+    runBackup({
+      databasePath,
+      uploadsPath,
+      backupRoot,
+      tarPath: '/usr/bin/tar',
+      retentionDays: 30,
+      currentDate: new Date('2026-07-25T00:00:01Z'),
+    }),
+    /missing required table/
+  );
 });
 
 test('retention removes only strictly named expired snapshot directories', async t => {

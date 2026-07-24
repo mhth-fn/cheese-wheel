@@ -5,6 +5,8 @@ umask 077
 APP_DIR=/opt/cheese-wheel
 ENV_FILE="$APP_DIR/.env"
 BACKUP_DIR=/var/backups/cheese-wheel
+NGINX_REALIP_TARGET=/etc/nginx/conf.d/cloudflare-realip.conf
+NGINX_SITE_TARGET=/etc/nginx/sites-enabled/cheese-wheel.conf
 
 if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
   echo 'Run this installer as root.' >&2
@@ -46,17 +48,71 @@ install -o root -g root -m 0644 \
   "$APP_DIR/deploy/cheese-wheel-backup.timer" \
   /etc/systemd/system/cheese-wheel-backup.timer
 
+# This explicit mode is only for the stop-the-world phase-2 bootstrap. It
+# accepts the complete legacy schema, but rejects a partially-created security
+# schema. The recurring systemd service always requires the full current schema.
+CHEESE_WHEEL_DB=/var/lib/cheese-wheel/cheese_wheel.db \
+CHEESE_WHEEL_UPLOADS=/var/lib/cheese-wheel/uploads \
+CHEESE_WHEEL_BACKUP_DIR="$BACKUP_DIR" \
+  /usr/bin/node "$APP_DIR/scripts/backup.js" --legacy-bootstrap
+
+NGINX_ROLLBACK_DIR=$(mktemp -d /etc/nginx/cheese-wheel-security.XXXXXX)
+REALIP_EXISTED=0
+SITE_EXISTED=0
+
+if [[ -e "$NGINX_REALIP_TARGET" || -L "$NGINX_REALIP_TARGET" ]]; then
+  cp -a -- "$NGINX_REALIP_TARGET" "$NGINX_ROLLBACK_DIR/cloudflare-realip.conf"
+  REALIP_EXISTED=1
+fi
+if [[ -e "$NGINX_SITE_TARGET" || -L "$NGINX_SITE_TARGET" ]]; then
+  cp -a -- "$NGINX_SITE_TARGET" "$NGINX_ROLLBACK_DIR/cheese-wheel.conf"
+  SITE_EXISTED=1
+fi
+
+cleanup_nginx_rollback() {
+  rm -f -- \
+    "$NGINX_ROLLBACK_DIR/cloudflare-realip.conf" \
+    "$NGINX_ROLLBACK_DIR/cheese-wheel.conf"
+  rmdir -- "$NGINX_ROLLBACK_DIR"
+}
+
+rollback_nginx() {
+  local exit_status=$?
+  trap - ERR
+  set +e
+  if [[ $REALIP_EXISTED -eq 1 ]]; then
+    rm -f -- "$NGINX_REALIP_TARGET"
+    cp -a -- "$NGINX_ROLLBACK_DIR/cloudflare-realip.conf" "$NGINX_REALIP_TARGET"
+  else
+    rm -f -- "$NGINX_REALIP_TARGET"
+  fi
+  if [[ $SITE_EXISTED -eq 1 ]]; then
+    rm -f -- "$NGINX_SITE_TARGET"
+    cp -a -- "$NGINX_ROLLBACK_DIR/cheese-wheel.conf" "$NGINX_SITE_TARGET"
+  else
+    rm -f -- "$NGINX_SITE_TARGET"
+  fi
+  if nginx -t; then
+    systemctl reload nginx
+  fi
+  cleanup_nginx_rollback
+  exit "$exit_status"
+}
+
+trap rollback_nginx ERR
 install -o root -g root -m 0644 \
   "$APP_DIR/deploy/nginx/cloudflare-realip.conf" \
-  /etc/nginx/conf.d/cloudflare-realip.conf
+  "$NGINX_REALIP_TARGET"
 install -o root -g root -m 0644 \
   "$APP_DIR/deploy/nginx/cheese-wheel.conf" \
-  /etc/nginx/sites-enabled/cheese-wheel.conf
+  "$NGINX_SITE_TARGET"
 
 nginx -t
 systemctl reload nginx
+trap - ERR
+cleanup_nginx_rollback
+
 systemctl daemon-reload
-systemctl start cheese-wheel-backup.service
 systemctl enable --now cheese-wheel-backup.timer
 
 echo 'Security support files installed and the initial verified backup completed.'

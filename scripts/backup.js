@@ -17,7 +17,7 @@ const DEFAULT_BACKUP_ROOT = '/var/backups/cheese-wheel';
 const DEFAULT_TAR_PATH = '/usr/bin/tar';
 const DEFAULT_RETENTION_DAYS = 30;
 const SNAPSHOT_NAME_RE = /^snapshot-(\d{8})T(\d{6})Z$/;
-const EXPECTED_TABLES = Object.freeze([
+const LEGACY_EXPECTED_TABLES = Object.freeze([
   'users',
   'movies',
   'ratings',
@@ -27,6 +27,17 @@ const EXPECTED_TABLES = Object.freeze([
   'review_reactions',
   'wine_reviews',
   'movie_reviews',
+]);
+const SECURITY_TABLES = Object.freeze([
+  'user_totp',
+  'two_factor_recovery_codes',
+  'login_challenges',
+  'rate_limit_buckets',
+  'audit_log',
+]);
+const EXPECTED_TABLES = Object.freeze([
+  ...LEGACY_EXPECTED_TABLES,
+  ...SECURITY_TABLES,
 ]);
 
 function parsePositiveInteger(value, fallback, label) {
@@ -294,13 +305,50 @@ async function runBackup(options = {}) {
       fileMustExist: true,
     });
     sourceDb.pragma('busy_timeout = 10000');
+    const sourceTables = sourceDb.prepare(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+      ORDER BY name
+    `).all().map(row => row.name);
+    if (sourceTables.length === 0) {
+      throw new Error('Source SQLite database does not contain application tables');
+    }
+
+    let requiredTables = options.expectedTables;
+    if (!requiredTables) {
+      if (options.allowLegacySchema) {
+        const presentSecurityTables = SECURITY_TABLES.filter(table => sourceTables.includes(table));
+        if (
+          presentSecurityTables.length !== 0
+          && presentSecurityTables.length !== SECURITY_TABLES.length
+        ) {
+          throw new Error(
+            'Source SQLite database has a partial security schema; refusing bootstrap backup'
+          );
+        }
+        requiredTables = presentSecurityTables.length === 0
+          ? LEGACY_EXPECTED_TABLES
+          : EXPECTED_TABLES;
+      } else {
+        requiredTables = EXPECTED_TABLES;
+      }
+    }
+    const missingSourceTables = requiredTables.filter(table => !sourceTables.includes(table));
+    if (missingSourceTables.length > 0) {
+      throw new Error(
+        `Source SQLite database is missing required table(s): ${missingSourceTables.join(', ')}`
+      );
+    }
+    const snapshotTables = [...new Set([...requiredTables, ...sourceTables])];
+
     await sourceDb.backup(backupDatabasePath);
     sourceDb.close();
     sourceDb = null;
     makeDatabaseStandalone(backupDatabasePath);
     await fsp.chmod(backupDatabasePath, 0o600);
 
-    verifyDatabase(backupDatabasePath, options.expectedTables || EXPECTED_TABLES);
+    verifyDatabase(backupDatabasePath, snapshotTables);
     await archiveAndVerifyUploads(uploadsPath, uploadsArchivePath, tarPath);
     await writeAndVerifyManifest(temporaryDirectory, [
       'cheese_wheel.db',
@@ -325,7 +373,18 @@ async function runBackup(options = {}) {
 }
 
 if (require.main === module) {
-  runBackup()
+  const commandArguments = process.argv.slice(2);
+  const allowedArguments = new Set(['--legacy-bootstrap']);
+  const unknownArgument = commandArguments.find(argument => !allowedArguments.has(argument));
+  if (unknownArgument) {
+    console.error(`[cheese-wheel] Unknown backup option: ${unknownArgument}`);
+    process.exitCode = 1;
+  }
+
+  const backupPromise = unknownArgument
+    ? Promise.reject(new Error('Invalid backup command line'))
+    : runBackup({ allowLegacySchema: commandArguments.includes('--legacy-bootstrap') });
+  backupPromise
     .then(result => {
       console.log(`[cheese-wheel] Verified backup created: ${result.snapshot}`);
       if (result.removed.length > 0) {
@@ -340,6 +399,8 @@ if (require.main === module) {
 
 module.exports = {
   EXPECTED_TABLES,
+  LEGACY_EXPECTED_TABLES,
+  SECURITY_TABLES,
   assertSafeSnapshotPath,
   formatTimestamp,
   makeDatabaseStandalone,

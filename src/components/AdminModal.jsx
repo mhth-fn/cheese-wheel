@@ -20,6 +20,7 @@ const themes = [
 const actionLabels = {
   'auth.login_succeeded': 'Успешный вход',
   'auth.login_failed': 'Неудачный вход',
+  'auth.second_factor_required': 'Пароль подтверждён, запрошен 2FA',
   'auth.two_factor_login_succeeded': 'Подтверждён вход с 2FA',
   'auth.two_factor_login_failed': 'Неудачная проверка 2FA',
   'auth.logout': 'Выход',

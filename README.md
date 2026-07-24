@@ -2,74 +2,38 @@
 
 Веб-приложение для совместного выбора фильмов с помощью колеса фортуны.
 
-## Установка и запуск
-
-### 1. Скопируй папку на сервер
+## Локальный запуск
 
 ```bash
-scp -r cheese-wheel/ user@your-server:/path/to/app/
-```
-
-### 2. Установи зависимости
-
-```bash
-cd cheese-wheel
-npm install
-```
-
-### 3. Собери фронтенд
-
-```bash
+npm ci
 npm run build
-```
-
-### 4. Запусти сервер
-
-**Обычный запуск:**
-```bash
 npm start
 ```
 
-**Режим разработки (Vite dev server + API proxy):**
+Для интерфейса разработки:
+
 ```bash
 npm run dev
 ```
 
-**Фоновый режим:**
+`npm start` и порт `3000` предназначены только для локальной разработки.
+
+## Production
+
+Production запускается только через [`ecosystem.config.js`](ecosystem.config.js)
+от системного пользователя `cheese-wheel`, слушает `127.0.0.1:3000` и
+публикуется через Nginx. Не открывайте Node-порт наружу и не запускайте
+`server.js` от `root`.
+
+Первичная защищённая установка и порядок миграции описаны в
+[`deploy/README-security.md`](deploy/README-security.md). Основные команды после
+сборки:
+
 ```bash
-node server.js &
-```
-
-**Через PM2 (рекомендуется для продакшена):**
-```bash
-# Установка PM2 (один раз)
-npm install -g pm2
-
-# Запуск
-pm2 start server.js --name cheese-wheel
-
-# Автозапуск при перезагрузке сервера
-pm2 startup
+sudo ./deploy/install-security.sh
+pm2 stop cheese-wheel
+pm2 startOrRestart ecosystem.config.js --only cheese-wheel --update-env
 pm2 save
-```
-
-### 5. Открой в браузере
-
-```
-http://твой-сервер:3000
-```
-
-## Настройка порта
-
-По умолчанию сервер запускается на порту 3000. Чтобы изменить:
-
-```bash
-PORT=8080 npm start
-```
-
-Или в PM2:
-```bash
-PORT=8080 pm2 start server.js --name cheese-wheel
 ```
 
 ## Структура файлов

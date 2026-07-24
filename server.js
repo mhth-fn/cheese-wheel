@@ -413,6 +413,12 @@ function rejectRateLimited(res, result) {
   if (result.unavailable) {
     return res.status(503).json({ error: 'Защита запросов временно недоступна' });
   }
+  if (result.alreadyLimited) {
+    // The first rejection is audited. Repeated requests in the same saturated
+    // bucket stay read-only and are deliberately coalesced to avoid turning
+    // the limiter and audit trail into a write-amplification vector.
+    res.locals.skipRepeatedRateLimitAudit = true;
+  }
   return res.status(429).json({ error: 'Слишком много запросов. Попробуйте позже.' });
 }
 
@@ -548,7 +554,7 @@ const MAX_TITLE_LENGTH = 200;
 let activeSpinUntil = 0;
 
 function rejectWheelMutationDuringSpin(req, res, next) {
-  if (Date.now() < activeSpinUntil) {
+  if (Date.now() < activeSpinUntil || readPendingSpin()) {
     return res.status(409).json({ error: 'Дождитесь окончания прокрутки' });
   }
   next();
@@ -597,6 +603,19 @@ app.use((req, res, next) => {
 app.use('/api', (req, res, next) => {
   if (!auditLog) return next();
   return auditLog.middleware(req, res, next);
+});
+app.use('/api', (req, res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  const ipLimit = consumeRateLimit(
+    'api-ingress-ip',
+    getClientRateKey(req),
+    120,
+    60 * 1000
+  );
+  if (!ipLimit.allowed) return rejectRateLimited(res, ipLimit);
+  const globalLimit = consumeRateLimit('api-ingress-global', 'all', 600, 60 * 1000);
+  if (!globalLimit.allowed) return rejectRateLimited(res, globalLimit);
+  next();
 });
 app.use(express.json({ limit: '16kb' }));
 app.use('/api', (req, res, next) => {
@@ -1557,11 +1576,17 @@ function getWheelStatus() {
     };
   });
   const activeMovies = roundMovies.filter(movie => !movie.is_watched);
+  const pendingSpin = readPendingSpin();
   return {
     formed: roundMovies.length > 0,
     movies: activeMovies,
     round_movies: roundMovies,
     current_count: currentMovies.length,
+    pending_spin: pendingSpin ? {
+      spin_id: pendingSpin.spinId,
+      movie_id: pendingSpin.movieId,
+      complete_at: pendingSpin.completeAt,
+    } : null,
   };
 }
 
@@ -1606,15 +1631,30 @@ function finishPendingSpin(expectedSpinId) {
     const movie = stmts.getMovieById.get(pending.movieId);
     const belongsToRound = readFormedWheel()
       .some(item => Number(item.id) === pending.movieId);
-    db.prepare('DELETE FROM settings WHERE key = ?').run(PENDING_SPIN_SETTING);
     if (!movie || Number(movie.is_watched) === 1 || !belongsToRound) {
+      db.prepare('DELETE FROM settings WHERE key = ?').run(PENDING_SPIN_SETTING);
       return { ...pending, changed: false, movie };
     }
     stmts.markWatched.run(pending.movieId);
+    const watchedMovie = stmts.getMovieById.get(pending.movieId);
+    const actor = stmts.getAuthUser.get(pending.actorUserId);
+    auditLog.record({
+      actorUserId: pending.actorUserId,
+      actorRole: actor?.role,
+      action: 'wheel.spin_completed',
+      targetType: 'movie',
+      targetId: pending.movieId,
+      result: 'success',
+      details: {
+        spin_id: pending.spinId,
+        movie_title: watchedMovie.title,
+      },
+    });
+    db.prepare('DELETE FROM settings WHERE key = ?').run(PENDING_SPIN_SETTING);
     return {
       ...pending,
       changed: true,
-      movie: stmts.getMovieById.get(pending.movieId),
+      movie: watchedMovie,
     };
   })();
 
@@ -1630,30 +1670,51 @@ function finishPendingSpin(expectedSpinId) {
   void notifyDiscord(
     'Сегодня смотрим *' + escapeDiscordMarkdown(completed.movie.title) + '*'
   );
-  const actor = stmts.getAuthUser.get(completed.actorUserId);
-  auditLog.record({
-    actorUserId: completed.actorUserId,
-    actorRole: actor?.role,
-    action: 'wheel.spin_completed',
-    targetType: 'movie',
-    targetId: completed.movieId,
-    result: 'success',
-    details: {
-      spin_id: completed.spinId,
-      movie_title: completed.movie.title,
-    },
-  });
 }
 
 function schedulePendingSpin(pending) {
   if (pendingSpinTimer) clearTimeout(pendingSpinTimer);
   const delay = Math.max(0, pending.completeAt - Date.now());
   pendingSpinTimer = setTimeout(
-    () => finishPendingSpin(pending.spinId),
+    () => {
+      pendingSpinTimer = null;
+      try {
+        finishPendingSpin(pending.spinId);
+      } catch (error) {
+        console.error('[cheese-wheel] Failed to complete persisted spin:', error.message);
+        const retry = readPendingSpin();
+        if (retry?.spinId === pending.spinId) {
+          retry.completeAt = Date.now() + 5000;
+          schedulePendingSpin(retry);
+        }
+      }
+    },
     Math.min(delay, 2_147_000_000)
   );
   pendingSpinTimer.unref();
 }
+
+const claimPendingSpin = db.transaction((pending, auditContext) => {
+  if (readPendingSpin()) return false;
+  // Drop only an invalid row; a valid pending spin is never overwritten.
+  db.prepare('DELETE FROM settings WHERE key = ?').run(PENDING_SPIN_SETTING);
+  db.prepare(`
+    INSERT INTO settings (key, value)
+    VALUES (?, ?)
+  `).run(PENDING_SPIN_SETTING, JSON.stringify(pending));
+  auditLog.record({
+    actorUserId: pending.actorUserId,
+    actorRole: auditContext.actorRole,
+    action: 'wheel.spin_started',
+    targetType: 'movie',
+    targetId: pending.movieId,
+    result: 'success',
+    ip: auditContext.ip,
+    userAgent: auditContext.userAgent,
+    details: { spin_id: pending.spinId },
+  });
+  return true;
+});
 
 const restoredPendingSpin = readPendingSpin();
 if (restoredPendingSpin) {
@@ -2399,7 +2460,7 @@ app.delete('/api/wheel/:id', rejectWheelMutationDuringSpin, rejectFormedCurrentW
   }
 });
 
-app.post('/api/wheel/:id/watched', requireAdmin, (req, res) => {
+app.post('/api/wheel/:id/watched', requireAdmin, rejectWheelMutationDuringSpin, (req, res) => {
   const id = parseIntStrict(req.params.id);
   if (isNaN(id)) {
     return res.status(400).json({ error: 'Неверный ID' });
@@ -3469,16 +3530,6 @@ io.on('connection', (socket) => {
   socket.emit('online-users', currentUsers);
   if (onlineUsers.has(socket.id)) broadcastOnlineUsers();
 
-  socket.on('set-user', () => {
-    const tokenData = getTokenData(socket.data.authToken);
-    if (isMemberToken(tokenData)) {
-      const user = stmts.getUsers.all().find(item => Number(item.id) === Number(tokenData.userId));
-      if (!user) return;
-      onlineUsers.set(socket.id, { userId: user.id, userName: user.name });
-      broadcastOnlineUsers();
-    }
-  });
-
   socket.on('spin-wheel', (data) => {
     const tokenData = getTokenData(socket.data.authToken);
     if (!isMemberToken(tokenData)) {
@@ -3492,6 +3543,22 @@ io.on('connection', (socket) => {
       return;
     }
     socket.data.lastSpinAttemptAt = now;
+    const sessionSpinLimit = consumeRateLimit(
+      'socket-spin-session',
+      hashSessionToken(socket.data.authToken),
+      12,
+      60 * 1000
+    );
+    const globalSpinLimit = consumeRateLimit(
+      'socket-spin-global',
+      'all',
+      60,
+      60 * 1000
+    );
+    if (!sessionSpinLimit.allowed || !globalSpinLimit.allowed) {
+      socket.emit('spin-rejected', { error: 'Слишком много прокруток' });
+      return;
+    }
 
     const spinEnabledRow = db.prepare("SELECT value FROM settings WHERE key = 'spin_enabled'").get();
     if (spinEnabledRow?.value === '0') {
@@ -3532,23 +3599,17 @@ io.on('connection', (socket) => {
       completeAt: Date.now() + spinDuration * 1000 + 250,
     };
     try {
-      db.prepare(`
-        INSERT OR REPLACE INTO settings (key, value)
-        VALUES (?, ?)
-      `).run(PENDING_SPIN_SETTING, JSON.stringify(pendingSpin));
-      activeSpinUntil = pendingSpin.completeAt + 950;
-      schedulePendingSpin(pendingSpin);
-      auditLog.record({
-        actorUserId: tokenData.userId,
+      const claimed = claimPendingSpin(pendingSpin, {
         actorRole: tokenData.role,
-        action: 'wheel.spin_started',
-        targetType: 'movie',
-        targetId: winner.id,
-        result: 'success',
         ip: getClientRateKey(socket.request),
         userAgent: socket.request.headers['user-agent'],
-        details: { spin_id: spinId },
       });
+      if (!claimed) {
+        socket.emit('spin-rejected', { error: 'Колесо уже вращается' });
+        return;
+      }
+      activeSpinUntil = pendingSpin.completeAt + 950;
+      schedulePendingSpin(pendingSpin);
     } catch (error) {
       console.error('[cheese-wheel] Failed to persist spin:', error.message);
       socket.emit('spin-rejected', { error: 'Не удалось сохранить результат вращения' });
@@ -3558,6 +3619,8 @@ io.on('connection', (socket) => {
     io.emit('wheel-spinning', {
       spinId,
       winnerIndex,
+      winnerMovieId: winner.id,
+      winnerTitle: winner.title,
       spinDuration,
       randomOffset,
       turns,

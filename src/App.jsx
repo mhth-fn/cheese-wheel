@@ -333,13 +333,6 @@ export default function App() {
     if (isLoggedIn) refreshWheelData();
   }, [isLoggedIn, refreshWheelData]);
 
-  // Emit user identity to socket for online tracking
-  useEffect(() => {
-    const socket = socketRef.current;
-    if (!socket || !currentUser || !connected) return;
-    socket.emit('set-user');
-  }, [currentUser, connected]);
-
   // Initial data load
   useEffect(() => {
     (async () => {
