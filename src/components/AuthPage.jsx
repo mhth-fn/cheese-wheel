@@ -21,7 +21,7 @@ export default function AuthPage({ users, onLogin, onGuest }) {
       const data = await res.json();
       if (res.ok) {
         const user = users.find(u => u.id === selectedId);
-        onLogin(user, data.token);
+        onLogin(user);
       } else {
         setError(data.error || 'Неверный пароль');
         setPassword('');

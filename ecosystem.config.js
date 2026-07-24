@@ -22,6 +22,10 @@ module.exports = {
     cwd: '/opt/cheese-wheel',
     env: {
       ...localEnv,
+      NODE_ENV: 'production',
+      HOST: '127.0.0.1',
+      APP_ORIGIN: 'https://cheese-wheel.ru',
+      ADMIN_USER_ID: '2',
       PORT: 3000,
       DEFAULT_PASSWORD: process.env.DEFAULT_PASSWORD || localEnv.DEFAULT_PASSWORD || '',
       DISCORD_WEBHOOK_URL: process.env.DISCORD_WEBHOOK_URL || localEnv.DISCORD_WEBHOOK_URL || ''

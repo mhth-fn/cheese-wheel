@@ -45,8 +45,8 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
   const handlePasswordSubmit = async (e) => {
     e.preventDefault();
     setPwdError('');
-    if (newPwd.length < 4) {
-      setPwdError('Минимум 4 символа');
+    if (newPwd.length < 8) {
+      setPwdError('Минимум 8 символов');
       return;
     }
     if (newPwd !== confirmPwd) {

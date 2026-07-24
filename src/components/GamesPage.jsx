@@ -54,11 +54,13 @@ export default function GamesPage() {
       audio.volume = 0.5;
       audio.play().catch(() => {});
       audioRef.current = audio;
-    } else if (musicBoxRef.current) {
+    } else if (musicBoxRef.current && /^[A-Za-z0-9_-]{11}$/.test(src)) {
       // YouTube embed
       const iframe = document.createElement('iframe');
       iframe.src = `https://www.youtube.com/embed/${src}?autoplay=1&loop=1&playlist=${src}`;
       iframe.allow = 'autoplay; encrypted-media';
+      iframe.sandbox = 'allow-scripts allow-same-origin allow-presentation';
+      iframe.referrerPolicy = 'no-referrer';
       iframe.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:none;';
       musicBoxRef.current.appendChild(iframe);
     }
@@ -468,6 +470,9 @@ export default function GamesPage() {
     if (mode === 'thirdperson' && !THREERef.current) {
       const script = document.createElement('script');
       script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+      script.integrity = 'sha384-CI3ELBVUz9XQO+97x6nwMDPosPR5XvsxW2ua7N1Xeygeh1IxtgqtCkGfQY9WWdHu';
+      script.crossOrigin = 'anonymous';
+      script.referrerPolicy = 'no-referrer';
       script.onload = () => {
         THREERef.current = window.THREE;
         setTimeout(() => initGame(mode), 100);

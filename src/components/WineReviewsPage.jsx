@@ -75,7 +75,7 @@ export default function WineReviewsPage() {
     if (!f.title.trim() || !f.content.trim()) return;
     try {
       const res = await patchWineReview(
-        id, currentUser.id, f.title.trim(), f.content.trim(), f.recommend,
+        id, f.title.trim(), f.content.trim(), f.recommend,
         f.wineType || null, f.grape.trim() || null, f.region.trim() || null,
         f.vintage ? parseInt(f.vintage, 10) : null, f.price.trim() || null
       );
@@ -100,7 +100,7 @@ export default function WineReviewsPage() {
     setSubmitting(true);
     try {
       const res = await postWineReview(
-        currentUser.id, formTitle.trim(), formContent.trim(), recommend,
+        formTitle.trim(), formContent.trim(), recommend,
         wineType || null, grape.trim() || null, region.trim() || null,
         vintage ? parseInt(vintage, 10) : null, price.trim() || null
       );
@@ -127,7 +127,7 @@ export default function WineReviewsPage() {
 
   const handleDelete = async (id) => {
     try {
-      const res = await deleteWineReview(id, currentUser.id);
+      const res = await deleteWineReview(id);
       if (!res.ok) {
         const data = await res.json();
         showToast(data.error || 'Ошибка', 'error');

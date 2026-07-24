@@ -110,40 +110,43 @@ export default function App() {
 
   // Socket setup
   useEffect(() => {
-    const socket = io();
+    const socket = io({
+      autoConnect: false,
+      auth: (callback) => {
+        callback({ token: localStorage.getItem('cheeseWheelToken') || undefined });
+      },
+    });
     socketRef.current = socket;
 
     const onConnect = () => {
       setConnected(true);
       setConnectionState('online');
       setLastSyncedAt(Date.now());
-      if (localStorage.getItem('cheeseWheelToken')) {
-        Promise.allSettled([
-          fetchSettings(),
-          fetchTheme(),
-          fetchCenterImage(),
-          fetchWheelMovies(),
-          fetchNextWheelMovies(),
-          fetchWheelStatus(),
-        ]).then(([settingsResult, themeResult, centerResult, wheelResult, nextResult, wheelStatusResult]) => {
-          if (settingsResult.status === 'fulfilled') {
-            const settings = settingsResult.value;
-            if (settings.spin_duration !== undefined) setSpinDuration(settings.spin_duration);
-            if (settings.spin_enabled !== undefined) setSpinEnabled(settings.spin_enabled);
-            if (settings.add_enabled !== undefined) setAddEnabled(settings.add_enabled);
-            if (settings.decorations_enabled !== undefined) setDecorationsEnabled(settings.decorations_enabled);
-          }
-          if (themeResult.status === 'fulfilled') setThemeState(themeResult.value.theme || 'cheese');
-          if (centerResult.status === 'fulfilled') setCenterImage(centerResult.value.url || null);
-          if (wheelResult.status === 'fulfilled') setWheelMovies(wheelResult.value);
-          if (nextResult.status === 'fulfilled') setNextWheelMovies(nextResult.value);
-          if (wheelStatusResult.status === 'fulfilled') {
-            setWheelStatus(wheelStatusResult.value);
-            setWheelStatusLoadState('ready');
-          }
-          setLastSyncedAt(Date.now());
-        });
-      }
+      Promise.allSettled([
+        fetchSettings(),
+        fetchTheme(),
+        fetchCenterImage(),
+        fetchWheelMovies(),
+        fetchNextWheelMovies(),
+        fetchWheelStatus(),
+      ]).then(([settingsResult, themeResult, centerResult, wheelResult, nextResult, wheelStatusResult]) => {
+        if (settingsResult.status === 'fulfilled') {
+          const settings = settingsResult.value;
+          if (settings.spin_duration !== undefined) setSpinDuration(settings.spin_duration);
+          if (settings.spin_enabled !== undefined) setSpinEnabled(settings.spin_enabled);
+          if (settings.add_enabled !== undefined) setAddEnabled(settings.add_enabled);
+          if (settings.decorations_enabled !== undefined) setDecorationsEnabled(settings.decorations_enabled);
+        }
+        if (themeResult.status === 'fulfilled') setThemeState(themeResult.value.theme || 'cheese');
+        if (centerResult.status === 'fulfilled') setCenterImage(centerResult.value.url || null);
+        if (wheelResult.status === 'fulfilled') setWheelMovies(wheelResult.value);
+        if (nextResult.status === 'fulfilled') setNextWheelMovies(nextResult.value);
+        if (wheelStatusResult.status === 'fulfilled') {
+          setWheelStatus(wheelStatusResult.value);
+          setWheelStatusLoadState('ready');
+        }
+        setLastSyncedAt(Date.now());
+      });
     };
     const onDisconnect = () => {
       setConnected(false);
@@ -231,6 +234,23 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket) return;
+    if (isLoggedIn) {
+      socket.auth = callback => {
+        callback({ token: localStorage.getItem('cheeseWheelToken') || undefined });
+      };
+      setConnectionState('connecting');
+      if (!socket.connected) socket.connect();
+    } else {
+      socket.disconnect();
+      setConnected(false);
+      setConnectionState('offline');
+      setOnlineUsers([]);
+    }
+  }, [isLoggedIn]);
+
+  useEffect(() => {
     if (isLoggedIn) refreshWheelData();
   }, [isLoggedIn, refreshWheelData]);
 
@@ -279,8 +299,8 @@ export default function App() {
   useEffect(() => {
     if (users.length === 0) return;
     const saved = localStorage.getItem('cheeseWheelSession');
-    const token = localStorage.getItem('cheeseWheelToken');
-    if (saved && token) {
+    const legacyToken = localStorage.getItem('cheeseWheelToken');
+    if (saved) {
       let session;
       try {
         session = JSON.parse(saved);
@@ -306,21 +326,21 @@ export default function App() {
           if (user) { setCurrentUser(user); setPage(urlPage); }
         }
       };
-      fetch('/api/settings', { headers: { 'Authorization': `Bearer ${token}` } })
+      fetch('/api/settings', {
+        headers: legacyToken ? { 'Authorization': `Bearer ${legacyToken}` } : {},
+      })
         .then(res => {
-          if (res.status === 401) {
+          if (!res.ok) {
             localStorage.removeItem('cheeseWheelSession');
             localStorage.removeItem('cheeseWheelToken');
           } else {
+            localStorage.removeItem('cheeseWheelToken');
             applySession();
           }
         })
         .catch(() => applySession()) // сервер недоступен — всё равно восстанавливаем
         .finally(() => setSessionChecked(true));
       return;
-    } else if (saved && !token) {
-      // Старая сессия без токена — чистим, отправляем на логин
-      localStorage.removeItem('cheeseWheelSession');
     }
     setSessionChecked(true);
   }, [users]);
@@ -368,25 +388,29 @@ export default function App() {
     return () => window.removeEventListener('popstate', handler);
   }, [isLoggedIn, isGuest, currentUser]);
 
-  const login = useCallback((user, token) => {
+  const login = useCallback((user) => {
     setCurrentUser(user);
     setIsGuest(false);
     localStorage.setItem('cheeseWheelSession', JSON.stringify({ userId: user.id }));
-    if (token) localStorage.setItem('cheeseWheelToken', token);
+    localStorage.removeItem('cheeseWheelToken');
     setPage('wheel');
   }, []);
 
   const loginGuest = useCallback(async () => {
     try {
       const res = await postGuestAuth();
-      const data = await res.json();
-      if (data.token) localStorage.setItem('cheeseWheelToken', data.token);
-    } catch (e) { console.error(e); }
+      if (!res.ok) throw new Error('Не удалось войти в гостевой режим');
+      localStorage.removeItem('cheeseWheelToken');
+    } catch (e) {
+      console.error(e);
+      showToast('Не удалось войти в гостевой режим', 'error');
+      return;
+    }
     setCurrentUser(null);
     setIsGuest(true);
     localStorage.setItem('cheeseWheelSession', JSON.stringify({ isGuest: true }));
     setPage('wheel');
-  }, []);
+  }, [showToast]);
 
   const logout = useCallback(async () => {
     try {
@@ -558,7 +582,12 @@ export default function App() {
 
   const reconnect = useCallback(() => {
     setConnectionState('connecting');
-    socketRef.current?.connect();
+    const socket = socketRef.current;
+    if (!socket) return;
+    socket.auth = callback => {
+      callback({ token: localStorage.getItem('cheeseWheelToken') || undefined });
+    };
+    socket.connect();
   }, []);
 
   const retryUsers = useCallback(async () => {

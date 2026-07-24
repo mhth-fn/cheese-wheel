@@ -203,27 +203,25 @@ export async function fetchWineReviews() {
   return res.json();
 }
 
-export async function postWineReview(userId, title, content, recommend, wine_type, grape, region, vintage, price) {
+export async function postWineReview(title, content, recommend, wine_type, grape, region, vintage, price) {
   return apiFetch('/api/wine-reviews', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: userId, title, content, recommend, wine_type, grape, region, vintage, price })
+    body: JSON.stringify({ title, content, recommend, wine_type, grape, region, vintage, price })
   });
 }
 
-export async function patchWineReview(id, userId, title, content, recommend, wine_type, grape, region, vintage, price) {
+export async function patchWineReview(id, title, content, recommend, wine_type, grape, region, vintage, price) {
   return apiFetch(`/api/wine-reviews/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: userId, title, content, recommend, wine_type, grape, region, vintage, price })
+    body: JSON.stringify({ title, content, recommend, wine_type, grape, region, vintage, price })
   });
 }
 
-export async function deleteWineReview(id, userId) {
+export async function deleteWineReview(id) {
   return apiFetch(`/api/wine-reviews/${id}`, {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: userId })
+    method: 'DELETE'
   });
 }
 

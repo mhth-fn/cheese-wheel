@@ -10,9 +10,32 @@ const path = require('path');
 
 const app = express();
 const server = createServer(app);
-const io = new Server(server);
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '127.0.0.1';
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
+const APP_ORIGIN = process.env.APP_ORIGIN || 'https://cheese-wheel.ru';
+const ADMIN_USER_ID = Number.parseInt(process.env.ADMIN_USER_ID || '2', 10);
+const SOCKET_ALLOWED_ORIGINS = new Set([
+  APP_ORIGIN,
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+].map(value => new URL(value).origin));
+
+function isSocketOriginAllowed(origin) {
+  if (!origin) return true;
+  try {
+    return SOCKET_ALLOWED_ORIGINS.has(new URL(origin).origin);
+  } catch {
+    return false;
+  }
+}
+
+const io = new Server(server, {
+  maxHttpBufferSize: 100 * 1024,
+  allowRequest: (req, callback) => {
+    callback(null, isSocketOriginAllowed(req.headers.origin));
+  },
+});
 
 const crypto = require('crypto');
 
@@ -248,6 +271,13 @@ function requireMember(req, res, next) {
   next();
 }
 
+function requireAdmin(req, res, next) {
+  if (!isMemberToken(req.tokenData) || Number(req.tokenData.userId) !== ADMIN_USER_ID) {
+    return res.status(403).json({ error: 'Доступно только администратору' });
+  }
+  next();
+}
+
 function checkTcpPort(address, port, timeout = 3500) {
   return new Promise(resolve => {
     const socket = net.createConnection({ host: address, port });
@@ -324,22 +354,49 @@ async function checkVpnServer(serverConfig) {
 }
 
 // ============ RATE LIMITING ============
-const authAttempts = new Map(); // ip -> { count, resetAt }
-const RATE_LIMIT_MAX = 10;
-const RATE_LIMIT_WINDOW = 60 * 1000; // 1 минута
+const rateLimitBuckets = new Map();
+const RATE_LIMIT_BUCKET_CAP = 10000;
 
-//TODO: нужно чистить мапу от старых айпишников
-function checkRateLimit(ip) {
-  const now = Date.now();
-  const entry = authAttempts.get(ip);
-  if (!entry || now > entry.resetAt) {
-    authAttempts.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
-    return true;
-  }
-  if (entry.count >= RATE_LIMIT_MAX) return false;
-  entry.count++;
-  return true;
+function getClientRateKey(req) {
+  const cloudflareIp = String(req.headers['cf-connecting-ip'] || '').trim();
+  if (net.isIP(cloudflareIp)) return cloudflareIp;
+  return req.ip || req.socket.remoteAddress || 'unknown';
 }
+
+function consumeRateLimit(scope, key, max, windowMs) {
+  const now = Date.now();
+  const bucketKey = `${scope}:${key}`;
+  const entry = rateLimitBuckets.get(bucketKey);
+  if (!entry || now > entry.resetAt) {
+    if (!entry && rateLimitBuckets.size >= RATE_LIMIT_BUCKET_CAP) {
+      const oldestKey = rateLimitBuckets.keys().next().value;
+      if (oldestKey) rateLimitBuckets.delete(oldestKey);
+    }
+    rateLimitBuckets.set(bucketKey, { count: 1, resetAt: now + windowMs });
+    return { allowed: true, retryAfter: 0 };
+  }
+  if (entry.count >= max) {
+    return {
+      allowed: false,
+      retryAfter: Math.max(1, Math.ceil((entry.resetAt - now) / 1000)),
+    };
+  }
+  entry.count++;
+  return { allowed: true, retryAfter: 0 };
+}
+
+function rejectRateLimited(res, result) {
+  res.set('Retry-After', String(result.retryAfter));
+  return res.status(429).json({ error: 'Слишком много запросов. Попробуйте позже.' });
+}
+
+const rateLimitCleanup = setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitBuckets) {
+    if (entry.resetAt <= now) rateLimitBuckets.delete(key);
+  }
+}, 60 * 1000);
+rateLimitCleanup.unref();
 
 function escapeDiscordMarkdown(text) {
   return String(text).replace(/([\\_*~`>|])/g, '\\$1');
@@ -377,7 +434,7 @@ function createToken(userId, isGuest = false) {
 }
 
 function getTokenData(token) {
-  if (!token) return null;
+  if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return null;
   const row = db.prepare('SELECT user_id, is_guest, expires FROM tokens WHERE token=?').get(token);
   if (!row) return null;
   if (Date.now() > row.expires) { db.prepare('DELETE FROM tokens WHERE token=?').run(token); return null; }
@@ -458,14 +515,72 @@ function rejectWheelMutationDuringSpin(req, res, next) {
 }
 
 // Middleware
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.set({
+    'Content-Security-Policy': [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'none'",
+      "form-action 'self'",
+      "img-src 'self' data: blob:",
+      "media-src 'self' data: blob:",
+      "font-src 'self' data: https://fonts.gstatic.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://static.cloudflareinsights.com",
+      "script-src-attr 'none'",
+      "connect-src 'self' https://cloudflareinsights.com wss://cheese-wheel.ru",
+      "frame-src https://www.youtube.com https://www.youtube-nocookie.com",
+      "worker-src 'self' blob:",
+      "manifest-src 'self'",
+      'upgrade-insecure-requests',
+    ].join('; '),
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Resource-Policy': 'same-site',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'X-XSS-Protection': '0',
+  });
+  next();
+});
+app.use((req, res, next) => {
+  if (
+    /^\/(?:\.env(?:\.|$)|server\.js$|package(?:-lock)?\.json$|cheese_wheel\.db(?:-wal|-shm)?$|backups(?:\/|$))/i.test(req.path)
+  ) {
+    return res.status(404).type('text/plain').send('Not Found');
+  }
+  next();
+});
 app.use(express.json({ limit: '16kb' }));
+app.use('/api', (req, res, next) => {
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    const origin = req.headers.origin;
+    const fetchSite = req.headers['sec-fetch-site'];
+    if ((origin && !isSocketOriginAllowed(origin)) || fetchSite === 'cross-site') {
+      return res.status(403).json({ error: 'Недоверенный источник запроса' });
+    }
+  }
+  res.set('Cache-Control', 'private, no-store');
+  res.vary('Authorization');
+  res.vary('Cookie');
+  next();
+});
 // Serve React build output (run `npm run build` first)
 const fs = require('fs');
 const distPath = path.join(__dirname, 'dist');
 const publicPath = path.join(__dirname, 'public');
 const uploadsPath = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsPath)) fs.mkdirSync(uploadsPath);
-app.use('/uploads', express.static(uploadsPath));
+if (!fs.existsSync(uploadsPath)) fs.mkdirSync(uploadsPath, { mode: 0o750 });
+app.use('/uploads', express.static(uploadsPath, {
+  dotfiles: 'deny',
+  setHeaders: (res) => {
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Cache-Control', 'public, max-age=86400');
+  },
+}));
 app.get('/vpn', (req, res, next) => {
   const data = getTokenData(getCookieToken(req));
   if (!isMemberToken(data)) {
@@ -474,7 +589,9 @@ app.get('/vpn', (req, res, next) => {
   }
   next();
 });
-app.use(express.static(fs.existsSync(distPath) ? distPath : publicPath));
+app.use(express.static(fs.existsSync(distPath) ? distPath : publicPath, {
+  dotfiles: 'deny',
+}));
 
 // База данных
 const db = new Database('cheese_wheel.db');
@@ -696,16 +813,21 @@ function verifyPassword(password, stored) {
   if (!stored) return false;
   const [salt, hash] = stored.split(':');
   if (!salt || !hash) return false;
-  const check = crypto.scryptSync(password, salt, 64).toString('hex');
-  return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(check, 'hex'));
+  try {
+    const expected = Buffer.from(hash, 'hex');
+    const check = crypto.scryptSync(password, salt, 64);
+    return expected.length === check.length && crypto.timingSafeEqual(expected, check);
+  } catch {
+    return false;
+  }
 }
 
 // Добавляем пользователей
 let DEFAULT_PASSWORD = process.env.DEFAULT_PASSWORD;
 if (!DEFAULT_PASSWORD) {
-  DEFAULT_PASSWORD = crypto.randomBytes(12).toString('base64');
-  console.warn(`[cheese-wheel] DEFAULT_PASSWORD не задан. Сгенерирован временный пароль для новых пользователей: ${DEFAULT_PASSWORD}`);
+  throw new Error('[cheese-wheel] DEFAULT_PASSWORD должен быть задан в окружении');
 }
+const DUMMY_PASSWORD_HASH = hashPassword(crypto.randomBytes(32).toString('hex'));
 const seedUsers = [
   { id: 1, name: 'Антон' },
   { id: 2, name: 'Сергей' },
@@ -1009,36 +1131,56 @@ app.use('/api', (req, res, next) => {
   if (req.path === '/auth/guest' && req.method === 'POST') return next();
   if (req.path === '/auth/logout' && req.method === 'POST') return next();
   if (req.path === '/users' && req.method === 'GET') return next();
-  requireAuth(req, res, next);
+  requireAuth(req, res, () => {
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+      const writeLimit = consumeRateLimit('api-write', req.authToken, 180, 60 * 1000);
+      if (!writeLimit.allowed) return rejectRateLimited(res, writeLimit);
+    }
+    next();
+  });
 });
 
 app.post('/api/auth', (req, res) => {
-  const ip = req.ip || req.socket.remoteAddress;
-  if (!checkRateLimit(ip)) {
-    return res.status(429).json({ error: 'Слишком много попыток. Подождите минуту.' });
-  }
-  const { user_id, password } = req.body;
+  const { user_id, password } = req.body || {};
   const userId = parseIntStrict(user_id);
   if (isNaN(userId) || typeof password !== 'string') {
     return res.status(400).json({ error: 'Неверный формат' });
   }
+
+  const ipLimit = consumeRateLimit('auth-ip', getClientRateKey(req), 30, 60 * 1000);
+  if (!ipLimit.allowed) return rejectRateLimited(res, ipLimit);
+  const accountLimit = consumeRateLimit('auth-account', userId, 10, 60 * 1000);
+  if (!accountLimit.allowed) return rejectRateLimited(res, accountLimit);
+  const globalLimit = consumeRateLimit('auth-global', 'all', 120, 60 * 1000);
+  if (!globalLimit.allowed) return rejectRateLimited(res, globalLimit);
+
   const user = stmts.getUserWithPassword.get(userId);
-  if (!user) {
-    return res.status(400).json({ error: 'Пользователь не найден' });
-  }
-  if (verifyPassword(password, user.password_hash)) {
+  const passwordValid = verifyPassword(password, user?.password_hash || DUMMY_PASSWORD_HASH);
+  if (user && passwordValid) {
     const token = createToken(user.id);
     setSessionCookie(res, token);
-    res.json({ success: true, token });
+    res.json({ success: true });
   } else {
-    res.status(401).json({ error: 'Неверный пароль' });
+    res.status(401).json({ error: 'Неверный пользователь или пароль' });
   }
 });
 
 app.post('/api/auth/guest', (req, res) => {
+  const existingToken = getRequestToken(req);
+  const existingSession = getTokenData(existingToken);
+  if (existingSession?.isGuest) {
+    setSessionCookie(res, existingToken);
+    return res.json({ success: true });
+  }
+
+  const ipLimit = consumeRateLimit('guest-ip', getClientRateKey(req), 20, 60 * 1000);
+  if (!ipLimit.allowed) return rejectRateLimited(res, ipLimit);
+  const globalLimit = consumeRateLimit('guest-global', 'all', 120, 60 * 1000);
+  if (!globalLimit.allowed) return rejectRateLimited(res, globalLimit);
+
   const token = createToken(null, true);
   setSessionCookie(res, token);
-  res.json({ success: true, token });
+  res.json({ success: true });
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -1051,21 +1193,27 @@ app.post('/api/auth/logout', (req, res) => {
 // Смена пароля
 app.post('/api/users/:id/password', (req, res) => {
   const id = parseIntStrict(req.params.id);
-  const { old_password, new_password } = req.body;
+  const { old_password, new_password } = req.body || {};
   if (isNaN(id) || typeof old_password !== 'string' || typeof new_password !== 'string') {
     return res.status(400).json({ error: 'Неверный формат' });
   }
-  if (new_password.length < 4 || new_password.length > 100) {
-    return res.status(400).json({ error: 'Пароль от 4 до 100 символов' });
+  if (!isMemberToken(req.tokenData) || Number(req.tokenData.userId) !== id) {
+    return res.status(403).json({ error: 'Можно изменить только свой пароль' });
+  }
+  const passwordLimit = consumeRateLimit('password-change', id, 5, 5 * 60 * 1000);
+  if (!passwordLimit.allowed) return rejectRateLimited(res, passwordLimit);
+  if (new_password.length < 8 || new_password.length > 100) {
+    return res.status(400).json({ error: 'Пароль от 8 до 100 символов' });
   }
   const user = stmts.getUserWithPassword.get(id);
   if (!user) {
-    return res.status(400).json({ error: 'Пользователь не найден' });
+    return res.status(403).json({ error: 'Нет доступа' });
   }
   if (!verifyPassword(old_password, user.password_hash)) {
     return res.status(401).json({ error: 'Неверный текущий пароль' });
   }
   stmts.setUserPassword.run(hashPassword(new_password), id);
+  db.prepare('DELETE FROM tokens WHERE user_id = ? AND token <> ?').run(id, req.authToken);
   res.json({ success: true });
 });
 
@@ -1242,7 +1390,7 @@ app.get('/api/theme', (req, res) => {
   res.json({ theme: theme?.value || 'cheese' });
 });
 
-app.post('/api/theme', (req, res) => {
+app.post('/api/theme', requireAdmin, (req, res) => {
   const { theme } = req.body;
   if (!ALLOWED_THEMES.includes(theme)) {
     return res.status(400).json({ error: 'Неверная тема' });
@@ -1862,7 +2010,7 @@ app.get('/api/settings', (req, res) => {
   });
 });
 
-app.post('/api/settings/spin-duration', (req, res) => {
+app.post('/api/settings/spin-duration', requireAdmin, (req, res) => {
   const duration = parseIntStrict(req.body.duration);
   if (isNaN(duration) || duration < MIN_SPIN_DURATION || duration > MAX_SPIN_DURATION) {
     return res.status(400).json({ error: `Время от ${MIN_SPIN_DURATION} до ${MAX_SPIN_DURATION} секунд` });
@@ -1873,21 +2021,21 @@ app.post('/api/settings/spin-duration', (req, res) => {
   res.json({ success: true });
 });
 
-app.post('/api/settings/spin-enabled', (req, res) => {
+app.post('/api/settings/spin-enabled', requireAdmin, (req, res) => {
   const val = req.body.enabled ? '1' : '0';
   db.prepare("UPDATE settings SET value = ? WHERE key = 'spin_enabled'").run(val);
   io.emit('settings-changed', { spin_enabled: val === '1' });
   res.json({ success: true });
 });
 
-app.post('/api/settings/add-enabled', (req, res) => {
+app.post('/api/settings/add-enabled', requireAdmin, (req, res) => {
   const val = req.body.enabled ? '1' : '0';
   db.prepare("UPDATE settings SET value = ? WHERE key = 'add_enabled'").run(val);
   io.emit('settings-changed', { add_enabled: val === '1' });
   res.json({ success: true });
 });
 
-app.post('/api/settings/decorations-enabled', (req, res) => {
+app.post('/api/settings/decorations-enabled', requireAdmin, (req, res) => {
   const val = req.body.enabled ? '1' : '0';
   db.prepare("UPDATE settings SET value = ? WHERE key = 'decorations_enabled'").run(val);
   io.emit('settings-changed', { decorations_enabled: val === '1' });
@@ -1900,19 +2048,46 @@ app.get('/api/center-image', (req, res) => {
   res.json({ url: row?.value || null });
 });
 
-app.post('/api/center-image', (req, res) => {
+function detectImageExtension(buffer) {
+  if (!Buffer.isBuffer(buffer)) return null;
+  if (
+    buffer.length >= 8
+    && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  ) return '.png';
+  if (
+    buffer.length >= 3
+    && buffer[0] === 0xff
+    && buffer[1] === 0xd8
+    && buffer[2] === 0xff
+  ) return '.jpg';
+  if (
+    buffer.length >= 6
+    && ['GIF87a', 'GIF89a'].includes(buffer.subarray(0, 6).toString('ascii'))
+  ) return '.gif';
+  if (
+    buffer.length >= 12
+    && buffer.subarray(0, 4).toString('ascii') === 'RIFF'
+    && buffer.subarray(8, 12).toString('ascii') === 'WEBP'
+  ) return '.webp';
+  return null;
+}
+
+app.post('/api/center-image', requireAdmin, (req, res) => {
   const contentType = req.headers['content-type'] || '';
-  if (!contentType.startsWith('multipart/form-data') && !contentType.startsWith('application/octet-stream')) {
+  if (!contentType.startsWith('multipart/form-data')) {
     return res.status(400).json({ error: 'Нужен файл' });
   }
 
   const chunks = [];
   let size = 0;
+  let tooLarge = false;
   const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 
   req.on('data', (chunk) => {
+    if (tooLarge) return;
     size += chunk.length;
     if (size > MAX_SIZE) {
+      tooLarge = true;
       res.status(413).json({ error: 'Файл слишком большой (макс 5МБ)' });
       req.destroy();
       return;
@@ -1922,59 +2097,56 @@ app.post('/api/center-image', (req, res) => {
 
   req.on('end', () => {
     if (res.writableEnded) return;
-    const buf = Buffer.concat(chunks);
+    try {
+      const buf = Buffer.concat(chunks);
+      const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
+      const boundary = (boundaryMatch?.[1] || boundaryMatch?.[2] || '').trim();
+      if (!boundary || boundary.length > 200) {
+        return res.status(400).json({ error: 'Неверный формат' });
+      }
 
-    // Parse multipart boundary
-    const boundary = contentType.split('boundary=')[1];
-    if (!boundary) {
-      return res.status(400).json({ error: 'Неверный формат' });
-    }
-
-    const parts = buf.toString('binary').split('--' + boundary);
-    let fileData = null;
-    let fileName = null;
-
-    for (const part of parts) {
-      const headerEnd = part.indexOf('\r\n\r\n');
-      if (headerEnd === -1) continue;
-      const headers = part.slice(0, headerEnd);
-      const fnMatch = headers.match(/filename="([^"]+)"/);
-      if (fnMatch) {
-        fileName = fnMatch[1];
-        // Get raw binary data after headers, remove trailing \r\n
-        const bodyStart = headerEnd + 4;
+      const parts = buf.toString('latin1').split(`--${boundary}`);
+      let fileData = null;
+      for (const part of parts) {
+        const headerEnd = part.indexOf('\r\n\r\n');
+        if (headerEnd === -1) continue;
+        const headers = part.slice(0, headerEnd);
+        if (!/content-disposition:[^\r\n]*filename="[^"]+"/i.test(headers)) continue;
         const bodyEnd = part.lastIndexOf('\r\n');
-        fileData = Buffer.from(part.slice(bodyStart, bodyEnd), 'binary');
+        if (bodyEnd <= headerEnd + 4) continue;
+        fileData = Buffer.from(part.slice(headerEnd + 4, bodyEnd), 'latin1');
         break;
       }
-    }
 
-    if (!fileData || !fileName) {
-      return res.status(400).json({ error: 'Файл не найден в запросе' });
-    }
-
-    const ext = path.extname(fileName).toLowerCase();
-    const allowed = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
-    if (!allowed.includes(ext)) {
-      return res.status(400).json({ error: 'Допустимые форматы: png, jpg, gif, webp, svg' });
-    }
-
-    const newName = 'center' + ext;
-    // Remove old center images
-    for (const f of fs.readdirSync(uploadsPath)) {
-      if (f.startsWith('center.')) {
-        fs.unlinkSync(path.join(uploadsPath, f));
+      if (!fileData?.length) {
+        return res.status(400).json({ error: 'Файл не найден в запросе' });
       }
+
+      const ext = detectImageExtension(fileData);
+      if (!ext) {
+        return res.status(400).json({ error: 'Файл должен быть настоящим PNG, JPG, GIF или WebP' });
+      }
+
+      const newName = `center${ext}`;
+      const targetPath = path.join(uploadsPath, newName);
+      fs.writeFileSync(targetPath, fileData, { mode: 0o644 });
+      for (const file of fs.readdirSync(uploadsPath)) {
+        if (file.startsWith('center.') && file !== newName) {
+          fs.unlinkSync(path.join(uploadsPath, file));
+        }
+      }
+      const url = `/uploads/${newName}?t=${Date.now()}`;
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('center_image', ?)").run(url);
+      io.emit('center-image-changed', { url });
+      res.json({ url });
+    } catch (error) {
+      console.error('[cheese-wheel] Center image upload failed:', error.message);
+      if (!res.headersSent) res.status(500).json({ error: 'Ошибка сохранения изображения' });
     }
-    fs.writeFileSync(path.join(uploadsPath, newName), fileData);
-    const url = '/uploads/' + newName + '?t=' + Date.now();
-    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('center_image', ?)").run(url);
-    io.emit('center-image-changed', { url });
-    res.json({ url });
   });
 });
 
-app.delete('/api/center-image', (req, res) => {
+app.delete('/api/center-image', requireAdmin, (req, res) => {
   for (const f of fs.readdirSync(uploadsPath)) {
     if (f.startsWith('center.')) {
       fs.unlinkSync(path.join(uploadsPath, f));
@@ -1990,6 +2162,7 @@ app.delete('/api/center-image', (req, res) => {
 const MAX_REVIEW_CONTENT_LENGTH = 5000;
 
 function validateReview(body) {
+  body = body && typeof body === 'object' ? body : {};
   const title = sanitizeTitle(body.title);
   if (!title) return { error: 'Введите название (до 200 символов)' };
   const content = typeof body.content === 'string' ? body.content.trim() : '';
@@ -2038,19 +2211,38 @@ app.post('/api/wine-reviews', (req, res) => {
 
 app.delete('/api/wine-reviews/:id', (req, res) => {
   const id = parseIntStrict(req.params.id);
-  const userId = parseIntStrict(req.body.user_id);
-  if (isNaN(id) || isNaN(userId)) return res.status(400).json({ error: 'Неверный ID' });
-  const result = stmts.deleteWineReview.run(id, userId);
+  const userId = Number(req.tokenData.userId);
+  if (isNaN(id)) return res.status(400).json({ error: 'Неверный ID' });
+  if (!Number.isInteger(userId)) return res.status(403).json({ error: 'Требуется вход участника' });
+
+  const review = stmts.getWineReviewById.get(id);
+  if (!review) return res.status(404).json({ error: 'Обзор не найден' });
+  if (Number(review.user_id) !== userId) {
+    return res.status(403).json({ error: 'Можно удалить только свой обзор' });
+  }
+
+  const deleteReview = db.transaction(() => {
+    stmts.deleteReviewReactions.run('wine', id);
+    return stmts.deleteWineReview.run(id, userId);
+  });
+  const result = deleteReview();
   if (result.changes === 0) return res.status(403).json({ error: 'Нет доступа или обзор не найден' });
-  stmts.deleteReviewReactions.run('wine', id);
   io.emit('wine-review-deleted', { id });
   res.json({ success: true });
 });
 
 app.patch('/api/wine-reviews/:id', (req, res) => {
   const id = parseIntStrict(req.params.id);
-  const userId = parseIntStrict(req.body.user_id);
-  if (isNaN(id) || isNaN(userId)) return res.status(400).json({ error: 'Неверный ID' });
+  const userId = Number(req.tokenData.userId);
+  if (isNaN(id)) return res.status(400).json({ error: 'Неверный ID' });
+  if (!Number.isInteger(userId)) return res.status(403).json({ error: 'Требуется вход участника' });
+
+  const existing = stmts.getWineReviewById.get(id);
+  if (!existing) return res.status(404).json({ error: 'Обзор не найден' });
+  if (Number(existing.user_id) !== userId) {
+    return res.status(403).json({ error: 'Можно редактировать только свой обзор' });
+  }
+
   const validated = validateReview(req.body);
   if (validated.error) return res.status(400).json({ error: validated.error });
   const ALLOWED_WINE_TYPES = ['red', 'white', 'rose'];
@@ -2276,6 +2468,10 @@ app.post('/api/review-reactions', (req, res) => {
   res.json(payload);
 });
 
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Маршрут не найден' });
+});
+
 // ============ SOCKET.IO ============
 
 const onlineUsers = new Map(); // socketId -> { userId, userName }
@@ -2292,8 +2488,36 @@ function broadcastOnlineUsers() {
   io.emit('online-users', users);
 }
 
+function getSocketToken(socket) {
+  const authToken = socket.handshake.auth?.token;
+  if (typeof authToken === 'string' && authToken) return authToken;
+  return getCookieToken(socket.request);
+}
+
+io.use((socket, next) => {
+  const connectionLimit = consumeRateLimit(
+    'socket-connect',
+    getClientRateKey(socket.request),
+    60,
+    60 * 1000
+  );
+  if (!connectionLimit.allowed) return next(new Error('Слишком много подключений'));
+
+  const token = getSocketToken(socket);
+  const tokenData = getTokenData(token);
+  if (!tokenData) return next(new Error('Требуется авторизация'));
+
+  socket.data.authToken = token;
+  socket.data.tokenData = tokenData;
+  next();
+});
+
 io.on('connection', (socket) => {
-  console.log('Пользователь подключился');
+  const memberData = getTokenData(socket.data.authToken);
+  if (isMemberToken(memberData)) {
+    const user = stmts.getUsers.all().find(item => Number(item.id) === Number(memberData.userId));
+    if (user) onlineUsers.set(socket.id, { userId: user.id, userName: user.name });
+  }
 
   // Send current online list to newly connected socket
   const currentUsers = [];
@@ -2305,17 +2529,32 @@ io.on('connection', (socket) => {
     }
   }
   socket.emit('online-users', currentUsers);
+  if (onlineUsers.has(socket.id)) broadcastOnlineUsers();
 
-  socket.on('set-user', (data) => {
-    const userId = parseIntStrict(data?.userId);
-    const userName = typeof data?.userName === 'string' ? data.userName.slice(0, 50) : null;
-    if (!isNaN(userId) && userName) {
-      onlineUsers.set(socket.id, { userId, userName });
+  socket.on('set-user', () => {
+    const tokenData = getTokenData(socket.data.authToken);
+    if (isMemberToken(tokenData)) {
+      const user = stmts.getUsers.all().find(item => Number(item.id) === Number(tokenData.userId));
+      if (!user) return;
+      onlineUsers.set(socket.id, { userId: user.id, userName: user.name });
       broadcastOnlineUsers();
     }
   });
 
   socket.on('spin-wheel', (data) => {
+    const tokenData = getTokenData(socket.data.authToken);
+    if (!isMemberToken(tokenData)) {
+      socket.emit('spin-rejected', { error: 'Прокрутка доступна только участникам' });
+      return;
+    }
+
+    const now = Date.now();
+    if (now - (socket.data.lastSpinAttemptAt || 0) < 1000) {
+      socket.emit('spin-rejected', { error: 'Слишком много запросов' });
+      return;
+    }
+    socket.data.lastSpinAttemptAt = now;
+
     const spinEnabledRow = db.prepare("SELECT value FROM settings WHERE key = 'spin_enabled'").get();
     if (spinEnabledRow?.value === '0') {
       socket.emit('spin-rejected', { error: 'Прокрутка отключена' });
@@ -2361,7 +2600,6 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     onlineUsers.delete(socket.id);
     broadcastOnlineUsers();
-    console.log('Пользователь отключился');
   });
 });
 
@@ -2371,6 +2609,19 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(dir, 'index.html'));
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Сырный сервер: http://localhost:${PORT}`);
+app.use((error, req, res, next) => {
+  if (res.headersSent) return next(error);
+  if (error?.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Некорректный JSON' });
+  }
+  if (error?.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Запрос слишком большой' });
+  }
+  console.error('[cheese-wheel] Request failed:', error?.message || 'unknown error');
+  res.status(Number(error?.status) >= 400 && Number(error?.status) < 500 ? error.status : 500)
+    .json({ error: 'Ошибка запроса' });
+});
+
+server.listen(PORT, HOST, () => {
+  console.log(`Сырный сервер: http://${HOST}:${PORT}`);
 });
