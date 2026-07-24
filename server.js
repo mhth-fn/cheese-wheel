@@ -21,7 +21,7 @@ const VPN_MAX_CLIENTS_PER_SERVER = Math.min(
 const VPN_SERVERS = [
   {
     id: 'primary',
-    label: 'Основной',
+    label: 'Амстердам Timeweb',
     address: '31.130.128.212',
     baseUrl: process.env.XUI_PRIMARY_URL,
     username: process.env.XUI_PRIMARY_USERNAME,
@@ -31,7 +31,7 @@ const VPN_SERVERS = [
   },
   {
     id: 'secondary',
-    label: 'Дополнительный',
+    label: 'Cloudzy Франкфурт',
     address: '172.86.69.135',
     baseUrl: process.env.XUI_SECONDARY_URL,
     username: process.env.XUI_SECONDARY_USERNAME,
