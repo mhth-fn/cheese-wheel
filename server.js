@@ -1,6 +1,7 @@
 //TODO: декомпозировать файл
 const express = require('express');
 const { createServer } = require('http');
+const https = require('https');
 const { Server } = require('socket.io');
 const Database = require('better-sqlite3');
 const path = require('path');
@@ -12,6 +13,206 @@ const PORT = process.env.PORT || 3000;
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 
 const crypto = require('crypto');
+
+const VPN_MAX_CLIENTS_PER_SERVER = Math.min(
+  Math.max(Number.parseInt(process.env.VPN_MAX_CLIENTS_PER_SERVER || '5', 10) || 5, 1),
+  20
+);
+const VPN_SERVERS = [
+  {
+    id: 'primary',
+    label: 'Основной',
+    address: '31.130.128.212',
+    baseUrl: process.env.XUI_PRIMARY_URL,
+    username: process.env.XUI_PRIMARY_USERNAME,
+    password: process.env.XUI_PRIMARY_PASSWORD,
+    inboundId: Number.parseInt(process.env.XUI_PRIMARY_INBOUND_ID || '2', 10),
+    tlsFingerprint: process.env.XUI_PRIMARY_TLS_FINGERPRINT,
+  },
+  {
+    id: 'secondary',
+    label: 'Дополнительный',
+    address: '172.86.69.135',
+    baseUrl: process.env.XUI_SECONDARY_URL,
+    username: process.env.XUI_SECONDARY_USERNAME,
+    password: process.env.XUI_SECONDARY_PASSWORD,
+    inboundId: Number.parseInt(process.env.XUI_SECONDARY_INBOUND_ID || '2', 10),
+    tlsFingerprint: process.env.XUI_SECONDARY_TLS_FINGERPRINT,
+  },
+];
+const xuiSessions = new Map();
+const vpnMutations = new Set();
+
+function getVpnServer(serverId) {
+  return VPN_SERVERS.find(server => server.id === serverId);
+}
+
+function isVpnServerConfigured(server) {
+  return Boolean(
+    server?.baseUrl &&
+    server.username &&
+    server.password &&
+    server.tlsFingerprint &&
+    Number.isInteger(server.inboundId)
+  );
+}
+
+function normalizeFingerprint(value) {
+  return String(value || '').replaceAll(':', '').trim().toUpperCase();
+}
+
+function parseXuiJson(value, fallback = {}) {
+  if (value && typeof value === 'object') return value;
+  if (typeof value !== 'string') return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function requestXui(serverConfig, pathname, options = {}) {
+  const url = new URL(pathname, serverConfig.baseUrl);
+  const body = options.body || '';
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(url, {
+      method: options.method || 'GET',
+      agent: false,
+      rejectUnauthorized: false,
+      headers: {
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        ...(body ? { 'Content-Length': Buffer.byteLength(body) } : {}),
+        ...options.headers,
+      },
+      timeout: 10000,
+    }, response => {
+      const expectedFingerprint = normalizeFingerprint(serverConfig.tlsFingerprint);
+      const actualFingerprint = normalizeFingerprint(
+        response.socket.getPeerCertificate()?.fingerprint256
+      );
+      if (!actualFingerprint || actualFingerprint !== expectedFingerprint) {
+        response.resume();
+        reject(new Error(`TLS fingerprint mismatch for ${serverConfig.id}`));
+        return;
+      }
+
+      let responseBody = '';
+      response.setEncoding('utf8');
+      response.on('data', chunk => {
+        responseBody += chunk;
+        if (responseBody.length > 1024 * 1024) {
+          req.destroy(new Error('x-ui response is too large'));
+        }
+      });
+      response.on('end', () => {
+        resolve({
+          status: response.statusCode || 0,
+          headers: response.headers,
+          body: responseBody,
+        });
+      });
+    });
+
+    req.on('timeout', () => req.destroy(new Error('x-ui request timed out')));
+    req.on('error', reject);
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
+async function loginXui(serverConfig) {
+  const body = new URLSearchParams({
+    username: serverConfig.username,
+    password: serverConfig.password,
+  }).toString();
+  const response = await requestXui(serverConfig, 'login', {
+    method: 'POST',
+    body,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  });
+  const payload = parseXuiJson(response.body, null);
+  if (response.status < 200 || response.status >= 300 || !payload?.success) {
+    throw new Error(`x-ui login failed for ${serverConfig.id}`);
+  }
+
+  const cookies = response.headers['set-cookie'] || [];
+  const cookie = cookies.map(value => value.split(';')[0]).join('; ');
+  if (!cookie) throw new Error(`x-ui did not return a session for ${serverConfig.id}`);
+  xuiSessions.set(serverConfig.id, cookie);
+  return cookie;
+}
+
+async function callXuiApi(serverConfig, pathname, options = {}, retry = true) {
+  let cookie = xuiSessions.get(serverConfig.id);
+  if (!cookie) cookie = await loginXui(serverConfig);
+
+  const response = await requestXui(serverConfig, pathname, {
+    ...options,
+    headers: {
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      Cookie: cookie,
+      ...options.headers,
+    },
+  });
+
+  if (response.status === 401 && retry) {
+    xuiSessions.delete(serverConfig.id);
+    return callXuiApi(serverConfig, pathname, options, false);
+  }
+
+  const payload = parseXuiJson(response.body, null);
+  if (
+    response.status < 200 ||
+    response.status >= 300 ||
+    !payload ||
+    payload.success === false
+  ) {
+    throw new Error(`x-ui API request failed for ${serverConfig.id}`);
+  }
+  return payload.obj ?? payload;
+}
+
+function buildVlessLink(serverConfig, inbound, client, deviceName) {
+  const streamSettings = parseXuiJson(inbound.streamSettings);
+  const reality = streamSettings.realitySettings || {};
+  const realityClient = reality.settings || {};
+  const serverName = reality.serverNames?.[0] || realityClient.serverName;
+  const shortId = reality.shortIds?.[0];
+  const publicKey = realityClient.publicKey;
+
+  if (
+    inbound.protocol !== 'vless' ||
+    streamSettings.security !== 'reality' ||
+    !serverName ||
+    !shortId ||
+    !publicKey
+  ) {
+    throw new Error(`Unsupported inbound configuration for ${serverConfig.id}`);
+  }
+
+  const params = new URLSearchParams({
+    encryption: 'none',
+    flow: client.flow,
+    security: 'reality',
+    sni: serverName,
+    fp: realityClient.fingerprint || 'chrome',
+    pbk: publicKey,
+    sid: shortId,
+    spx: realityClient.spiderX || '/',
+    type: streamSettings.network || 'tcp',
+  });
+  const label = encodeURIComponent(`${deviceName} · ${serverConfig.label}`);
+  return `vless://${client.id}@${serverConfig.address}:${inbound.port}?${params.toString()}#${label}`;
+}
+
+function requireMember(req, res, next) {
+  if (req.tokenData?.isGuest || !Number.isInteger(Number(req.tokenData?.userId))) {
+    return res.status(403).json({ error: 'VPN доступен только участникам' });
+  }
+  next();
+}
 
 // ============ RATE LIMITING ============
 const authAttempts = new Map(); // ip -> { count, resetAt }
@@ -151,6 +352,20 @@ db.exec(`
     user_id INTEGER,
     is_guest INTEGER DEFAULT 0,
     expires INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS vpn_clients (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    server_id TEXT NOT NULL,
+    inbound_id INTEGER NOT NULL,
+    client_id TEXT UNIQUE NOT NULL,
+    email TEXT NOT NULL,
+    device_name TEXT COLLATE NOCASE NOT NULL,
+    connection_link TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    UNIQUE(user_id, server_id, device_name)
   );
 
   CREATE TABLE IF NOT EXISTS review_reactions (
@@ -416,6 +631,37 @@ const stmts = {
   deleteReviewReactions: db.prepare('DELETE FROM review_reactions WHERE review_type = ? AND review_id = ?'),
 };
 
+const vpnStmts = {
+  listByUser: db.prepare(`
+    SELECT id, server_id, device_name, connection_link, created_at
+    FROM vpn_clients
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+  `),
+  countByUserAndServer: db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM vpn_clients
+    WHERE user_id = ? AND server_id = ?
+  `),
+  getByIdAndUser: db.prepare(`
+    SELECT *
+    FROM vpn_clients
+    WHERE id = ? AND user_id = ?
+  `),
+  getByUserServerAndDevice: db.prepare(`
+    SELECT id
+    FROM vpn_clients
+    WHERE user_id = ? AND server_id = ? AND device_name = ? COLLATE NOCASE
+  `),
+  insert: db.prepare(`
+    INSERT INTO vpn_clients (
+      user_id, server_id, inbound_id, client_id, email,
+      device_name, connection_link, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `),
+  deleteByIdAndUser: db.prepare('DELETE FROM vpn_clients WHERE id = ? AND user_id = ?'),
+};
+
 // Динамический запрос getWatched — строится по реальным user_id из БД
 {
   const allUsers = db.prepare('SELECT id FROM users ORDER BY id').all();
@@ -567,6 +813,169 @@ app.post('/api/users/:id/password', (req, res) => {
   }
   stmts.setUserPassword.run(hashPassword(new_password), id);
   res.json({ success: true });
+});
+
+app.get('/api/vpn/clients', requireMember, (req, res) => {
+  const userId = Number(req.tokenData.userId);
+  const servers = VPN_SERVERS
+    .filter(isVpnServerConfigured)
+    .map(serverConfig => ({
+      id: serverConfig.id,
+      label: serverConfig.label,
+      address: serverConfig.address,
+      limit: VPN_MAX_CLIENTS_PER_SERVER,
+    }));
+  const clients = vpnStmts.listByUser.all(userId).map(client => ({
+    id: client.id,
+    serverId: client.server_id,
+    deviceName: client.device_name,
+    connectionLink: client.connection_link,
+    createdAt: client.created_at,
+  }));
+  res.json({ servers, clients });
+});
+
+app.post('/api/vpn/clients', requireMember, async (req, res) => {
+  const userId = Number(req.tokenData.userId);
+  const serverId = typeof req.body.server_id === 'string' ? req.body.server_id : '';
+  const serverConfig = getVpnServer(serverId);
+  const deviceName = typeof req.body.device_name === 'string'
+    ? req.body.device_name.normalize('NFKC').replace(/\s+/g, ' ').trim()
+    : '';
+
+  if (!isVpnServerConfigured(serverConfig)) {
+    return res.status(400).json({ error: 'Этот VPN-сервер пока недоступен' });
+  }
+  if (
+    deviceName.length < 1 ||
+    deviceName.length > 40 ||
+    /[\p{Cc}\p{Cf}]/u.test(deviceName)
+  ) {
+    return res.status(400).json({ error: 'Название устройства — от 1 до 40 символов' });
+  }
+  if (vpnStmts.getByUserServerAndDevice.get(userId, serverId, deviceName)) {
+    return res.status(409).json({ error: 'Устройство с таким названием уже есть' });
+  }
+
+  const currentCount = vpnStmts.countByUserAndServer.get(userId, serverId)?.count || 0;
+  if (currentCount >= VPN_MAX_CLIENTS_PER_SERVER) {
+    return res.status(409).json({
+      error: `На одном сервере можно создать не больше ${VPN_MAX_CLIENTS_PER_SERVER} конфигураций`,
+    });
+  }
+
+  const mutationKey = `${userId}:${serverId}`;
+  if (vpnMutations.has(mutationKey)) {
+    return res.status(409).json({ error: 'Предыдущая операция ещё выполняется' });
+  }
+
+  const now = Date.now();
+  const client = {
+    id: crypto.randomUUID(),
+    flow: 'xtls-rprx-vision',
+    email: `cw-u${userId}-${crypto.randomBytes(4).toString('hex')}`,
+    limitIp: 0,
+    totalGB: 0,
+    expiryTime: 0,
+    enable: true,
+    tgId: '',
+    subId: crypto.randomBytes(8).toString('hex'),
+    reset: 0,
+    comment: deviceName,
+    created_at: now,
+    updated_at: now,
+  };
+  let createdOnXui = false;
+  vpnMutations.add(mutationKey);
+
+  try {
+    await callXuiApi(serverConfig, 'panel/api/inbounds/addClient', {
+      method: 'POST',
+      body: JSON.stringify({
+        id: serverConfig.inboundId,
+        settings: JSON.stringify({ clients: [client] }),
+      }),
+    });
+    createdOnXui = true;
+
+    const inbound = await callXuiApi(
+      serverConfig,
+      `panel/api/inbounds/get/${serverConfig.inboundId}`
+    );
+    const connectionLink = buildVlessLink(serverConfig, inbound, client, deviceName);
+    const result = vpnStmts.insert.run(
+      userId,
+      serverId,
+      serverConfig.inboundId,
+      client.id,
+      client.email,
+      deviceName,
+      connectionLink,
+      now
+    );
+
+    res.status(201).json({
+      id: Number(result.lastInsertRowid),
+      serverId,
+      deviceName,
+      connectionLink,
+      createdAt: now,
+    });
+  } catch (error) {
+    if (createdOnXui) {
+      try {
+        await callXuiApi(
+          serverConfig,
+          `panel/api/inbounds/${serverConfig.inboundId}/delClient/${client.id}`,
+          { method: 'POST', body: '{}' }
+        );
+      } catch (rollbackError) {
+        console.error('[cheese-wheel] VPN rollback failed:', rollbackError.message);
+      }
+    }
+    console.error('[cheese-wheel] VPN client creation failed:', error.message);
+    res.status(502).json({ error: 'Не удалось создать конфигурацию. Попробуйте ещё раз.' });
+  } finally {
+    vpnMutations.delete(mutationKey);
+  }
+});
+
+app.delete('/api/vpn/clients/:id', requireMember, async (req, res) => {
+  const userId = Number(req.tokenData.userId);
+  const id = parseIntStrict(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: 'Неверный идентификатор конфигурации' });
+  }
+
+  const storedClient = vpnStmts.getByIdAndUser.get(id, userId);
+  if (!storedClient) {
+    return res.status(404).json({ error: 'Конфигурация не найдена' });
+  }
+  const serverConfig = getVpnServer(storedClient.server_id);
+  if (!isVpnServerConfigured(serverConfig)) {
+    return res.status(503).json({ error: 'VPN-сервер временно недоступен' });
+  }
+
+  const mutationKey = `${userId}:${storedClient.server_id}`;
+  if (vpnMutations.has(mutationKey)) {
+    return res.status(409).json({ error: 'Предыдущая операция ещё выполняется' });
+  }
+  vpnMutations.add(mutationKey);
+
+  try {
+    await callXuiApi(
+      serverConfig,
+      `panel/api/inbounds/${storedClient.inbound_id}/delClient/${storedClient.client_id}`,
+      { method: 'POST', body: '{}' }
+    );
+    vpnStmts.deleteByIdAndUser.run(id, userId);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[cheese-wheel] VPN client deletion failed:', error.message);
+    res.status(502).json({ error: 'Не удалось удалить конфигурацию. Попробуйте ещё раз.' });
+  } finally {
+    vpnMutations.delete(mutationKey);
+  }
 });
 
 app.get('/api/theme', (req, res) => {

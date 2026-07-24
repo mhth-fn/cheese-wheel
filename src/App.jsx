@@ -29,6 +29,7 @@ import DrawerPanel from './components/DrawerPanel';
 import GamesPage from './components/GamesPage';
 import WineReviewsPage from './components/WineReviewsPage';
 import MovieReviewsPage from './components/MovieReviewsPage';
+import VpnPage from './components/VpnPage';
 import ThemeDecorations from './components/ThemeDecorations';
 
 export const AppContext = createContext(null);
@@ -639,6 +640,12 @@ export default function App() {
                style={{ display: page === 'games' ? '' : 'none' }}>
             <GamesPage />
           </div>
+          {!isGuest && (
+            <div id="vpn-page" className={`page ${page === 'vpn' ? 'active' : ''}`}
+                 style={{ display: page === 'vpn' ? '' : 'none' }}>
+              <VpnPage />
+            </div>
+          )}
           <div id="wine-reviews-page" className={`page ${page === 'wine-reviews' ? 'active' : ''}`}
                style={{ display: page === 'wine-reviews' ? '' : 'none' }}>
             <WineReviewsPage />

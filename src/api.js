@@ -253,3 +253,22 @@ export async function postReviewReaction(reviewType, reviewId, reaction) {
     body: JSON.stringify({ review_type: reviewType, review_id: reviewId, reaction })
   });
 }
+
+export async function fetchVpnClients() {
+  const res = await apiFetch('/api/vpn/clients');
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Не удалось загрузить VPN-конфигурации');
+  return data;
+}
+
+export async function createVpnClient(serverId, deviceName) {
+  return apiFetch('/api/vpn/clients', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ server_id: serverId, device_name: deviceName })
+  });
+}
+
+export async function deleteVpnClient(id) {
+  return apiFetch(`/api/vpn/clients/${id}`, { method: 'DELETE' });
+}

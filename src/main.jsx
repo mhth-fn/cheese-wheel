@@ -16,6 +16,7 @@ import './css/stats.css';
 import './css/connection.css';
 import './css/games.css';
 import './css/reviews.css';
+import './css/vpn.css';
 import './css/responsive.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(

@@ -183,7 +183,7 @@
     left: var(--space-3);
     z-index: 900;
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(var(--nav-page-count, 3), minmax(0, 1fr));
     padding: var(--space-1);
     padding-bottom: max(var(--space-1), env(safe-area-inset-bottom));
     box-shadow: var(--shadow-modal);

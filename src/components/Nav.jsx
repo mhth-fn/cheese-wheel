@@ -16,6 +16,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
     { key: 'wheel', icon: '🎡', label: 'Колесо' },
     { key: 'watched', icon: '📋', label: 'Просмотренные' },
     { key: 'games', icon: '🎮', label: 'Игры' },
+    ...(!isGuest ? [{ key: 'vpn', icon: '🔐', label: 'VPN' }] : []),
   ];
 
   // Close dropdown on outside click
@@ -72,7 +73,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
 
   return (
     <nav className="nav" aria-label="Основные разделы">
-      <div className="nav-pages">
+      <div className="nav-pages" style={{ '--nav-page-count': pages.length }}>
         {pages.map(p => (
           <button
             key={p.key}

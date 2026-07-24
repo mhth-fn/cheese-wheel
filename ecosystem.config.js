@@ -21,6 +21,7 @@ module.exports = {
     script: 'server.js',
     cwd: '/opt/cheese-wheel',
     env: {
+      ...localEnv,
       PORT: 3000,
       DEFAULT_PASSWORD: 'Cheese$Wheel#2024!',
       DISCORD_WEBHOOK_URL: process.env.DISCORD_WEBHOOK_URL || localEnv.DISCORD_WEBHOOK_URL || ''
