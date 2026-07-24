@@ -261,6 +261,13 @@ export async function fetchVpnClients() {
   return data;
 }
 
+export async function fetchVpnStatus() {
+  const res = await apiFetch('/api/vpn/status');
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Не удалось проверить VPN-серверы');
+  return data;
+}
+
 export async function createVpnClient(serverId, deviceName) {
   return apiFetch('/api/vpn/clients', {
     method: 'POST',

@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
-import { createVpnClient, deleteVpnClient, fetchVpnClients } from '../api';
+import {
+  createVpnClient,
+  deleteVpnClient,
+  fetchVpnClients,
+  fetchVpnStatus,
+} from '../api';
 import { useApp } from '../App';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import ConfirmDialog from './ConfirmDialog';
@@ -71,6 +76,8 @@ export default function VpnPage() {
   const [servers, setServers] = useState([]);
   const [clients, setClients] = useState([]);
   const [loadState, setLoadState] = useState('loading');
+  const [statusByServer, setStatusByServer] = useState({});
+  const [statusState, setStatusState] = useState('loading');
   const [selectedServerId, setSelectedServerId] = useState('');
   const [deviceName, setDeviceName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -78,6 +85,20 @@ export default function VpnPage() {
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [qrClient, setQrClient] = useState(null);
   const [qrImageUrl, setQrImageUrl] = useState('');
+
+  const loadStatus = useCallback(async (showError = false) => {
+    setStatusState('loading');
+    try {
+      const data = await fetchVpnStatus();
+      setStatusByServer(Object.fromEntries(
+        (data.statuses || []).map(status => [status.id, status])
+      ));
+      setStatusState('ready');
+    } catch (error) {
+      setStatusState('error');
+      if (showError) showToast(error.message, 'error');
+    }
+  }, [showToast]);
 
   const loadClients = useCallback(async () => {
     setLoadState('loading');
@@ -99,7 +120,10 @@ export default function VpnPage() {
 
   useEffect(() => {
     loadClients();
-  }, [loadClients]);
+    loadStatus();
+    const timer = window.setInterval(() => loadStatus(), 30000);
+    return () => window.clearInterval(timer);
+  }, [loadClients, loadStatus]);
 
   const serverById = useMemo(
     () => Object.fromEntries(servers.map(server => [server.id, server])),
@@ -114,6 +138,8 @@ export default function VpnPage() {
     return counts;
   }, [clients]);
 
+  const selectedStatus = statusByServer[selectedServerId];
+
   const handleCreate = async event => {
     event.preventDefault();
     if (!selectedServerId || !deviceName.trim() || creating) return;
@@ -125,9 +151,14 @@ export default function VpnPage() {
       if (!response.ok) throw new Error(data.error || 'Не удалось создать конфигурацию');
       setClients(current => [data, ...current]);
       setDeviceName('');
-      showToast('VPN-конфигурация создана', 'success');
-      await copyText(data.connectionLink);
-      showToast('Ссылка скопирована', 'success');
+      showToast('Конфигурация создана в x-ui', 'success');
+      loadStatus();
+      try {
+        await copyText(data.connectionLink);
+        showToast('Ссылка скопирована', 'success');
+      } catch {
+        showToast('Создано, но Safari не разрешил автокопирование', 'info');
+      }
     } catch (error) {
       showToast(error.message || 'Ошибка соединения', 'error');
     } finally {
@@ -174,6 +205,7 @@ export default function VpnPage() {
       setClients(current => current.filter(client => client.id !== deletingClient.id));
       setDeletingClient(null);
       showToast('VPN-конфигурация удалена', 'success');
+      loadStatus();
     } catch (error) {
       showToast(error.message || 'Ошибка соединения', 'error');
     } finally {
@@ -209,6 +241,12 @@ export default function VpnPage() {
           <div className="vpn-server-options">
             {servers.map(server => {
               const count = countsByServer[server.id] || 0;
+              const status = statusByServer[server.id];
+              const healthLabel = status?.online
+                ? `Работает · ${status.port}`
+                : statusState === 'loading' && !status
+                  ? 'Проверяем…'
+                  : 'Недоступен';
               return (
                 <label
                   key={server.id}
@@ -221,11 +259,18 @@ export default function VpnPage() {
                     checked={selectedServerId === server.id}
                     onChange={() => setSelectedServerId(server.id)}
                   />
-                  <span>
+                  <span className="vpn-server-meta">
                     <strong>{server.label}</strong>
                     <small>{server.address}</small>
+                    <span className={`vpn-health ${status?.online ? 'online' : status ? 'offline' : 'checking'}`}>
+                      <i aria-hidden="true" />
+                      {healthLabel}
+                    </span>
                   </span>
-                  <b>{count}/{server.limit}</b>
+                  <span className="vpn-server-counts">
+                    <b>{count}/{server.limit}</b>
+                    <small>{status?.clientCount ?? '—'} в x-ui</small>
+                  </span>
                 </label>
               );
             })}
@@ -248,10 +293,20 @@ export default function VpnPage() {
         <button
           className="button-primary vpn-create-button"
           type="submit"
-          disabled={creating || !selectedServerId || !deviceName.trim()}
+          disabled={
+            creating ||
+            !selectedServerId ||
+            !deviceName.trim() ||
+            selectedStatus?.online === false
+          }
         >
           {creating ? 'Создаём…' : '＋ Создать и скопировать'}
         </button>
+        {selectedStatus?.online === false && (
+          <p className="vpn-server-warning" role="status">
+            Сервер или выбранный inbound сейчас недоступен. Создание временно отключено.
+          </p>
+        )}
       </form>
 
       <section className="vpn-list" aria-labelledby="vpn-list-title">

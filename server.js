@@ -2,6 +2,7 @@
 const express = require('express');
 const { createServer } = require('http');
 const https = require('https');
+const net = require('net');
 const { Server } = require('socket.io');
 const Database = require('better-sqlite3');
 const path = require('path');
@@ -212,6 +213,81 @@ function requireMember(req, res, next) {
     return res.status(403).json({ error: 'VPN доступен только участникам' });
   }
   next();
+}
+
+function checkTcpPort(address, port, timeout = 3500) {
+  return new Promise(resolve => {
+    const socket = net.createConnection({ host: address, port });
+    let settled = false;
+
+    const finish = result => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(result);
+    };
+
+    socket.setTimeout(timeout);
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(false));
+    socket.once('error', () => finish(false));
+  });
+}
+
+async function checkVpnServer(serverConfig) {
+  const checkedAt = Date.now();
+  if (!isVpnServerConfigured(serverConfig)) {
+    return {
+      id: serverConfig.id,
+      online: false,
+      panelOnline: false,
+      inboundEnabled: false,
+      portOpen: false,
+      port: null,
+      clientCount: null,
+      checkedAt,
+    };
+  }
+
+  try {
+    const inbound = await callXuiApi(
+      serverConfig,
+      `panel/api/inbounds/get/${serverConfig.inboundId}`
+    );
+    const inboundEnabled = inbound.enable === true || Number(inbound.enable) === 1;
+    const port = Number(inbound.port);
+    const portOpen = inboundEnabled && Number.isInteger(port)
+      ? await checkTcpPort(serverConfig.address, port)
+      : false;
+    const inboundSettings = parseXuiJson(inbound.settings);
+
+    return {
+      id: serverConfig.id,
+      online: inboundEnabled && portOpen,
+      panelOnline: true,
+      inboundEnabled,
+      portOpen,
+      port: Number.isInteger(port) ? port : null,
+      protocol: inbound.protocol || null,
+      clientCount: Array.isArray(inboundSettings.clients)
+        ? inboundSettings.clients.length
+        : null,
+      checkedAt,
+    };
+  } catch (error) {
+    console.warn(`[cheese-wheel] VPN health check failed for ${serverConfig.id}:`, error.message);
+    return {
+      id: serverConfig.id,
+      online: false,
+      panelOnline: false,
+      inboundEnabled: false,
+      portOpen: false,
+      port: null,
+      protocol: null,
+      clientCount: null,
+      checkedAt,
+    };
+  }
 }
 
 // ============ RATE LIMITING ============
@@ -833,6 +909,11 @@ app.get('/api/vpn/clients', requireMember, (req, res) => {
     createdAt: client.created_at,
   }));
   res.json({ servers, clients });
+});
+
+app.get('/api/vpn/status', requireMember, async (req, res) => {
+  const statuses = await Promise.all(VPN_SERVERS.map(checkVpnServer));
+  res.json({ statuses });
 });
 
 app.post('/api/vpn/clients', requireMember, async (req, res) => {

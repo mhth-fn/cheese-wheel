@@ -643,7 +643,7 @@ export default function App() {
           {!isGuest && (
             <div id="vpn-page" className={`page ${page === 'vpn' ? 'active' : ''}`}
                  style={{ display: page === 'vpn' ? '' : 'none' }}>
-              <VpnPage />
+              {page === 'vpn' && <VpnPage />}
             </div>
           )}
           <div id="wine-reviews-page" className={`page ${page === 'wine-reviews' ? 'active' : ''}`}
