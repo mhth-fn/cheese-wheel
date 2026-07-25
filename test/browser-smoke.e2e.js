@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const Database = require('better-sqlite3');
 const { chromium } = require('playwright');
 const {
   login,
@@ -44,6 +45,28 @@ test('mobile browser can log in and use watched and reviews navigation', async t
     },
   });
   assert.equal(seededRating.status, 200, JSON.stringify(seededRating.payload));
+  const testVlessLink = [
+    'vless://11111111-1111-4111-8111-111111111111@198.51.100.10:443',
+    '?encryption=none&flow=xtls-rprx-vision&security=reality',
+    '&sni=example.com&fp=chrome&type=tcp#Browser%20VPN',
+  ].join('');
+  const vpnSeedDb = new Database(path.join(dataDir, 'cheese_wheel.db'));
+  vpnSeedDb.prepare(`
+    INSERT INTO vpn_clients (
+      user_id, server_id, inbound_id, client_id, email,
+      device_name, connection_link, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    apiAdmin.user.id,
+    'browser-test',
+    1,
+    '11111111-1111-4111-8111-111111111111',
+    'browser-test@example.invalid',
+    'Browser VPN',
+    testVlessLink,
+    Date.now()
+  );
+  vpnSeedDb.close();
 
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
@@ -309,6 +332,21 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   await assertReviewFormFits('landscape');
   await page.getByRole('button', { name: 'VPN', exact: true }).click();
   await page.waitForURL(`${instance.baseUrl}/vpn`);
+  const hiddifyLink = page.getByRole('link', { name: 'Открыть в Hiddify', exact: true });
+  await hiddifyLink.waitFor();
+  assert.equal(
+    await hiddifyLink.getAttribute('href'),
+    `hiddify://import/${testVlessLink}`
+  );
+  await page.getByText(
+    'Не вставляйте VLESS в поле «URL»: используйте кнопку или импорт из буфера.',
+    { exact: true }
+  ).waitFor();
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    true,
+    'Hiddify import controls must not overflow in landscape'
+  );
   await page.getByRole('button', { name: 'Обзоры', exact: true }).click();
   await page.waitForURL(`${instance.baseUrl}/reviews`);
   const wineTab = page.getByRole('tab', { name: 'Вино', exact: true });

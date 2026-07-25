@@ -34,6 +34,11 @@ async function copyText(text) {
   input.remove();
 }
 
+function getHiddifyImportLink(connectionLink) {
+  const link = String(connectionLink || '').trim();
+  return link.startsWith('vless://') ? `hiddify://import/${link}` : '';
+}
+
 function QrDialog({ client, imageUrl, onClose, onCopy }) {
   const dialogRef = useDialogA11y(Boolean(client), onClose);
   if (!client) return null;
@@ -62,7 +67,9 @@ function QrDialog({ client, imageUrl, onClose, onCopy }) {
         ) : (
           <div className="vpn-qr-loading" aria-live="polite">Создаём QR-код…</div>
         )}
-        <p className="vpn-qr-note">Сканируйте код в приложении с поддержкой VLESS Reality.</p>
+        <p className="vpn-qr-note">
+          В Hiddify нажмите «+» → «Сканировать QR».
+        </p>
         <button className="button-primary vpn-qr-copy" type="button" onClick={onCopy}>
           📋 Скопировать ссылку
         </button>
@@ -155,7 +162,7 @@ export default function VpnPage() {
       loadStatus();
       try {
         await copyText(data.connectionLink);
-        showToast('Ссылка скопирована', 'success');
+        showToast('Скопировано. В Hiddify нажмите «+» → «Из буфера»', 'success');
       } catch {
         showToast('Создано, но Safari не разрешил автокопирование', 'info');
       }
@@ -169,7 +176,7 @@ export default function VpnPage() {
   const handleCopy = async client => {
     try {
       await copyText(client.connectionLink);
-      showToast('Ссылка скопирована', 'success');
+      showToast('Скопировано. В Hiddify нажмите «+» → «Из буфера»', 'success');
     } catch {
       showToast('Не удалось скопировать ссылку', 'error');
     }
@@ -358,8 +365,17 @@ export default function VpnPage() {
                       <span>{server?.label || 'VPN'}</span>
                     </div>
                     <p>{server?.address} · создано {formatDate(client.createdAt)}</p>
+                    <small className="vpn-import-hint">
+                      Не вставляйте VLESS в поле «URL»: используйте кнопку или импорт из буфера.
+                    </small>
                     <div className="vpn-client-actions">
-                      <button type="button" className="button-primary" onClick={() => handleCopy(client)}>
+                      <a
+                        className="button-primary vpn-hiddify-link"
+                        href={getHiddifyImportLink(client.connectionLink)}
+                      >
+                        Открыть в Hiddify
+                      </a>
+                      <button type="button" className="button-secondary" onClick={() => handleCopy(client)}>
                         📋 Скопировать
                       </button>
                       <button type="button" className="button-secondary" onClick={() => openQr(client)}>
