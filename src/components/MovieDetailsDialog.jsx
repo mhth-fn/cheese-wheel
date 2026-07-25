@@ -19,8 +19,11 @@ export default function MovieDetailsDialog({
   users,
   onClose,
   initialView = 'details',
+  renderRating,
+  onEdit,
+  onDelete,
 }) {
-  const { currentUser } = useApp();
+  const { currentUser, isAdmin } = useApp();
   const [activeTab, setActiveTab] = useState(
     initialView === 'details' ? 'details' : 'reviews'
   );
@@ -138,10 +141,20 @@ export default function MovieDetailsDialog({
                     {user.name.slice(0, 1)}
                   </span>
                   <span>{user.name}</span>
-                  <strong>{rating ?? '—'}</strong>
+                  {renderRating ? renderRating(movie, user.id) : <strong>{rating ?? '—'}</strong>}
                 </div>
               );
             })}
+            {isAdmin && (
+              <div className="movie-details-admin-actions" role="group" aria-label={`Действия с фильмом ${movie.title}`}>
+                <button className="button-ghost" type="button" onClick={() => onEdit?.(movie)}>
+                  ✎ Изменить
+                </button>
+                <button className="button-danger" type="button" onClick={() => onDelete?.(movie)}>
+                  🗑 Удалить
+                </button>
+              </div>
+            )}
           </div>
           <div
             id="movie-reviews-panel"

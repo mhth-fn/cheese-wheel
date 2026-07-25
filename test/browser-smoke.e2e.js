@@ -34,6 +34,16 @@ test('mobile browser can log in and use watched and reviews navigation', async t
     body: { title: 'Browser Smoke Film' },
   });
   assert.equal(seededMovie.status, 200, JSON.stringify(seededMovie.payload));
+  const seededRating = await request(instance, '/api/ratings', {
+    method: 'POST',
+    cookie: apiAdmin.cookie,
+    body: {
+      movie_id: seededMovie.payload.id,
+      user_id: apiAdmin.user.id,
+      rating: 9,
+    },
+  });
+  assert.equal(seededRating.status, 200, JSON.stringify(seededRating.payload));
 
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
@@ -99,7 +109,7 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   await page.getByRole('button', { name: 'Просмотренные', exact: true }).click();
   await page.waitForURL(`${instance.baseUrl}/watched`);
   await page.getByRole('list', { name: 'Все просмотренные фильмы' }).waitFor();
-  await page.getByText('Browser Smoke Film', { exact: true }).waitFor();
+  await page.locator('.watched-card-title strong', { hasText: 'Browser Smoke Film' }).waitFor();
   assert.equal(await page.locator('table.watched-table').count(), 0);
   assert.equal(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
@@ -112,6 +122,17 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   assert.ok(
     cardBox && connectionBox && bottomNavBox,
     'mobile cards, navigation and connection status must be visible'
+  );
+  assert.ok(cardBox.height <= 160, 'mobile movie summary must stay compact');
+  assert.equal(await page.locator('.watched-card-meta').count(), 0);
+  assert.equal(await page.locator('.watched-card-ratings').count(), 0);
+  assert.equal(await page.locator('.watched-card-footer').count(), 0);
+  assert.equal(
+    await page.locator('.watched-card-average .rating-avg small').evaluate(
+      element => getComputedStyle(element).display
+    ),
+    'none',
+    'compact average must show only the score'
   );
   assert.equal(
     connectionBox.y < cardBox.y + cardBox.height
@@ -130,6 +151,12 @@ test('mobile browser can log in and use watched and reviews navigation', async t
 
   await page.locator('.watched-card-title').first().click();
   await page.getByRole('dialog').waitFor();
+  await page.getByLabel('Ваша оценка фильму Browser Smoke Film').waitFor();
+  const movieAdminActions = page.getByRole('group', {
+    name: 'Действия с фильмом Browser Smoke Film',
+  });
+  await movieAdminActions.getByRole('button', { name: /Изменить/ }).waitFor();
+  await movieAdminActions.getByRole('button', { name: /Удалить/ }).waitFor();
   assert.equal(
     await page.locator('.connection-status').evaluate(
       element => getComputedStyle(element).visibility
@@ -138,6 +165,16 @@ test('mobile browser can log in and use watched and reviews navigation', async t
     'connection status must be hidden behind a movie dialog'
   );
   await page.getByText('✕', { exact: true }).click();
+
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.locator('.watched-mobile-list').waitFor();
+  assert.equal(await page.locator('table.watched-table').count(), 0);
+  const landscapeCardBox = await page.locator('.watched-movie-card').first().boundingBox();
+  assert.ok(
+    landscapeCardBox && landscapeCardBox.height <= 160,
+    'landscape phone must keep compact movie summaries'
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
 
   await page.getByRole('button', { name: 'Обзоры', exact: true }).click();
   await page.waitForURL(`${instance.baseUrl}/reviews`);

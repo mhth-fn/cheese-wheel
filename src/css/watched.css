@@ -494,7 +494,7 @@
   text-align: center;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 720px), (max-width: 960px) and (max-height: 560px) {
   .table-scroll-hint {
     display: block;
   }
@@ -514,7 +514,7 @@
   }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 600px), (max-width: 960px) and (max-height: 560px) {
   .watched-scope-control {
     align-items: stretch;
     justify-content: stretch;
@@ -592,13 +592,13 @@
 
   .watched-mobile-list {
     display: grid;
-    gap: var(--space-3);
+    gap: var(--space-2);
   }
 
   .watched-movie-card {
     display: grid;
-    gap: var(--space-3);
-    padding: var(--space-4);
+    gap: var(--space-2);
+    padding: var(--space-3);
     border: 1px solid var(--color-border-soft);
     border-radius: var(--radius-large);
     background: var(--color-surface);
@@ -608,8 +608,8 @@
   .watched-card-header {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
-    gap: var(--space-3);
+    align-items: center;
+    gap: var(--space-2);
   }
 
   .watched-card-title {
@@ -646,7 +646,7 @@
   .watched-card-average {
     display: grid;
     justify-items: end;
-    gap: 4px;
+    gap: 2px;
   }
 
   .watched-card-average > span {
@@ -655,113 +655,14 @@
     font-weight: 700;
   }
 
-  .watched-card-meta {
-    display: grid;
-    gap: 4px;
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-medium);
-    background: var(--color-surface-muted);
-    color: var(--color-text-muted);
-    font-size: 0.78rem;
-    line-height: 1.45;
+  .watched-card-average .rating-avg {
+    min-width: 56px;
+    min-height: 40px;
+    padding: 2px 6px;
   }
 
-  .watched-card-ratings {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-    gap: var(--space-2);
-  }
-
-  .watched-card-rating {
-    display: flex;
-    min-width: 0;
-    min-height: 56px;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    padding: 6px var(--space-2);
-    border: 1px solid var(--color-border-soft);
-    border-radius: var(--radius-medium);
-    background: var(--color-surface-muted);
-  }
-
-  .watched-card-rating > span:first-child {
-    overflow: hidden;
-    color: var(--color-text);
-    font-size: 0.78rem;
-    font-weight: 700;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .watched-card-rating .rating-control {
-    flex: 0 0 auto;
-  }
-
-  .watched-card-rating .rating-select {
-    min-height: 44px;
-    background: var(--color-surface);
-  }
-
-  .watched-card-rating .rating-saving {
-    position: static;
-    font-size: 0.72rem;
-  }
-
-  .watched-card-footer {
-    display: grid;
-    gap: var(--space-2);
-    padding-top: var(--space-2);
-    border-top: 1px solid var(--color-border-soft);
-  }
-
-  .watched-card-review-actions {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: var(--space-2);
-  }
-
-  .watched-card-admin-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-2);
-  }
-
-  .watched-card-review-actions .movie-review-trigger,
-  .watched-card-review-actions .movie-review-write {
-    display: inline-flex;
-    min-height: 44px;
-    align-items: center;
-    justify-content: center;
-    padding: 0 var(--space-3);
-    border: 1px solid var(--color-border-soft);
-    border-radius: var(--radius-medium);
-    background: var(--color-surface);
-    font-size: 0.78rem;
-  }
-
-  .watched-card-review-actions .movie-review-write {
-    border-color: rgba(40, 114, 157, 0.28);
-    background: rgba(40, 114, 157, 0.07);
-  }
-
-  .watched-card-admin-actions .row-action-button {
-    display: inline-flex;
-    width: 100%;
-    min-height: 44px;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    border-color: var(--color-border-soft);
-    background: var(--color-surface);
-    color: var(--color-text-muted);
-    font-size: 0.76rem;
-    font-weight: 700;
-  }
-
-  .watched-card-admin-actions .row-action-button.danger {
-    border-color: rgba(188, 63, 53, 0.24);
-    color: var(--color-danger);
+  .watched-card-average .rating-avg small {
+    display: none;
   }
 
   .watched-card-edit-label {

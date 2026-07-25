@@ -24,12 +24,6 @@ function getAriaSort(sortColumn, sortDirection, column) {
   return sortDirection === 'asc' ? 'ascending' : 'descending';
 }
 
-function getMovieDateLabel(movie) {
-  if (movie.watched_at) return `Просмотрен ${formatDate(movie.watched_at)}`;
-  if (movie.added_at) return `Добавлен ${formatDate(movie.added_at)}`;
-  return 'Дата не указана';
-}
-
 function useMediaQuery(query) {
   const getMatches = () => (
     typeof window !== 'undefined'
@@ -102,7 +96,9 @@ export default function WatchedPage() {
   const [baseScope, setBaseScope] = useState('all');
   const [personalModeEnabled, setPersonalModeEnabled] = useState(false);
   const searchRef = useRef(null);
-  const isCompactLayout = useMediaQuery('(max-width: 600px)');
+  const isCompactLayout = useMediaQuery(
+    '(max-width: 600px), (max-width: 960px) and (max-height: 560px)'
+  );
 
   const loadMovies = useCallback(async () => {
     setLoadError('');
@@ -538,64 +534,11 @@ export default function WatchedPage() {
               <strong>{movie.title}</strong>
               <span>Открыть карточку фильма</span>
             </button>
-            {showAverageColumn && (
-              <div className="watched-card-average">
-                <span>Средняя</span>
-                {renderAvgRating(movie)}
-              </div>
-            )}
-          </header>
-
-          <div className="watched-card-meta">
-            <span>📅 {getMovieDateLabel(movie)}</span>
-            <span>🎟 {movie.added_by_name ? `Предложил ${movie.added_by_name}` : 'Кто предложил — не указано'}</span>
-          </div>
-
-          <div className="watched-card-ratings" role="group" aria-label={`Оценки фильму ${movie.title}`}>
-            {visibleUsers.map(user => (
-              <div className="watched-card-rating" key={user.id}>
-                <span>{personalMode ? 'Моя оценка' : user.name}</span>
-                {renderRatingCell(movie, user.id)}
-              </div>
-            ))}
-          </div>
-
-          <footer className="watched-card-footer">
-            <div className="watched-card-review-actions">
-              <button
-                className="movie-review-trigger"
-                type="button"
-                onClick={() => openMoviePanel(movie, 'reviews')}
-                aria-haspopup="dialog"
-                aria-label={`Открыть рецензии на ${movie.title}, ${Number(movie.review_count) || 0}`}
-              >
-                Рецензии · {Number(movie.review_count) || 0}
-              </button>
-              {!isGuest && (
-                <button
-                  className="movie-review-write"
-                  type="button"
-                  onClick={() => openMoviePanel(movie, 'compose')}
-                  aria-haspopup="dialog"
-                  aria-label={`Написать рецензию на ${movie.title}`}
-                >
-                  Написать
-                </button>
-              )}
+            <div className="watched-card-average">
+              <span>{personalMode ? 'Моя оценка' : 'Средняя'}</span>
+              {renderAvgRating(movie)}
             </div>
-            {isAdmin && (
-              <div className="watched-card-admin-actions" role="group" aria-label={`Действия с фильмом ${movie.title}`}>
-                <button className="row-action-button" type="button" onClick={() => startEditing(movie)}>
-                  <span aria-hidden="true">✎</span>
-                  <span>Изменить</span>
-                </button>
-                <button className="row-action-button danger" type="button" onClick={() => setPendingDelete(movie)}>
-                  <span aria-hidden="true">🗑</span>
-                  <span>Удалить</span>
-                </button>
-              </div>
-            )}
-          </footer>
+          </header>
         </>
       )}
     </article>
@@ -899,6 +842,15 @@ export default function WatchedPage() {
         movie={detailsMovieForDisplay}
         users={visibleUsers}
         initialView={detailsView}
+        renderRating={renderRatingCell}
+        onEdit={movie => {
+          startEditing(movie);
+          closeMoviePanel();
+        }}
+        onDelete={movie => {
+          setPendingDelete(movie);
+          closeMoviePanel();
+        }}
         onClose={closeMoviePanel}
       />
     </>
