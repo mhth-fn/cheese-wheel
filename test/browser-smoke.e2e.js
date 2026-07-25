@@ -332,14 +332,13 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   await assertReviewFormFits('landscape');
   await page.getByRole('button', { name: 'VPN', exact: true }).click();
   await page.waitForURL(`${instance.baseUrl}/vpn`);
-  const hiddifyLink = page.getByRole('link', { name: 'Открыть в Hiddify', exact: true });
-  await hiddifyLink.waitFor();
-  assert.equal(
-    await hiddifyLink.getAttribute('href'),
-    `hiddify://import/${testVlessLink}`
-  );
+  await page.getByRole(
+    'button',
+    { name: '📋 Скопировать для Hiddify', exact: true }
+  ).waitFor();
+  assert.equal(await page.locator('a[href^="hiddify://"]').count(), 0);
   await page.getByText(
-    'Не вставляйте VLESS в поле «URL»: используйте кнопку или импорт из буфера.',
+    'Скопируйте, сначала откройте Hiddify, затем нажмите «+» → «Из буфера».',
     { exact: true }
   ).waitFor();
   assert.equal(

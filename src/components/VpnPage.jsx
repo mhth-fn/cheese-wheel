@@ -34,11 +34,6 @@ async function copyText(text) {
   input.remove();
 }
 
-function getHiddifyImportLink(connectionLink) {
-  const link = String(connectionLink || '').trim();
-  return link.startsWith('vless://') ? `hiddify://import/${link}` : '';
-}
-
 function QrDialog({ client, imageUrl, onClose, onCopy }) {
   const dialogRef = useDialogA11y(Boolean(client), onClose);
   if (!client) return null;
@@ -366,17 +361,15 @@ export default function VpnPage() {
                     </div>
                     <p>{server?.address} · создано {formatDate(client.createdAt)}</p>
                     <small className="vpn-import-hint">
-                      Не вставляйте VLESS в поле «URL»: используйте кнопку или импорт из буфера.
+                      Скопируйте, сначала откройте Hiddify, затем нажмите «+» → «Из буфера».
                     </small>
                     <div className="vpn-client-actions">
-                      <a
-                        className="button-primary vpn-hiddify-link"
-                        href={getHiddifyImportLink(client.connectionLink)}
+                      <button
+                        type="button"
+                        className="button-primary vpn-hiddify-copy"
+                        onClick={() => handleCopy(client)}
                       >
-                        Открыть в Hiddify
-                      </a>
-                      <button type="button" className="button-secondary" onClick={() => handleCopy(client)}>
-                        📋 Скопировать
+                        📋 Скопировать для Hiddify
                       </button>
                       <button type="button" className="button-secondary" onClick={() => openQr(client)}>
                         ▦ QR-код

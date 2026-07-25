@@ -325,7 +325,7 @@
 
 .vpn-client-actions {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr) var(--control-height);
+  grid-template-columns: minmax(0, 1fr) var(--control-height);
   gap: var(--space-2);
   margin-top: var(--space-4);
 }
@@ -339,9 +339,8 @@
   font-size: 0.8rem;
 }
 
-.vpn-hiddify-link {
+.vpn-hiddify-copy {
   grid-column: 1 / -1;
-  text-decoration: none;
 }
 
 .vpn-delete-button {
