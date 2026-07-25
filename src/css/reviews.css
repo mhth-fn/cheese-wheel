@@ -673,6 +673,39 @@
   line-height: 1.5;
 }
 
+.review-existing-note {
+  display: grid;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-medium);
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+}
+
+.review-existing-note > div {
+  display: grid;
+  gap: 2px;
+}
+
+.review-existing-note strong {
+  color: var(--color-text);
+}
+
+.review-existing-note .button-ghost {
+  min-height: 40px;
+  justify-self: start;
+  border-color: var(--color-border-soft);
+  background: var(--color-surface);
+}
+
+.review-form .review-existing-note {
+  margin-bottom: 0;
+}
+
 .reviews-section-heading {
   display: flex;
   align-items: center;

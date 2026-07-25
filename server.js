@@ -919,8 +919,6 @@ try {
 } catch (e) {
   // колонка уже существует
 }
-db.exec('CREATE INDEX IF NOT EXISTS idx_movie_reviews_movie_id ON movie_reviews(movie_id)');
-
 // Связываем старые рецензии только с единственным фильмом с тем же названием.
 // Сравнение делаем в JS, потому что SQLite NOCASE не учитывает регистр кириллицы.
 const normalizeReviewMovieTitle = value => String(value || '').trim().toLocaleLowerCase('ru-RU');
@@ -950,6 +948,36 @@ if (!movieReviewLinksMigrated) {
   });
   linkLegacyMovieReviews();
 }
+
+// Один участник может занимать только одно место рецензии у конкретного
+// просмотренного фильма. Старые дубли не удаляем: сохраняем последний связанным,
+// а остальные оставляем в общем дневнике как несвязанные рецензии.
+const migrateDuplicateLinkedMovieReviews = db.transaction(() => {
+  const linkedReviews = db.prepare(`
+    SELECT id, movie_id, user_id
+    FROM movie_reviews
+    WHERE movie_id IS NOT NULL
+    ORDER BY created_at DESC, id DESC
+  `).all();
+  const seen = new Set();
+  const unlinkReview = db.prepare('UPDATE movie_reviews SET movie_id = NULL WHERE id = ?');
+  linkedReviews.forEach(review => {
+    const key = `${review.movie_id}:${review.user_id}`;
+    if (seen.has(key)) {
+      unlinkReview.run(review.id);
+      return;
+    }
+    seen.add(key);
+  });
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_movie_reviews_user_movie
+      ON movie_reviews(movie_id, user_id)
+      WHERE movie_id IS NOT NULL;
+  `);
+});
+migrateDuplicateLinkedMovieReviews();
+
+db.exec('CREATE INDEX IF NOT EXISTS idx_movie_reviews_movie_id ON movie_reviews(movie_id)');
 
 // Разовая миграция: перевод старого recommend=0 (Не рекомендую) в recommend=-1,
 // чтобы освободить 0 для нового состояния "Сойдёт"
@@ -1257,6 +1285,13 @@ const stmts = {
   `),
   insertMovieReview: db.prepare('INSERT INTO movie_reviews (movie_id, user_id, title, content, recommend, director, year) VALUES (?, ?, ?, ?, ?, ?, ?)'),
   getMovieReviewById: db.prepare('SELECT * FROM movie_reviews WHERE id = ?'),
+  getMovieReviewByUserAndMovie: db.prepare(`
+    SELECT id, movie_id, title
+    FROM movie_reviews
+    WHERE user_id = ? AND movie_id = ?
+    ORDER BY created_at DESC, id DESC
+    LIMIT 1
+  `),
   deleteMovieReview: db.prepare('DELETE FROM movie_reviews WHERE id = ? AND user_id = ?'),
   updateMovieReview: db.prepare('UPDATE movie_reviews SET movie_id=?, title=?, content=?, recommend=?, director=?, year=? WHERE id=? AND user_id=?'),
   updateLinkedMovieReviewTitles: db.prepare('UPDATE movie_reviews SET title = ? WHERE movie_id = ?'),
@@ -3369,6 +3404,26 @@ function findUniqueWatchedMovieByTitle(title) {
   return matches.length === 1 ? matches[0] : null;
 }
 
+const duplicateMovieReviewMessage = 'У вас уже есть обзор на этот фильм. Отредактируйте существующий.';
+
+function findMovieReviewConflict(userId, movieId, excludeReviewId = null) {
+  if (movieId === null || movieId === undefined) return null;
+  const review = stmts.getMovieReviewByUserAndMovie.get(userId, movieId);
+  if (!review || (excludeReviewId !== null && Number(review.id) === Number(excludeReviewId))) {
+    return null;
+  }
+  return review;
+}
+
+function sendMovieReviewConflict(res, conflict, movieId = null) {
+  return res.status(409).json({
+    code: 'MOVIE_REVIEW_ALREADY_EXISTS',
+    error: duplicateMovieReviewMessage,
+    existing_review_id: conflict?.id || null,
+    movie_id: movieId || conflict?.movie_id || null,
+  });
+}
+
 app.get('/api/movie-reviews', (req, res) => {
   let rows;
   if (req.query.movie_id !== undefined) {
@@ -3407,6 +3462,10 @@ app.post('/api/movie-reviews', (req, res) => {
   }
 
   if (validated.error) return res.status(400).json({ error: validated.error });
+  const conflictingReview = findMovieReviewConflict(userId, movieId);
+  if (conflictingReview) {
+    return sendMovieReviewConflict(res, conflictingReview, movieId);
+  }
   const director = typeof req.body.director === 'string' ? req.body.director.trim().slice(0, 100) || null : null;
   const year = parseIntStrict(req.body.year);
   const yearVal = !isNaN(year) && year >= 1888 && year <= 2100 ? year : null;
@@ -3437,6 +3496,13 @@ app.post('/api/movie-reviews', (req, res) => {
     );
     res.json(reviewOut);
   } catch (err) {
+    if (err?.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return sendMovieReviewConflict(
+        res,
+        findMovieReviewConflict(userId, movieId),
+        movieId
+      );
+    }
     res.status(500).json({ error: 'Ошибка сохранения' });
   }
 });
@@ -3464,19 +3530,39 @@ app.patch('/api/movie-reviews/:id', (req, res) => {
 
   const validated = validateReview(movie ? { ...req.body, title: movie.title } : req.body);
   if (validated.error) return res.status(400).json({ error: validated.error });
+  const conflictingReview = findMovieReviewConflict(
+    existing.user_id,
+    movieId,
+    id
+  );
+  if (conflictingReview) {
+    return sendMovieReviewConflict(res, conflictingReview, movieId);
+  }
   const director = typeof req.body.director === 'string' ? req.body.director.trim().slice(0, 100) || null : null;
   const year = parseIntStrict(req.body.year);
   const yearVal = !isNaN(year) && year >= 1888 && year <= 2100 ? year : null;
-  const result = stmts.updateMovieReview.run(
-    movieId,
-    validated.title,
-    validated.content,
-    validated.recommend,
-    director,
-    yearVal,
-    id,
-    existing.user_id
-  );
+  let result;
+  try {
+    result = stmts.updateMovieReview.run(
+      movieId,
+      validated.title,
+      validated.content,
+      validated.recommend,
+      director,
+      yearVal,
+      id,
+      existing.user_id
+    );
+  } catch (err) {
+    if (err?.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return sendMovieReviewConflict(
+        res,
+        findMovieReviewConflict(existing.user_id, movieId, id),
+        movieId
+      );
+    }
+    throw err;
+  }
   if (result.changes === 0) return res.status(403).json({ error: 'Нет доступа или рецензия не найдена' });
 
   const review = stmts.getMovieReviewById.get(id);

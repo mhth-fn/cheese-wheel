@@ -213,53 +213,6 @@
   text-overflow: ellipsis;
 }
 
-.movie-details-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-4);
-  border-bottom: 1px solid var(--color-border-soft);
-  background: var(--color-surface);
-}
-
-.movie-details-tabs button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 42px;
-  gap: var(--space-2);
-  border: 1px solid transparent;
-  border-radius: var(--radius-medium);
-  background: transparent;
-  color: var(--color-text-muted);
-  font-size: 0.82rem;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.movie-details-tabs button:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-text);
-}
-
-.movie-details-tabs button.active {
-  border-color: var(--color-border);
-  background: var(--color-surface-muted);
-  color: var(--color-text);
-}
-
-.movie-details-tabs button span {
-  display: inline-grid;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 5px;
-  place-items: center;
-  border-radius: var(--radius-pill);
-  background: rgba(217, 134, 47, 0.16);
-  color: var(--color-primary-active);
-  font-size: 0.7rem;
-}
-
 .movie-details-body {
   min-height: 0;
   overflow-y: auto;
@@ -271,6 +224,7 @@
   display: grid;
   gap: var(--space-2);
   padding: var(--space-5);
+  border-bottom: 1px solid var(--color-border-soft);
 }
 
 .movie-details-ratings h3 {
@@ -322,6 +276,12 @@
 
 .movie-details-admin-actions button {
   min-height: 44px;
+}
+
+.movie-details-reviews {
+  min-width: 0;
+  scroll-margin-top: var(--space-3);
+  background: var(--color-surface);
 }
 
 .admin-btn {

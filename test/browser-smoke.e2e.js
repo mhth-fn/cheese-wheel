@@ -150,13 +150,53 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   );
 
   await page.locator('.watched-card-title').first().click();
-  await page.getByRole('dialog').waitFor();
+  const movieDialog = page.getByRole('dialog');
+  await movieDialog.waitFor();
   await page.getByLabel('Ваша оценка фильму Browser Smoke Film').waitFor();
+  assert.equal(await movieDialog.getByRole('tablist').count(), 0);
+  assert.equal(await movieDialog.getByRole('tab').count(), 0);
+  await movieDialog.getByRole('heading', { name: 'Оценки участников', exact: true }).waitFor();
+  await movieDialog.getByRole('heading', { name: 'Обзоры участников', exact: true }).waitFor();
+  assert.equal(
+    await page.evaluate(() => {
+      const ratings = document.querySelector('.movie-details-ratings');
+      const reviews = document.querySelector('.movie-details-reviews');
+      return Boolean(
+        ratings
+        && reviews
+        && (ratings.compareDocumentPosition(reviews) & Node.DOCUMENT_POSITION_FOLLOWING)
+      );
+    }),
+    true,
+    'ratings must appear before reviews in one continuous movie dialog'
+  );
   const movieAdminActions = page.getByRole('group', {
     name: 'Действия с фильмом Browser Smoke Film',
   });
   await movieAdminActions.getByRole('button', { name: /Изменить/ }).waitFor();
   await movieAdminActions.getByRole('button', { name: /Удалить/ }).waitFor();
+  const contextualReviewText = movieDialog.getByPlaceholder(
+    'Что запомнилось, что сработало, а что — нет?'
+  );
+  await contextualReviewText.fill('Browser smoke review');
+  await movieDialog.getByRole('button', { name: 'Опубликовать', exact: true }).click();
+  await movieDialog.getByText('Вы уже написали обзор на этот фильм.', { exact: true }).waitFor();
+  const editOwnReview = movieDialog.getByRole(
+    'button',
+    { name: 'Изменить мой обзор', exact: true }
+  );
+  await editOwnReview.waitFor();
+  assert.equal(await movieDialog.locator('form.review-form').count(), 0);
+  await editOwnReview.click();
+  const reviewEditor = movieDialog.locator('.review-edit-form');
+  await reviewEditor.waitFor();
+  await reviewEditor.locator('textarea').waitFor();
+  assert.equal(
+    await reviewEditor.locator('textarea').evaluate(
+      element => element === document.activeElement
+    ),
+    true
+  );
   assert.equal(
     await page.locator('.connection-status').evaluate(
       element => getComputedStyle(element).visibility

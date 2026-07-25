@@ -37,7 +37,11 @@ function formatDate(value) {
   });
 }
 
-export default function MovieReviewsSection({ movie = null, focusComposer = false }) {
+export default function MovieReviewsSection({
+  movie = null,
+  focusComposer = false,
+  focusReviews = false,
+}) {
   const { currentUser, isGuest, isAdmin, showToast, socket, connected } = useApp();
   const [reviews, setReviews] = useState([]);
   const [reviewsState, setReviewsState] = useState('loading');
@@ -54,6 +58,9 @@ export default function MovieReviewsSection({ movie = null, focusComposer = fals
   const [editingId, setEditingId] = useState(null);
   const [editFields, setEditFields] = useState({});
   const composerRef = useRef(null);
+  const reviewsHeadingRef = useRef(null);
+  const existingReviewActionRef = useRef(null);
+  const editFormRef = useRef(null);
 
   const movieId = movie ? Number(movie.id) : null;
 
@@ -143,12 +150,6 @@ export default function MovieReviewsSection({ movie = null, focusComposer = fals
     };
   }, [socket, movie, reviewBelongsToMovie, loadWatchedMovies, loadReviews]);
 
-  useEffect(() => {
-    if (!focusComposer || !currentUser) return;
-    const frame = window.requestAnimationFrame(() => composerRef.current?.focus());
-    return () => window.cancelAnimationFrame(frame);
-  }, [focusComposer, currentUser, movieId]);
-
   const matchingWatchedMovies = useMemo(() => watchedMovies.filter(
     item => normalizeTitle(item.title) === normalizeTitle(formTitle)
   ), [watchedMovies, formTitle]);
@@ -164,6 +165,40 @@ export default function MovieReviewsSection({ movie = null, focusComposer = fals
     if (!linkToWatched) return null;
     return matchingWatchedMovies.length === 1 ? matchingWatchedMovies[0] : null;
   }, [movie, matchingWatchedMovies, formMovieId, linkToWatched]);
+
+  const existingOwnReview = useMemo(() => {
+    if (!currentUser || !selectedMovie) return null;
+    return reviews.find(review => (
+      Number(review.user_id) === Number(currentUser.id)
+      && Number(review.movie_id) === Number(selectedMovie.id)
+    )) || null;
+  }, [currentUser, reviews, selectedMovie]);
+
+  useEffect(() => {
+    if (reviewsState !== 'ready') return undefined;
+    const target = focusComposer
+      ? (existingOwnReview ? existingReviewActionRef.current : composerRef.current)
+      : focusReviews
+        ? reviewsHeadingRef.current
+        : null;
+    if (!target) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({ block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusComposer, focusReviews, reviewsState, movieId]);
+
+  useEffect(() => {
+    if (!editingId) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const editForm = editFormRef.current;
+      const textarea = editForm?.querySelector('textarea');
+      textarea?.focus({ preventScroll: true });
+      editForm?.scrollIntoView({ block: 'nearest' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [editingId]);
 
   const startEdit = review => {
     setEditingId(review.id);
@@ -223,6 +258,10 @@ export default function MovieReviewsSection({ movie = null, focusComposer = fals
     event.preventDefault();
     const title = movie?.title || formTitle.trim();
     if (!title || !formContent.trim() || !currentUser || isGuest || !connected) return;
+    if (existingOwnReview) {
+      showToast('У вас уже есть обзор на этот фильм. Измените существующий.', 'info');
+      return;
+    }
     setSubmitting(true);
     try {
       const response = await postMovieReview({
@@ -237,6 +276,7 @@ export default function MovieReviewsSection({ movie = null, focusComposer = fals
       const data = await response.json();
       if (!response.ok) {
         showToast(data.error || 'Ошибка сохранения', 'error');
+        if (data.code === 'MOVIE_REVIEW_ALREADY_EXISTS') await loadReviews();
         return;
       }
       setReviews(previous => [data, ...previous.filter(review => review.id !== data.id)]);
@@ -295,7 +335,14 @@ export default function MovieReviewsSection({ movie = null, focusComposer = fals
 
   return (
     <div className={`movie-reviews-section${movie ? ' is-contextual' : ''}`}>
-      {!isGuest && currentUser && (
+      <div className="reviews-section-heading">
+        <h3 ref={reviewsHeadingRef} tabIndex={-1}>
+          {movie ? 'Обзоры участников' : 'Все обзоры'}
+        </h3>
+        {reviewsState === 'ready' && <span>{reviews.length}</span>}
+      </div>
+
+      {!isGuest && currentUser && (!movie || (reviewsState === 'ready' && !existingOwnReview)) && (
         <form className="review-form" onSubmit={handleSubmit}>
           {movie ? (
             <div className="review-form-movie-lock">
@@ -371,6 +418,19 @@ export default function MovieReviewsSection({ movie = null, focusComposer = fals
                   Можно написать рецензию и на фильм не из общей истории.
                 </small>
               ) : null}
+              {existingOwnReview && (
+                <div className="review-existing-note" role="status">
+                  <strong>Вы уже написали обзор на этот фильм.</strong>
+                  <button
+                    ref={existingReviewActionRef}
+                    className="button-ghost"
+                    type="button"
+                    onClick={() => startEdit(existingOwnReview)}
+                  >
+                    Изменить мой обзор
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -432,7 +492,13 @@ export default function MovieReviewsSection({ movie = null, focusComposer = fals
             <button
               type="submit"
               className="review-submit-btn"
-              disabled={submitting || !(movie?.title || formTitle.trim()) || !formContent.trim() || !connected}
+              disabled={
+                submitting
+                || Boolean(existingOwnReview)
+                || !(movie?.title || formTitle.trim())
+                || !formContent.trim()
+                || !connected
+              }
             >
               {submitting ? 'Публикуем…' : 'Опубликовать'}
             </button>
@@ -441,16 +507,28 @@ export default function MovieReviewsSection({ movie = null, focusComposer = fals
         </form>
       )}
 
+      {!isGuest && currentUser && movie && reviewsState === 'ready' && existingOwnReview && (
+        <div className="review-existing-note" role="status">
+          <div>
+            <strong>Вы уже написали обзор на этот фильм.</strong>
+            <span>Можно отредактировать его ниже.</span>
+          </div>
+          <button
+            ref={existingReviewActionRef}
+            className="button-ghost"
+            type="button"
+            onClick={() => startEdit(existingOwnReview)}
+          >
+            Изменить мой обзор
+          </button>
+        </div>
+      )}
+
       {isGuest && (
         <div className="review-readonly-note">
           В гостевом режиме рецензии можно читать. Чтобы написать свою, войдите как участник.
         </div>
       )}
-
-      <div className="reviews-section-heading">
-        <h3>{movie ? 'Рецензии участников' : 'Все рецензии'}</h3>
-        {reviewsState === 'ready' && <span>{reviews.length}</span>}
-      </div>
 
       {reviewsState === 'loading' ? (
         <div className="reviews-loading" aria-live="polite">
@@ -469,7 +547,7 @@ export default function MovieReviewsSection({ movie = null, focusComposer = fals
           {reviews.map(review => (
             <article key={review.id} className="review-card">
               {editingId === review.id ? (
-                <div className="review-edit-form">
+                <div ref={editFormRef} className="review-edit-form">
                   {review.movie_id ? (
                     <div className="review-form-movie-lock compact">
                       <span aria-hidden="true">🎬</span>

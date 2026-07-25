@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const Database = require('better-sqlite3');
 const { io: createSocket } = require('socket.io-client');
 const {
   delay,
@@ -182,6 +183,64 @@ test('real server enforces authentication, dynamic roles and content ownership',
     },
   });
   assert.equal(movieReview.status, 200, JSON.stringify(movieReview.payload));
+  const duplicateMovieReview = await request(instance, '/api/movie-reviews', {
+    method: 'POST',
+    cookie: anton.cookie,
+    body: {
+      movie_id: watchedId,
+      content: 'Duplicate review must be rejected',
+      recommend: -1,
+    },
+  });
+  assert.equal(duplicateMovieReview.status, 409);
+  assert.equal(duplicateMovieReview.payload.code, 'MOVIE_REVIEW_ALREADY_EXISTS');
+  assert.equal(duplicateMovieReview.payload.existing_review_id, movieReview.payload.id);
+  assert.equal(duplicateMovieReview.payload.movie_id, watchedId);
+
+  const peterMovieReview = await request(instance, '/api/movie-reviews', {
+    method: 'POST',
+    cookie: peter.cookie,
+    body: {
+      movie_id: watchedId,
+      content: 'Another user may review the same film',
+      recommend: 1,
+    },
+  });
+  assert.equal(peterMovieReview.status, 200, JSON.stringify(peterMovieReview.payload));
+
+  const otherWatched = await request(instance, '/api/watched', {
+    method: 'POST',
+    cookie: sergey.cookie,
+    body: { title: 'Another reviewed film' },
+  });
+  assert.equal(otherWatched.status, 200, JSON.stringify(otherWatched.payload));
+  const otherMovieReview = await request(instance, '/api/movie-reviews', {
+    method: 'POST',
+    cookie: anton.cookie,
+    body: {
+      movie_id: otherWatched.payload.id,
+      content: 'Same user may review a different film',
+      recommend: 0,
+    },
+  });
+  assert.equal(otherMovieReview.status, 200, JSON.stringify(otherMovieReview.payload));
+  const relinkConflict = await request(
+    instance,
+    `/api/movie-reviews/${otherMovieReview.payload.id}`,
+    {
+      method: 'PATCH',
+      cookie: anton.cookie,
+      body: {
+        movie_id: watchedId,
+        content: 'Relinking must not bypass uniqueness',
+        recommend: 0,
+      },
+    }
+  );
+  assert.equal(relinkConflict.status, 409);
+  assert.equal(relinkConflict.payload.code, 'MOVIE_REVIEW_ALREADY_EXISTS');
+  assert.equal(relinkConflict.payload.existing_review_id, movieReview.payload.id);
+
   assert.equal((await request(instance, `/api/movie-reviews/${movieReview.payload.id}`, {
     method: 'PATCH',
     cookie: peter.cookie,
@@ -202,6 +261,31 @@ test('real server enforces authentication, dynamic roles and content ownership',
     method: 'DELETE',
     cookie: sergey.cookie,
   })).status, 200);
+  assert.equal((await request(instance, '/api/movie-reviews', {
+    method: 'POST',
+    cookie: anton.cookie,
+    body: {
+      movie_id: watchedId,
+      content: 'A new review is allowed after deleting the old one',
+      recommend: 1,
+    },
+  })).status, 200);
+  const standaloneMovieReview = await request(instance, '/api/movie-reviews', {
+    method: 'POST',
+    cookie: anton.cookie,
+    body: {
+      title: 'Film outside watched history',
+      link_by_title: false,
+      content: 'Standalone reviews remain available',
+      recommend: 1,
+    },
+  });
+  assert.equal(
+    standaloneMovieReview.status,
+    200,
+    JSON.stringify(standaloneMovieReview.payload)
+  );
+  assert.equal(standaloneMovieReview.payload.movie_id, null);
 
   const wineReview = await request(instance, '/api/wine-reviews', {
     method: 'POST',
@@ -292,4 +376,75 @@ test('real server enforces authentication, dynamic roles and content ownership',
       .payload.filter(movie => Number(movie.id) === Number(wheelMovie.payload.id)).length,
     1
   );
+});
+
+test('startup preserves legacy duplicate reviews while enforcing one linked review', async t => {
+  const dataDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'cheese-wheel-review-migration-'));
+  let instance = await startServer(dataDir);
+  t.after(async () => {
+    await stopServer(instance);
+    await fsp.rm(dataDir, { recursive: true, force: true });
+  });
+  await stopServer(instance);
+
+  const databasePath = path.join(dataDir, 'cheese_wheel.db');
+  const seedDb = new Database(databasePath);
+  seedDb.pragma('foreign_keys = ON');
+  seedDb.exec('DROP INDEX idx_movie_reviews_user_movie');
+  const movieId = Number(seedDb.prepare(`
+    INSERT INTO movies (title, is_watched, watched_at)
+    VALUES ('Legacy duplicate film', 1, '2026-07-25')
+  `).run().lastInsertRowid);
+  const insertReview = seedDb.prepare(`
+    INSERT INTO movie_reviews (
+      movie_id, user_id, title, content, recommend, created_at
+    ) VALUES (?, 1, 'Legacy duplicate film', ?, 1, ?)
+  `);
+  const olderId = Number(insertReview.run(
+    movieId,
+    'Older review stays in the journal',
+    '2026-07-24 10:00:00'
+  ).lastInsertRowid);
+  const newerId = Number(insertReview.run(
+    movieId,
+    'Newer review remains linked',
+    '2026-07-25 10:00:00'
+  ).lastInsertRowid);
+  seedDb.prepare(`
+    INSERT INTO review_reactions (review_type, review_id, user_id, reaction)
+    VALUES ('movie', ?, 2, 1)
+  `).run(olderId);
+  seedDb.close();
+
+  instance = await startServer(dataDir);
+  await stopServer(instance);
+
+  const migratedDb = new Database(databasePath, { readonly: true });
+  const reviews = migratedDb.prepare(`
+    SELECT id, movie_id
+    FROM movie_reviews
+    WHERE id IN (?, ?)
+    ORDER BY id
+  `).all(olderId, newerId);
+  assert.deepEqual(reviews, [
+    { id: olderId, movie_id: null },
+    { id: newerId, movie_id: movieId },
+  ]);
+  assert.equal(
+    migratedDb.prepare(`
+      SELECT COUNT(*) AS count
+      FROM review_reactions
+      WHERE review_type = 'movie' AND review_id = ?
+    `).get(olderId).count,
+    1
+  );
+  assert.match(
+    migratedDb.prepare(`
+      SELECT sql
+      FROM sqlite_master
+      WHERE type = 'index' AND name = 'idx_movie_reviews_user_movie'
+    `).get().sql,
+    /CREATE UNIQUE INDEX/i
+  );
+  migratedDb.close();
 });
