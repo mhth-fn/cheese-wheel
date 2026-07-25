@@ -265,6 +265,59 @@ async function callXuiApi(serverConfig, pathname, options = {}, retry = true) {
   return payload.obj ?? payload;
 }
 
+const VLESS_SHARE_PARAM_ORDER = [
+  'type',
+  'encryption',
+  'security',
+  'pbk',
+  'fp',
+  'sni',
+  'sid',
+  'spx',
+  'flow',
+];
+
+function buildVlessLabel(deviceName, fallback) {
+  const asciiName = String(deviceName || '')
+    .normalize('NFKD')
+    .replace(/[^\x20-\x7E]/g, ' ')
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+  return asciiName || String(fallback || 'vpn').replace(/[^A-Za-z0-9._-]+/g, '-');
+}
+
+function canonicalizeVlessLink(connectionLink, deviceName, fallbackLabel) {
+  try {
+    const source = new URL(String(connectionLink || '').trim());
+    if (
+      source.protocol !== 'vless:'
+      || !source.username
+      || !source.hostname
+      || !source.port
+    ) {
+      return connectionLink;
+    }
+    const params = new URLSearchParams();
+    VLESS_SHARE_PARAM_ORDER.forEach(key => {
+      const value = source.searchParams.get(key);
+      if (value !== null && value !== '') params.set(key, value);
+    });
+    source.searchParams.forEach((value, key) => {
+      if (!params.has(key)) params.append(key, value);
+    });
+    const plainHostname = source.hostname.replace(/^\[|\]$/g, '');
+    const hostname = plainHostname.includes(':')
+      ? `[${plainHostname}]`
+      : plainHostname;
+    const label = encodeURIComponent(buildVlessLabel(deviceName, fallbackLabel));
+    return `vless://${source.username}@${hostname}:${source.port}/?${params.toString()}#${label}`;
+  } catch {
+    return connectionLink;
+  }
+}
+
 function buildVlessLink(serverConfig, inbound, client, deviceName) {
   const streamSettings = parseXuiJson(inbound.streamSettings);
   const reality = streamSettings.realitySettings || {};
@@ -283,19 +336,19 @@ function buildVlessLink(serverConfig, inbound, client, deviceName) {
     throw new Error(`Unsupported inbound configuration for ${serverConfig.id}`);
   }
 
-  const params = new URLSearchParams({
-    encryption: 'none',
-    flow: client.flow,
-    security: 'reality',
-    sni: serverName,
-    fp: realityClient.fingerprint || 'chrome',
-    pbk: publicKey,
-    sid: shortId,
-    spx: realityClient.spiderX || '/',
-    type: streamSettings.network || 'tcp',
-  });
-  const label = encodeURIComponent(`${deviceName} · ${serverConfig.label}`);
-  return `vless://${client.id}@${serverConfig.address}:${inbound.port}?${params.toString()}#${label}`;
+  const params = new URLSearchParams([
+    ['type', streamSettings.network || 'tcp'],
+    ['encryption', 'none'],
+    ['security', 'reality'],
+    ['pbk', publicKey],
+    ['fp', realityClient.fingerprint || 'chrome'],
+    ['sni', serverName],
+    ['sid', shortId],
+    ['spx', realityClient.spiderX || '/'],
+    ['flow', client.flow],
+  ]);
+  const label = encodeURIComponent(buildVlessLabel(deviceName, client.email));
+  return `vless://${client.id}@${serverConfig.address}:${inbound.port}/?${params.toString()}#${label}`;
 }
 
 function requireMember(req, res, next) {
@@ -1301,7 +1354,7 @@ const stmts = {
 
 const vpnStmts = {
   listByUser: db.prepare(`
-    SELECT id, server_id, device_name, connection_link, created_at
+    SELECT id, server_id, email, device_name, connection_link, created_at
     FROM vpn_clients
     WHERE user_id = ?
     ORDER BY created_at DESC
@@ -2257,7 +2310,11 @@ app.get('/api/vpn/clients', requireMember, (req, res) => {
     id: client.id,
     serverId: client.server_id,
     deviceName: client.device_name,
-    connectionLink: client.connection_link,
+    connectionLink: canonicalizeVlessLink(
+      client.connection_link,
+      client.device_name,
+      client.email
+    ),
     createdAt: client.created_at,
   }));
   res.json({ servers, clients });

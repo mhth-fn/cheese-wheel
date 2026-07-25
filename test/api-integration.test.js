@@ -86,6 +86,41 @@ test('real server enforces authentication, dynamic roles and content ownership',
   const peter = await login(instance, 3);
   assert.equal(anton.user.role, 'member');
   assert.equal(sergey.user.role, 'admin');
+
+  const legacyVlessLink = [
+    'vless://22222222-2222-4222-8222-222222222222@198.51.100.20:2443',
+    '?encryption=none&flow=xtls-rprx-vision&security=reality',
+    '&sni=example.com&fp=chrome&pbk=test-public-key',
+    '&sid=abcd&spx=%2F&type=tcp#old-label',
+  ].join('');
+  const vpnDb = new Database(path.join(dataDir, 'cheese_wheel.db'));
+  vpnDb.prepare(`
+    INSERT INTO vpn_clients (
+      user_id, server_id, inbound_id, client_id, email,
+      device_name, connection_link, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    anton.user.id,
+    'legacy-link-test',
+    1,
+    '22222222-2222-4222-8222-222222222222',
+    'legacy-link@example.invalid',
+    'Legacy iPhone',
+    legacyVlessLink,
+    Date.now()
+  );
+  vpnDb.close();
+  const vpnClients = await request(instance, '/api/vpn/clients', {
+    cookie: anton.cookie,
+  });
+  assert.equal(vpnClients.status, 200, JSON.stringify(vpnClients.payload));
+  assert.equal(vpnClients.payload.clients[0].connectionLink, [
+    'vless://22222222-2222-4222-8222-222222222222@198.51.100.20:2443/',
+    '?type=tcp&encryption=none&security=reality&pbk=test-public-key',
+    '&fp=chrome&sni=example.com&sid=abcd&spx=%2F',
+    '&flow=xtls-rprx-vision#Legacy-iPhone',
+  ].join(''));
+
   assert.equal((await request(instance, '/api/admin/users', {
     cookie: anton.cookie,
   })).status, 403);
