@@ -1,6 +1,6 @@
 :root {
-  --color-background: #f4cd54;
-  --color-background-accent: #efbc39;
+  --color-background: #fff1b8;
+  --color-background-accent: #f4d777;
   --color-surface: #fffdf3;
   --color-surface-muted: #fff7d8;
   --color-surface-hover: #fff4c5;
@@ -43,16 +43,16 @@
   /* Backward-compatible aliases used by seasonal themes and older screens. */
   --cheese-dark: var(--color-border);
   --cheese-main: var(--color-background);
-  --cheese-light: #f8dc78;
+  --cheese-light: #fff5cf;
   --cheese-cream: var(--color-surface);
-  --cheese-hole: rgba(139, 99, 13, 0.16);
+  --cheese-hole: rgba(139, 99, 13, 0.08);
   --crust: var(--color-primary);
   --text: var(--color-text);
   --text-light: var(--color-text-muted);
   --white: #fff;
   --shadow: rgba(79, 59, 13, 0.18);
 
-  --theme-bg: linear-gradient(180deg, #f8dc78 0%, var(--color-background) 100%);
+  --theme-bg: linear-gradient(180deg, #fff8d8 0%, var(--color-background) 100%);
   --theme-btn: linear-gradient(180deg, #bc6218 0%, var(--color-primary) 100%);
   --theme-btn-hover: linear-gradient(180deg, #ad520d 0%, var(--color-primary-hover) 100%);
   --theme-btn-active: linear-gradient(180deg, var(--color-primary) 0%, var(--color-primary-active) 100%);
@@ -69,7 +69,7 @@
 html {
   min-width: 320px;
   min-height: 100%;
-  background-color: #f8dc78;
+  background-color: #fff8d8;
   overscroll-behavior: none;
 }
 

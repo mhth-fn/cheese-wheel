@@ -48,7 +48,7 @@ export const AppContext = createContext(null);
 export const useApp = () => useContext(AppContext);
 
 const BROWSER_THEME_COLORS = {
-  cheese: '#f8dc78',
+  cheese: '#fff1b8',
   newyear: '#1a472a',
   spring: '#e8f5e9',
 };
