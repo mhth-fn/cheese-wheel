@@ -715,7 +715,11 @@ export default function WatchedPage() {
                 {isAdmin && <th className="watched-actions-sticky" aria-label="Действия" />}
                 <th className="watched-title-sticky" aria-sort={getAriaSort(sortColumn, sortDirection, 'title')}>
                   <button className="table-sort-button" type="button" onClick={() => handleSort('title')}>
-                    Фильм {sortIcon('title')}
+                    <span className="watched-column-heading">
+                      <span className="watched-column-avatar" aria-hidden="true">🎬</span>
+                      <span>Фильм</span>
+                    </span>
+                    {sortIcon('title')}
                   </button>
                 </th>
                 {visibleUsers.map(user => {
@@ -723,7 +727,13 @@ export default function WatchedPage() {
                   return (
                     <th key={user.id} aria-sort={getAriaSort(sortColumn, sortDirection, column)}>
                       <button className="table-sort-button" type="button" onClick={() => handleSort(column)}>
-                        {personalMode ? 'Моя оценка' : user.name} {sortIcon(column)}
+                        <span className="watched-column-heading">
+                          <span className="watched-column-avatar" aria-hidden="true">
+                            {user.name.slice(0, 1)}
+                          </span>
+                          <span>{personalMode ? 'Моя' : user.name}</span>
+                        </span>
+                        {sortIcon(column)}
                       </button>
                     </th>
                   );
@@ -731,7 +741,11 @@ export default function WatchedPage() {
                 {showAverageColumn && (
                   <th aria-sort={getAriaSort(sortColumn, sortDirection, 'avg_rating')}>
                     <button className="table-sort-button" type="button" onClick={() => handleSort('avg_rating')}>
-                      Средняя {sortIcon('avg_rating')}
+                      <span className="watched-column-heading">
+                        <span className="watched-column-avatar" aria-hidden="true">★</span>
+                        <span>Средняя</span>
+                      </span>
+                      {sortIcon('avg_rating')}
                     </button>
                   </th>
                 )}

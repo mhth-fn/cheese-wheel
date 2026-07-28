@@ -687,6 +687,7 @@ export default function App() {
         <button
           className={`admin-btn visible ${page === 'wheel' ? 'with-drawer' : ''}`}
           onClick={() => setAdminOpen(true)}
+          aria-expanded={adminOpen}
           aria-label="Открыть админ-панель"
           title="Админ-панель"
         >
@@ -703,6 +704,7 @@ export default function App() {
           className="drawer-toggle"
           onClick={() => setDrawerOpen(true)}
           disabled={wheelIsSpinning}
+          aria-expanded={drawerOpen}
           aria-label="Открыть управление колесом"
           title="Управление колесом"
         >

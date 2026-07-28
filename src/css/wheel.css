@@ -33,7 +33,11 @@
 }
 
 .cheese-wheel-stage.is-spinning {
-  animation: wheelGlow 1s ease-in-out infinite;
+  animation: wheelGlow 0.48s ease-in-out infinite;
+}
+
+.cheese-wheel-stage.is-spinning canvas {
+  animation: wheelPulse 0.48s ease-in-out infinite;
 }
 
 .wheel-pointer {
@@ -289,7 +293,19 @@
 
 @keyframes wheelGlow {
   0%, 100% { filter: drop-shadow(0 12px 24px rgba(100, 60, 0, 0.2)); }
-  50% { filter: drop-shadow(0 14px 32px rgba(190, 115, 20, 0.38)); }
+  50% { filter: drop-shadow(0 16px 36px rgba(23, 107, 104, 0.34)); }
+}
+
+@keyframes wheelPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.008); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cheese-wheel-stage.is-spinning,
+  .cheese-wheel-stage.is-spinning canvas {
+    animation: none;
+  }
 }
 
 @media (max-width: 720px) {

@@ -4,10 +4,10 @@
   --color-surface: #fffdf3;
   --color-surface-muted: #fff7d8;
   --color-surface-hover: #fff4c5;
-  --color-primary: #a44a0f;
-  --color-primary-hover: #913c09;
-  --color-primary-active: #7d3307;
-  --color-primary-border: #713006;
+  --color-primary: #176b68;
+  --color-primary-hover: #125b59;
+  --color-primary-active: #0f4b49;
+  --color-primary-border: #0c4442;
   --color-text: #4f3b0d;
   --color-text-muted: #7c6841;
   --color-border: #d7b243;
@@ -53,8 +53,8 @@
   --shadow: rgba(79, 59, 13, 0.18);
 
   --theme-bg: linear-gradient(180deg, #f8dc78 0%, var(--color-background) 100%);
-  --theme-btn: linear-gradient(180deg, #b65b18 0%, var(--color-primary) 100%);
-  --theme-btn-hover: linear-gradient(180deg, #a95012 0%, var(--color-primary-hover) 100%);
+  --theme-btn: linear-gradient(180deg, #23827e 0%, var(--color-primary) 100%);
+  --theme-btn-hover: linear-gradient(180deg, #1d7470 0%, var(--color-primary-hover) 100%);
   --theme-btn-active: linear-gradient(180deg, var(--color-primary) 0%, var(--color-primary-active) 100%);
   --theme-btn-border: var(--color-primary-border);
   --theme-btn-shadow: var(--color-primary-border);
@@ -87,7 +87,7 @@ body {
     radial-gradient(circle 42px at 9% 82%, var(--cheese-hole) 48%, transparent 52%),
     var(--theme-bg);
   background-color: var(--color-background);
-  background-attachment: fixed;
+  background-attachment: scroll;
   font-family: 'Comfortaa', system-ui, sans-serif;
   font-size: 16px;
   line-height: 1.5;

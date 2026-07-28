@@ -128,6 +128,25 @@ test('real server enforces authentication, dynamic roles and content ownership',
     cookie: sergey.cookie,
   })).status, 200);
 
+  const customSpinDuration = await request(instance, '/api/settings/spin-duration', {
+    method: 'POST',
+    cookie: sergey.cookie,
+    body: { duration: 20 },
+  });
+  assert.equal(customSpinDuration.status, 200, JSON.stringify(customSpinDuration.payload));
+  const updatedSettings = await request(instance, '/api/settings', {
+    cookie: sergey.cookie,
+  });
+  assert.equal(updatedSettings.status, 200);
+  assert.equal(updatedSettings.payload.spin_duration, 20);
+  const rejectedSpinDuration = await request(instance, '/api/settings/spin-duration', {
+    method: 'POST',
+    cookie: sergey.cookie,
+    body: { duration: 31 },
+  });
+  assert.equal(rejectedSpinDuration.status, 400);
+  assert.match(rejectedSpinDuration.payload.error, /5.*30/);
+
   assert.equal((await request(instance, '/api/watched', {
     method: 'POST',
     cookie: anton.cookie,

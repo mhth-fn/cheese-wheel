@@ -45,12 +45,12 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete, th
     const holes = [];
     const sliceAngle = (2 * Math.PI) / n;
     for (let s = 0; s < n; s++) {
-      const count = 3 + Math.floor(rng() * 2);
+      const count = 5 + Math.floor(rng() * 3);
       for (let h = 0; h < count; h++) {
         const t = (h + 0.2 + rng() * 0.6) / count;
         const angleOff = t * sliceAngle;
-        const distFrac = 0.25 + rng() * 0.55;
-        const hr = 6 + rng() * 12;
+        const distFrac = 0.22 + rng() * 0.62;
+        const hr = 4 + rng() * 9;
         holes.push({ sector: s, angleOff, distFrac, hr });
       }
     }
@@ -225,7 +225,7 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete, th
     get isSpinning() { return spinningRef.current; }
   }));
 
-  const doSpin = useCallback((winnerIndex, duration, randomOffset, turns = 10) => {
+  const doSpin = useCallback((winnerIndex, duration, randomOffset, turns = 16) => {
     if (spinningRef.current || movies.length === 0) return;
     spinningRef.current = true;
     setSpinning(true);
@@ -235,7 +235,7 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete, th
     const n = movies.length;
     const sliceAngle = (2 * Math.PI) / n;
     const targetSlice = winnerIndex * sliceAngle + sliceAngle * randomOffset;
-    const extraSpins = Math.max(6, Math.min(14, turns));
+    const extraSpins = Math.max(10, Math.min(22, turns));
     const startRot = rotRef.current;
     const desiredRotation = -Math.PI / 2 - targetSlice;
     const alignment = ((desiredRotation - (startRot % (2 * Math.PI))) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
@@ -244,15 +244,25 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete, th
     const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     const dur = reducedMotion ? Math.min(duration * 1000, 900) : duration * 1000;
 
-    const pegCount = Math.max(n, 12);
+    const pegCount = Math.max(n * 2, 24);
     const pegAngle = (2 * Math.PI) / pegCount;
     let lastPegIndex = Math.floor(((startRot % (2 * Math.PI)) + 4 * Math.PI) % (2 * Math.PI) / pegAngle);
 
     const animate = (now) => {
       const elapsed = now - startTime;
       const progress = Math.min(elapsed / dur, 1);
-      const ease = 1 - Math.pow(1 - progress, 4);
-      const currentRot = startRot + (totalRotation - startRot) * ease;
+      const windupDuration = reducedMotion ? 0 : Math.min(360, dur * 0.08);
+      let currentRot;
+      if (windupDuration > 0 && elapsed < windupDuration) {
+        const windupProgress = elapsed / windupDuration;
+        const windupAngle = Math.min(0.13, sliceAngle * 0.16);
+        currentRot = startRot - Math.sin(windupProgress * Math.PI) * windupAngle;
+      } else {
+        const travelDuration = Math.max(1, dur - windupDuration);
+        const travelProgress = Math.min(Math.max((elapsed - windupDuration) / travelDuration, 0), 1);
+        const ease = 1 - Math.pow(1 - travelProgress, 3.15);
+        currentRot = startRot + (totalRotation - startRot) * ease;
+      }
 
       const canvas = canvasRef.current;
       if (canvas) draw(canvas.getContext("2d"), canvas.width, canvas.height, currentRot);

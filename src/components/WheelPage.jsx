@@ -108,7 +108,7 @@ export default function WheelPage() {
     }
     if (movies.length === 0 || isSpinning || !spinEnabled || !socket) return;
 
-    const duration = Math.max(5, Math.min(15, spinDuration));
+    const duration = Math.max(5, Math.min(30, spinDuration));
     setSpinPending(true);
     socket.emit('spin-wheel', { spinDuration: duration });
   };

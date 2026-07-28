@@ -618,7 +618,7 @@ function requireAuth(req, res, next) {
 }
 
 const MIN_SPIN_DURATION = 5;
-const MAX_SPIN_DURATION = 15;
+const MAX_SPIN_DURATION = 30;
 const MAX_TITLE_LENGTH = 200;
 const MAX_SIGAME_PACK_BYTES = 200 * 1024 * 1024;
 let activeSpinUntil = 0;
@@ -4413,7 +4413,7 @@ io.on('connection', (socket) => {
 
     const winnerIndex = crypto.randomInt(movies.length);
     const randomOffset = 0.08 + (crypto.randomInt(8401) / 10000);
-    const turns = 8 + crypto.randomInt(5);
+    const turns = 14 + crypto.randomInt(7);
     const spinId = crypto.randomUUID();
     const winner = movies[winnerIndex];
     const pendingSpin = {

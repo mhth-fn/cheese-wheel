@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../App';
 import { postSpinDuration, uploadCenterImage, deleteCenterImage } from '../api';
 import { useDialogA11y } from '../hooks/useDialogA11y';
@@ -47,7 +47,10 @@ export default function DrawerPanel({
   const [formingNext, setFormingNext] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [confirmImageDelete, setConfirmImageDelete] = useState(false);
+  const [durationDraft, setDurationDraft] = useState(String(spinDuration));
+  const [durationSaving, setDurationSaving] = useState(false);
   const fileRef = useRef(null);
+  const durationSavingRef = useRef(false);
   const dialogRef = useDialogA11y(open, onClose);
   const tabs = isAdmin ? TABS : TABS.filter(tab => tab.key !== 'settings');
 
@@ -74,6 +77,15 @@ export default function DrawerPanel({
     && canManageMovie(movie)
     && (!wheelStatus.formed || isAdmin)
   );
+  const parsedDurationDraft = Number.parseInt(durationDraft, 10);
+  const durationValue = Number.isInteger(parsedDurationDraft)
+    ? Math.max(5, Math.min(30, parsedDurationDraft))
+    : spinDuration;
+  const durationProgress = ((durationValue - 5) / 25) * 100;
+
+  useEffect(() => {
+    setDurationDraft(String(spinDuration));
+  }, [spinDuration]);
 
   const handleCurrentAdd = async event => {
     event.preventDefault();
@@ -129,8 +141,17 @@ export default function DrawerPanel({
   };
 
   const setDuration = async value => {
-    const nextValue = Math.max(5, Math.min(15, value));
+    const parsedValue = Number(value);
+    if (!Number.isFinite(parsedValue) || durationSavingRef.current) {
+      setDurationDraft(String(spinDuration));
+      return;
+    }
+    const nextValue = Math.round(Math.max(5, Math.min(30, parsedValue)));
     const previous = spinDuration;
+    setDurationDraft(String(nextValue));
+    if (nextValue === previous) return;
+    durationSavingRef.current = true;
+    setDurationSaving(true);
     setSpinDuration(nextValue);
     try {
       const response = await postSpinDuration(nextValue);
@@ -138,7 +159,11 @@ export default function DrawerPanel({
       showToast(`Время прокрутки: ${nextValue} сек`, 'success');
     } catch {
       setSpinDuration(previous);
+      setDurationDraft(String(previous));
       showToast('Не удалось изменить время', 'error');
+    } finally {
+      durationSavingRef.current = false;
+      setDurationSaving(false);
     }
   };
 
@@ -284,10 +309,18 @@ export default function DrawerPanel({
               {users.map(user => {
                 const movie = primaryMovies.get(user.id);
                 const watched = Boolean(movie?.is_watched);
+                const unselected = wheelStatus.formed && !movie;
                 const manageable = canManageCurrentMovie(movie);
                 const editing = manageable && editingId === movie.id;
+                const participantState = watched
+                  ? 'is-watched'
+                  : movie
+                    ? 'is-ready'
+                    : unselected
+                      ? 'is-unselected'
+                      : 'is-waiting';
                 return (
-                  <article key={user.id} className={`wm-participant ${movie ? 'is-ready' : 'is-waiting'}${watched ? ' is-watched' : ''}${editing ? ' is-editing' : ''}${manageable ? ' has-actions' : ''}`}>
+                  <article key={user.id} className={`wm-participant ${participantState}${editing ? ' is-editing' : ''}${manageable ? ' has-actions' : ''}`}>
                     <span className="wm-avatar" aria-hidden="true">{user.name.slice(0, 1)}</span>
                     <div className="wm-participant-copy">
                       <strong>{user.name}{currentUser?.id === user.id ? ' · вы' : ''}</strong>
@@ -305,11 +338,16 @@ export default function DrawerPanel({
                           <button className="icon-button" type="button" onClick={cancelEditing} aria-label="Отменить редактирование">✕</button>
                         </form>
                       ) : (
-                        <span title={movie?.title}>{movie?.title || 'Ещё не добавил фильм'}</span>
+                        <span title={movie?.title}>
+                          {movie?.title || (unselected ? 'Не участвовал в этом колесе' : 'Ещё не добавил фильм')}
+                        </span>
                       )}
                     </div>
-                    <span className="wm-participant-status" aria-label={watched ? 'Просмотрено' : movie ? 'В колесе' : 'Ожидаем фильм'}>
-                      {watched ? 'Просмотрено' : movie ? 'В колесе' : 'Ожидаем'}
+                    <span
+                      className="wm-participant-status"
+                      aria-label={watched ? 'Просмотрено' : movie ? 'В колесе' : unselected ? 'Не выбран' : 'Ожидаем фильм'}
+                    >
+                      {watched ? 'Просмотрено' : movie ? 'В колесе' : unselected ? 'Не выбран' : 'Ожидаем'}
                     </span>
                     {movie && !editing && manageable && (
                       <div className="wm-participant-actions">
@@ -497,22 +535,57 @@ export default function DrawerPanel({
                   <h3>Время вращения</h3>
                   <p>Сколько секунд колесо будет выбирать фильм.</p>
                 </div>
-                <strong>{spinDuration} сек</strong>
+                <strong>{durationValue} сек</strong>
               </div>
-              <div className="wm-duration-presets" aria-label="Время вращения">
-                {[5, 10, 15].map(value => (
-                  <button
-                    key={value}
-                    className={spinDuration === value ? 'active' : ''}
-                    type="button"
-                    onClick={() => setDuration(value)}
-                    disabled={isGuest || wheelIsSpinning}
-                    aria-pressed={spinDuration === value}
-                  >
-                    {value} сек
-                  </button>
-                ))}
+              <div className="wm-duration-control">
+                <input
+                  className="wm-duration-slider"
+                  type="range"
+                  min="5"
+                  max="30"
+                  step="1"
+                  value={durationValue}
+                  style={{ '--duration-progress': `${durationProgress}%` }}
+                  onChange={event => setDurationDraft(event.target.value)}
+                  onPointerUp={event => setDuration(event.currentTarget.value)}
+                  onKeyUp={event => {
+                    if (['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) {
+                      setDuration(event.currentTarget.value);
+                    }
+                  }}
+                  onBlur={event => setDuration(event.currentTarget.value)}
+                  disabled={isGuest || wheelIsSpinning || durationSaving}
+                  aria-label="Время вращения от 5 до 30 секунд"
+                />
+                <label className="wm-duration-number">
+                  <span className="sr-only">Точное время вращения</span>
+                  <input
+                    type="number"
+                    min="5"
+                    max="30"
+                    step="1"
+                    inputMode="numeric"
+                    value={durationDraft}
+                    onChange={event => setDurationDraft(event.target.value)}
+                    onBlur={event => setDuration(event.currentTarget.value)}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        event.currentTarget.blur();
+                      } else if (event.key === 'Escape') {
+                        setDurationDraft(String(spinDuration));
+                        event.currentTarget.blur();
+                      }
+                    }}
+                    disabled={isGuest || wheelIsSpinning || durationSaving}
+                  />
+                  <span>сек</span>
+                </label>
               </div>
+              <div className="wm-duration-scale" aria-hidden="true"><span>5</span><span>30</span></div>
+              <p className="wm-duration-saving" role="status" aria-live="polite">
+                {durationSaving ? 'Сохраняем…' : 'Выберите любое целое значение.'}
+              </p>
             </section>
 
             <section className="wm-settings-block">

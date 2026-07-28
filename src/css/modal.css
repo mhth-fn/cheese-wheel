@@ -299,6 +299,7 @@
   background: var(--theme-btn);
   box-shadow: var(--shadow-medium);
   cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .admin-btn.visible {
@@ -307,6 +308,16 @@
 
 .admin-btn.with-drawer {
   left: 80px;
+}
+
+.admin-btn:hover:not(:disabled) {
+  box-shadow: var(--shadow-modal);
+  transform: translateY(-2px);
+}
+
+.admin-btn:active:not(:disabled) {
+  box-shadow: var(--shadow-small);
+  transform: translateY(1px) scale(0.96);
 }
 
 .admin-modal {
@@ -613,7 +624,7 @@
 
   .admin-btn {
     bottom: 82px;
-    left: 68px;
+    left: 12px;
   }
 
   .admin-btn.with-drawer {
