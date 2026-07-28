@@ -244,7 +244,7 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete }, 
       ctx.fillText(label, 0, 0, sectorWidth);
       ctx.restore();
     });
-  }, [movies, theme, ensureHoles]);
+  }, [movies, ensureHoles]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
