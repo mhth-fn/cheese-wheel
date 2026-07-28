@@ -445,7 +445,7 @@ export default function WatchedPage() {
       return (
         <div className="rating-control">
           <select
-            className="rating-select"
+            className={`rating-select ${rating == null ? 'is-empty' : 'has-value'}`}
             value={rating ?? ''}
             onChange={event => handleRating(movie.id, userId, event.target.value)}
             disabled={saving || !connected}
@@ -694,8 +694,8 @@ export default function WatchedPage() {
           </>
         ) : (
           <table
-            className={`watched-table${isAdmin ? ' has-actions' : ''}`}
-            style={{ minWidth: `${220 + (isAdmin ? 72 : 0) + visibleUsers.length * 88 + (showAverageColumn ? 108 : 0)}px` }}
+            className="watched-table"
+            style={{ minWidth: `${280 + visibleUsers.length * 116 + (showAverageColumn ? 88 : 0)}px` }}
             aria-label={
               personalMode
                 ? 'Фильмы, которые я оценил'
@@ -705,20 +705,15 @@ export default function WatchedPage() {
             }
           >
             <colgroup>
-              {isAdmin && <col className="watched-action-col" />}
               <col className="watched-title-col" />
               {visibleUsers.map(user => <col key={user.id} className="watched-user-col" />)}
               {showAverageColumn && <col className="watched-avg-col" />}
             </colgroup>
             <thead>
               <tr>
-                {isAdmin && <th className="watched-actions-sticky" aria-label="Действия" />}
                 <th className="watched-title-sticky" aria-sort={getAriaSort(sortColumn, sortDirection, 'title')}>
                   <button className="table-sort-button" type="button" onClick={() => handleSort('title')}>
-                    <span className="watched-column-heading">
-                      <span className="watched-column-avatar" aria-hidden="true">🎬</span>
-                      <span>Фильм</span>
-                    </span>
+                    <span className="watched-column-heading">Фильм</span>
                     {sortIcon('title')}
                   </button>
                 </th>
@@ -741,10 +736,7 @@ export default function WatchedPage() {
                 {showAverageColumn && (
                   <th aria-sort={getAriaSort(sortColumn, sortDirection, 'avg_rating')}>
                     <button className="table-sort-button" type="button" onClick={() => handleSort('avg_rating')}>
-                      <span className="watched-column-heading">
-                        <span className="watched-column-avatar" aria-hidden="true">★</span>
-                        <span>Средняя</span>
-                      </span>
+                      <span className="watched-column-heading">Средняя</span>
                       {sortIcon('avg_rating')}
                     </button>
                   </th>
@@ -754,30 +746,30 @@ export default function WatchedPage() {
             <tbody>
               {sorted.map(movie => (
                 <tr key={movie.id}>
-                  {isAdmin && (
-                    <td className="watched-actions-sticky">
-                      <div className="row-actions">
-                        <button className="row-action-button" type="button" onClick={() => startEditing(movie)} title="Редактировать" aria-label={`Редактировать ${movie.title}`}>✎</button>
-                        <button className="row-action-button danger" type="button" onClick={() => setPendingDelete(movie)} title="Удалить" aria-label={`Удалить ${movie.title}`}>🗑</button>
-                      </div>
-                    </td>
-                  )}
                   <td className="watched-title-sticky">
                     {editingId === movie.id ? (
                       renderEditMovieForm(movie, 'table')
                     ) : (
                       <div className="movie-title-stack">
-                        <button
-                          className="movie-title-cell"
-                          type="button"
-                          onClick={() => openMoviePanel(movie, 'details')}
-                          aria-haspopup="dialog"
-                        >
-                          <strong>{movie.title}</strong>
-                          <span>
-                            {movie.watched_at ? `просмотрен ${formatDate(movie.watched_at)}` : movie.added_at ? `добавлен ${formatDate(movie.added_at)}` : 'дата не указана'}
-                          </span>
-                        </button>
+                        <div className="movie-title-primary">
+                          <button
+                            className="movie-title-cell"
+                            type="button"
+                            onClick={() => openMoviePanel(movie, 'details')}
+                            aria-haspopup="dialog"
+                          >
+                            <strong>{movie.title}</strong>
+                            <span>
+                              {movie.watched_at ? `просмотрен ${formatDate(movie.watched_at)}` : movie.added_at ? `добавлен ${formatDate(movie.added_at)}` : 'дата не указана'}
+                            </span>
+                          </button>
+                          {isAdmin && (
+                            <div className="row-actions" role="group" aria-label={`Действия с фильмом ${movie.title}`}>
+                              <button className="row-action-button" type="button" onClick={() => startEditing(movie)} title="Редактировать" aria-label={`Редактировать ${movie.title}`}>✎</button>
+                              <button className="row-action-button danger" type="button" onClick={() => setPendingDelete(movie)} title="Удалить" aria-label={`Удалить ${movie.title}`}>🗑</button>
+                            </div>
+                          )}
+                        </div>
                         <div className="movie-review-actions">
                           <button
                             className="movie-review-trigger"
@@ -786,7 +778,7 @@ export default function WatchedPage() {
                             aria-haspopup="dialog"
                             aria-label={`Открыть рецензии на ${movie.title}, ${Number(movie.review_count) || 0}`}
                           >
-                            Рецензии · {Number(movie.review_count) || 0}
+                            💬 {Number(movie.review_count) || 0}
                           </button>
                           {!isGuest && (
                             <button
