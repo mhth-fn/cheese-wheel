@@ -1533,6 +1533,11 @@ const sigameStmts = {
     SET status = 'played', played_by = ?, played_at = ?
     WHERE id = ?
   `),
+  updatePlayedAt: db.prepare(`
+    UPDATE sigame_packs
+    SET played_at = ?
+    WHERE id = ? AND status = 'played'
+  `),
   restorePlanned: db.prepare(`
     UPDATE sigame_packs
     SET status = 'planned', played_by = NULL, played_at = NULL
@@ -1873,6 +1878,27 @@ function parseSigameUploadTags(value) {
   } catch {
     return null;
   }
+}
+
+function parseSigamePlayedDate(value) {
+  if (value === null) return null;
+  if (typeof value !== 'string') return undefined;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return undefined;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const timestamp = Date.UTC(year, month - 1, day, 12);
+  const date = new Date(timestamp);
+  if (
+    date.getUTCFullYear() !== year
+    || date.getUTCMonth() !== month - 1
+    || date.getUTCDate() !== day
+  ) {
+    return undefined;
+  }
+  return timestamp;
 }
 
 function sigameUploadError(status, message) {
@@ -4161,6 +4187,36 @@ app.post('/api/sigame-packs/:id/status', (req, res) => {
   const pack = getSigamePackForViewer(packId, userId);
   io.emit('sigame-packs-changed', {
     action: status === 'played' ? 'played' : 'restored',
+    pack_id: packId,
+  });
+  res.json(pack);
+});
+
+app.patch('/api/sigame-packs/:id/played-date', (req, res) => {
+  const packId = parseIntStrict(req.params.id);
+  if (isNaN(packId)) return res.status(400).json({ error: 'Неверный ID пака' });
+  const existing = sigameStmts.getRawById.get(packId);
+  if (!existing) return res.status(404).json({ error: 'Пак не найден' });
+  if (!canManageSigamePack(existing, req.tokenData)) {
+    return res.status(403).json({
+      error: 'Изменить дату может владелец пака или администратор',
+    });
+  }
+  if (existing.status !== 'played') {
+    return res.status(409).json({ error: 'Дата игры доступна только для сыгранного пака' });
+  }
+
+  const playedAt = parseSigamePlayedDate(req.body?.played_date);
+  if (playedAt === undefined) {
+    return res.status(400).json({
+      error: 'Укажите корректную дату или установите дату неизвестной',
+    });
+  }
+
+  sigameStmts.updatePlayedAt.run(playedAt, packId);
+  const pack = getSigamePackForViewer(packId, Number(req.tokenData.userId));
+  io.emit('sigame-packs-changed', {
+    action: 'played-date-updated',
     pack_id: packId,
   });
   res.json(pack);

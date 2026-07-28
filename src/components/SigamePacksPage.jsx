@@ -8,6 +8,7 @@ import {
   rateSigamePack,
   setSigamePackStatus,
   updateSigamePack,
+  updateSigamePackPlayedDate,
 } from '../api';
 import { useApp } from '../App';
 
@@ -50,6 +51,15 @@ async function readResponse(response) {
 
 function formatDate(timestamp) {
   return timestamp ? dateFormatter.format(new Date(timestamp)) : '';
+}
+
+function formatDateInput(timestamp) {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function formatFileSize(bytes) {
@@ -95,8 +105,16 @@ function sortPacks(packs, sort) {
 
       if (sort === 'created-desc') result = second.added_at - first.added_at;
       if (sort === 'created-asc') result = first.added_at - second.added_at;
-      if (sort === 'played-desc') result = (second.played_at || 0) - (first.played_at || 0);
-      if (sort === 'played-asc') result = (first.played_at || 0) - (second.played_at || 0);
+      if (sort === 'played-desc' || sort === 'played-asc') {
+        const firstMissing = first.played_at == null;
+        const secondMissing = second.played_at == null;
+        if (firstMissing !== secondMissing) result = firstMissing ? 1 : -1;
+        else if (!firstMissing) {
+          result = sort === 'played-desc'
+            ? second.played_at - first.played_at
+            : first.played_at - second.played_at;
+        }
+      }
       if (sort === 'title-asc') result = first.title.localeCompare(second.title, 'ru');
       if (sort === 'title-desc') result = second.title.localeCompare(first.title, 'ru');
       if (sort === 'rating-desc' || sort === 'rating-asc') {
@@ -132,6 +150,9 @@ export default function SigamePacksPage() {
   const [formBusy, setFormBusy] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [menuPackId, setMenuPackId] = useState(null);
+  const [datePack, setDatePack] = useState(null);
+  const [playedDate, setPlayedDate] = useState('');
+  const [dateBusy, setDateBusy] = useState(false);
   const fileInputRef = useRef(null);
   const formTags = normalizeTags(form.tags);
   const tagError = formTags.length > 8
@@ -185,6 +206,15 @@ export default function SigamePacksPage() {
     document.addEventListener('keydown', closeOnEscape);
     return () => document.removeEventListener('keydown', closeOnEscape);
   }, [formBusy, formOpen]);
+
+  useEffect(() => {
+    if (!datePack) return undefined;
+    const closeOnEscape = event => {
+      if (event.key === 'Escape' && !dateBusy) setDatePack(null);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [dateBusy, datePack]);
 
   const counts = useMemo(() => ({
     unplayed: packs.filter(pack => pack.status === 'unplayed').length,
@@ -266,6 +296,37 @@ export default function SigamePacksPage() {
     setSelectedFile(null);
     setFileError('');
     setFormOpen(true);
+  };
+
+  const openDateForm = pack => {
+    setMenuPackId(null);
+    setDatePack(pack);
+    setPlayedDate(formatDateInput(pack.played_at));
+  };
+
+  const savePlayedDate = async nextDate => {
+    if (!datePack || dateBusy) return;
+    setDateBusy(true);
+    try {
+      const updated = await readResponse(
+        await updateSigamePackPlayedDate(datePack.id, nextDate)
+      );
+      upsertPack(updated);
+      showToast(
+        nextDate === null ? 'Дата игры установлена как неизвестная' : 'Дата игры обновлена',
+        'success'
+      );
+      setDatePack(null);
+    } catch (error) {
+      showToast(error.message || 'Не удалось изменить дату игры', 'error');
+    } finally {
+      setDateBusy(false);
+    }
+  };
+
+  const submitPlayedDate = event => {
+    event.preventDefault();
+    if (playedDate) savePlayedDate(playedDate);
   };
 
   const chooseFile = file => {
@@ -552,6 +613,11 @@ export default function SigamePacksPage() {
                           <button type="button" role="menuitem" onClick={() => openEditForm(pack)}>
                             Переименовать и изменить теги
                           </button>
+                          {pack.status === 'played' && (
+                            <button type="button" role="menuitem" onClick={() => openDateForm(pack)}>
+                              Изменить дату игры
+                            </button>
+                          )}
                           <button
                             type="button"
                             role="menuitem"
@@ -588,7 +654,11 @@ export default function SigamePacksPage() {
                 <div className="sigame-card-meta">
                   <span>Добавлен {formatDate(pack.added_at)}</span>
                   {pack.status === 'played' && (
-                    <span>Сыгран {formatDate(pack.played_at)}</span>
+                    <span>
+                      {pack.played_at
+                        ? `Сыгран ${formatDate(pack.played_at)}`
+                        : 'Сыгран — дата неизвестна'}
+                    </span>
                   )}
                 </div>
 
@@ -789,6 +859,76 @@ export default function SigamePacksPage() {
                   ? (editingId ? 'Сохраняем…' : 'Загружаем…')
                   : (editingId ? 'Сохранить' : 'Добавить в библиотеку')}
               </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {datePack && (
+        <div
+          className="sigame-modal-backdrop"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget && !dateBusy) setDatePack(null);
+          }}
+        >
+          <form
+            className="sigame-pack-form sigame-date-form"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sigame-date-form-title"
+            onSubmit={submitPlayedDate}
+          >
+            <div className="sigame-form-heading">
+              <h2 id="sigame-date-form-title">Дата игры</h2>
+              <button
+                type="button"
+                className="sigame-form-close"
+                onClick={() => setDatePack(null)}
+                disabled={dateBusy}
+                aria-label="Закрыть форму"
+              >
+                ×
+              </button>
+            </div>
+
+            <p className="sigame-date-pack-name">{datePack.title}</p>
+            <label className="sigame-field">
+              <span>Когда сыграли</span>
+              <input
+                type="date"
+                value={playedDate}
+                onChange={event => setPlayedDate(event.target.value)}
+                required
+                autoFocus
+              />
+            </label>
+
+            <div className="sigame-date-actions">
+              <button
+                className="button-ghost sigame-unknown-date-button"
+                type="button"
+                onClick={() => savePlayedDate(null)}
+                disabled={dateBusy}
+              >
+                Дата неизвестна
+              </button>
+              <div>
+                <button
+                  className="button-ghost"
+                  type="button"
+                  onClick={() => setDatePack(null)}
+                  disabled={dateBusy}
+                >
+                  Отмена
+                </button>
+                <button
+                  className="button-primary"
+                  type="submit"
+                  disabled={dateBusy || !playedDate}
+                >
+                  {dateBusy ? 'Сохраняем…' : 'Сохранить'}
+                </button>
+              </div>
             </div>
           </form>
         </div>

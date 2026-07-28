@@ -390,6 +390,14 @@ export async function setSigamePackStatus(id, status) {
   });
 }
 
+export async function updateSigamePackPlayedDate(id, playedDate) {
+  return apiFetch(`/api/sigame-packs/${id}/played-date`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ played_date: playedDate }),
+  });
+}
+
 export async function rateSigamePack(id, rating) {
   return apiFetch(`/api/sigame-packs/${id}/rating`, {
     method: 'PUT',

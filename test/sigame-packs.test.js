@@ -164,6 +164,33 @@ test('SIGame library securely stores .siq files and enforces played-state rating
   assert.equal(played.payload.played_by, peter.user.id);
   assert.ok(played.payload.played_at);
 
+  assert.equal((await request(instance, `/api/sigame-packs/${packId}/played-date`, {
+    method: 'PATCH',
+    cookie: peter.cookie,
+    body: { played_date: '2026-07-12' },
+  })).status, 403);
+  assert.equal((await request(instance, `/api/sigame-packs/${packId}/played-date`, {
+    method: 'PATCH',
+    cookie: anton.cookie,
+    body: { played_date: '2026-02-30' },
+  })).status, 400);
+
+  const dated = await request(instance, `/api/sigame-packs/${packId}/played-date`, {
+    method: 'PATCH',
+    cookie: sergey.cookie,
+    body: { played_date: '2026-07-12' },
+  });
+  assert.equal(dated.status, 200);
+  assert.equal(dated.payload.played_at, Date.UTC(2026, 6, 12, 12));
+
+  const unknownDate = await request(instance, `/api/sigame-packs/${packId}/played-date`, {
+    method: 'PATCH',
+    cookie: anton.cookie,
+    body: { played_date: null },
+  });
+  assert.equal(unknownDate.status, 200);
+  assert.equal(unknownDate.payload.played_at, null);
+
   const antonRating = await request(instance, `/api/sigame-packs/${packId}/rating`, {
     method: 'PUT',
     cookie: anton.cookie,
@@ -197,6 +224,11 @@ test('SIGame library securely stores .siq files and enforces played-state rating
   assert.equal(restored.payload.played_at, null);
   assert.equal(restored.payload.average_rating, null);
   assert.equal(restored.payload.my_rating, null);
+  assert.equal((await request(instance, `/api/sigame-packs/${packId}/played-date`, {
+    method: 'PATCH',
+    cookie: anton.cookie,
+    body: { played_date: '2026-07-12' },
+  })).status, 409);
   const ratingsDb = new Database(path.join(dataDir, 'cheese_wheel.db'));
   assert.equal(
     ratingsDb.prepare(

@@ -603,6 +603,17 @@
   box-shadow: var(--shadow-modal);
 }
 
+.sigame-date-form {
+  width: min(440px, 100%);
+}
+
+.sigame-date-pack-name {
+  margin: -7px 0 var(--space-4);
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
 .sigame-form-heading {
   display: flex;
   margin-bottom: var(--space-4);
@@ -782,6 +793,23 @@
   gap: var(--space-2);
 }
 
+.sigame-date-actions {
+  display: flex;
+  margin-top: var(--space-5);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.sigame-date-actions > div {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.sigame-unknown-date-button {
+  color: var(--color-text-muted);
+}
+
 @keyframes sigame-rise {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
@@ -872,6 +900,16 @@
   .sigame-form-actions {
     align-items: stretch;
     flex-direction: column-reverse;
+  }
+
+  .sigame-date-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sigame-date-actions > div {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 }
 
