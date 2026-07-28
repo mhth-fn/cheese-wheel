@@ -1,4 +1,3 @@
-//TODO: декомпозировать файл
 const express = require('express');
 const { createServer } = require('http');
 const fs = require('node:fs');
@@ -621,6 +620,7 @@ function requireAuth(req, res, next) {
 const MIN_SPIN_DURATION = 5;
 const MAX_SPIN_DURATION = 15;
 const MAX_TITLE_LENGTH = 200;
+const MAX_SIGAME_PACK_BYTES = 200 * 1024 * 1024;
 let activeSpinUntil = 0;
 
 function rejectWheelMutationDuringSpin(req, res, next) {
@@ -733,6 +733,19 @@ const dataDir = process.env.DATA_DIR
   ? path.resolve(process.env.DATA_DIR)
   : __dirname;
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+const sigamePacksPath = path.join(dataDir, 'sigame-packs');
+if (!fs.existsSync(sigamePacksPath)) {
+  fs.mkdirSync(sigamePacksPath, { recursive: true, mode: 0o750 });
+}
+for (const fileName of fs.readdirSync(sigamePacksPath)) {
+  if (/^\.[a-f0-9-]{36}\.siq\.upload$/i.test(fileName)) {
+    try {
+      fs.unlinkSync(path.join(sigamePacksPath, fileName));
+    } catch (error) {
+      console.warn('[cheese-wheel] Could not remove interrupted SIGame upload:', error.message);
+    }
+  }
+}
 const db = new Database(path.join(dataDir, 'cheese_wheel.db'));
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
@@ -869,6 +882,9 @@ db.exec(`
     added_at INTEGER NOT NULL,
     played_by INTEGER,
     played_at INTEGER,
+    original_file_name TEXT,
+    storage_key TEXT,
+    file_size INTEGER,
     FOREIGN KEY (added_by) REFERENCES users(id),
     FOREIGN KEY (played_by) REFERENCES users(id)
   );
@@ -895,6 +911,30 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_sigame_pack_tags_tag
     ON sigame_pack_tags(tag);
+`);
+
+// Миграция SIGame v2: старые метаданные сохраняются, а новые записи получают
+// закрытый .siq-файл. planned остаётся внутренним именем статуса unplayed.
+[
+  'original_file_name TEXT',
+  'storage_key TEXT',
+  'file_size INTEGER',
+].forEach(column => {
+  try {
+    db.exec(`ALTER TABLE sigame_packs ADD COLUMN ${column}`);
+  } catch (error) {
+    // колонка уже существует
+  }
+});
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_sigame_packs_storage_key
+    ON sigame_packs(storage_key)
+    WHERE storage_key IS NOT NULL;
+
+  DELETE FROM sigame_pack_ratings
+  WHERE pack_id IN (
+    SELECT id FROM sigame_packs WHERE status = 'planned'
+  );
 `);
 
 // Миграция: добавляем колонку password_hash если её нет
@@ -1474,12 +1514,12 @@ const sigameStmts = {
   `),
   insert: db.prepare(`
     INSERT INTO sigame_packs (
-      title, pack_author, description, source_url, added_by, added_at
+      title, added_by, added_at, original_file_name, storage_key, file_size
     ) VALUES (?, ?, ?, ?, ?, ?)
   `),
   update: db.prepare(`
     UPDATE sigame_packs
-    SET title = ?, pack_author = ?, description = ?, source_url = ?
+    SET title = ?
     WHERE id = ?
   `),
   delete: db.prepare('DELETE FROM sigame_packs WHERE id = ?'),
@@ -1508,6 +1548,10 @@ const sigameStmts = {
   deleteRating: db.prepare(`
     DELETE FROM sigame_pack_ratings
     WHERE pack_id = ? AND user_id = ?
+  `),
+  deleteRatingsForPack: db.prepare(`
+    DELETE FROM sigame_pack_ratings
+    WHERE pack_id = ?
   `),
 };
 
@@ -1777,43 +1821,15 @@ function sanitizeTitle(title) {
   return trimmed;
 }
 
-function sanitizeSigameOptionalText(value, maxLength, { multiline = false } = {}) {
-  if (value === undefined || value === null || value === '') return '';
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  const invalidCharacters = multiline
-    ? /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\p{Cf}]/u
-    : /[\p{Cc}\p{Cf}]/u;
-  if (trimmed.length > maxLength || invalidCharacters.test(trimmed)) return null;
-  return trimmed;
-}
-
-function sanitizeSigameSourceUrl(value) {
-  const sourceUrl = sanitizeSigameOptionalText(value, 1000);
-  if (sourceUrl === null || sourceUrl === '') return sourceUrl;
-  try {
-    const parsed = new URL(sourceUrl);
-    if (
-      !['http:', 'https:'].includes(parsed.protocol)
-      || parsed.username
-      || parsed.password
-    ) {
-      return null;
-    }
-    return parsed.toString();
-  } catch {
-    return null;
-  }
-}
-
 function sanitizeSigameTags(value) {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > 8) return null;
   const tags = [];
   const seen = new Set();
   for (const rawTag of value) {
-    const tag = sanitizeSigameOptionalText(rawTag, 24);
-    if (!tag) return null;
+    if (typeof rawTag !== 'string') return null;
+    const tag = rawTag.trim();
+    if (!tag || tag.length > 24 || /[\p{Cc}\p{Cf}]/u.test(tag)) return null;
     const key = tag.toLocaleLowerCase('ru-RU');
     if (seen.has(key)) continue;
     seen.add(key);
@@ -1827,56 +1843,132 @@ function readSigamePackInput(body, existing = null) {
   const title = source.title === undefined && existing
     ? existing.title
     : sanitizeTitle(source.title);
-  const packAuthor = source.pack_author === undefined && existing
-    ? existing.pack_author || ''
-    : sanitizeSigameOptionalText(source.pack_author, 120);
-  const description = source.description === undefined && existing
-    ? existing.description || ''
-    : sanitizeSigameOptionalText(source.description, 2000, { multiline: true });
-  const sourceUrl = source.source_url === undefined && existing
-    ? existing.source_url || ''
-    : sanitizeSigameSourceUrl(source.source_url);
   const tags = source.tags === undefined && existing
     ? sigameStmts.getTags.all(existing.id).map(row => row.tag)
     : sanitizeSigameTags(source.tags);
 
+  if (!title || tags === null) return null;
+  return { title, tags };
+}
+
+function sanitizeSigameOriginalFileName(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
   if (
-    !title
-    || packAuthor === null
-    || description === null
-    || sourceUrl === null
-    || tags === null
+    trimmed.length < 5
+    || trimmed.length > 255
+    || !trimmed.toLocaleLowerCase('ru-RU').endsWith('.siq')
+    || /[\\/\p{Cc}\p{Cf}]/u.test(trimmed)
   ) {
     return null;
   }
-  return {
-    title,
-    packAuthor,
-    description,
-    sourceUrl,
-    tags,
-  };
+  return trimmed;
+}
+
+function parseSigameUploadTags(value) {
+  if (value === undefined) return [];
+  if (typeof value !== 'string' || value.length > 1000) return null;
+  try {
+    return sanitizeSigameTags(JSON.parse(value));
+  } catch {
+    return null;
+  }
+}
+
+function sigameUploadError(status, message) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+
+function receiveSigamePackFile(req, temporaryPath, expectedSize) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let received = 0;
+    let signature = Buffer.alloc(0);
+    const output = fs.createWriteStream(temporaryPath, {
+      flags: 'wx',
+      mode: 0o640,
+    });
+
+    const fail = error => {
+      if (settled) return;
+      settled = true;
+      req.unpipe(output);
+      output.destroy();
+      req.resume();
+      reject(error);
+    };
+
+    req.on('data', chunk => {
+      received += chunk.length;
+      if (signature.length < 4) {
+        signature = Buffer.concat([signature, chunk]).subarray(0, 4);
+      }
+      if (received > MAX_SIGAME_PACK_BYTES || received > expectedSize) {
+        fail(sigameUploadError(413, 'Файл пака слишком большой'));
+      }
+    });
+    req.once('aborted', () => fail(sigameUploadError(400, 'Загрузка файла прервана')));
+    req.once('error', fail);
+    output.once('error', fail);
+    output.once('finish', () => {
+      if (settled) return;
+      settled = true;
+      if (received !== expectedSize || received === 0) {
+        reject(sigameUploadError(400, 'Не удалось полностью загрузить файл пака'));
+        return;
+      }
+      const isZip = signature.length === 4
+        && signature[0] === 0x50
+        && signature[1] === 0x4b
+        && (
+          (signature[2] === 0x03 && signature[3] === 0x04)
+          || (signature[2] === 0x05 && signature[3] === 0x06)
+          || (signature[2] === 0x07 && signature[3] === 0x08)
+        );
+      if (!isZip) {
+        reject(sigameUploadError(
+          400,
+          'Выберите файл пакета SIGame в формате .siq'
+        ));
+        return;
+      }
+      resolve(received);
+    });
+    req.pipe(output);
+  });
+}
+
+function getSigamePackFilePath(storageKey) {
+  if (typeof storageKey !== 'string' || !/^[a-f0-9-]{36}\.siq$/i.test(storageKey)) {
+    return null;
+  }
+  return path.join(sigamePacksPath, storageKey);
 }
 
 function serializeSigamePack(row) {
   if (!row) return null;
+  const isPlayed = row.status === 'played';
   return {
     id: Number(row.id),
     title: row.title,
-    pack_author: row.pack_author || '',
-    description: row.description || '',
-    source_url: row.source_url || '',
-    status: row.status,
+    status: isPlayed ? 'played' : 'unplayed',
     tags: sigameStmts.getTags.all(row.id).map(item => item.tag),
+    original_file_name: row.original_file_name || '',
+    file_size: row.file_size == null ? null : Number(row.file_size),
+    has_file: Boolean(row.storage_key),
     added_by: Number(row.added_by),
     added_by_name: row.added_by_name,
     added_at: Number(row.added_at),
     played_by: row.played_by == null ? null : Number(row.played_by),
     played_by_name: row.played_by_name || null,
     played_at: row.played_at == null ? null : Number(row.played_at),
-    average_rating: row.average_rating == null ? null : Number(row.average_rating),
-    ratings_count: Number(row.ratings_count || 0),
-    my_rating: row.my_rating == null ? null : Number(row.my_rating),
+    average_rating: isPlayed && row.average_rating != null
+      ? Number(row.average_rating)
+      : null,
+    ratings_count: isPlayed ? Number(row.ratings_count || 0) : 0,
+    my_rating: isPlayed && row.my_rating != null ? Number(row.my_rating) : null,
   };
 }
 
@@ -3951,32 +4043,69 @@ app.get('/api/sigame-packs', (req, res) => {
   res.json(sigameStmts.list.all(viewerId).map(serializeSigamePack));
 });
 
-app.post('/api/sigame-packs', (req, res) => {
-  const input = readSigamePackInput(req.body);
-  if (!input) {
+app.post('/api/sigame-packs', async (req, res) => {
+  const title = sanitizeTitle(req.query.title);
+  const tags = parseSigameUploadTags(req.query.tags);
+  const originalFileName = sanitizeSigameOriginalFileName(
+    req.query.original_file_name
+  );
+  if (!title) return res.status(400).json({ error: 'Укажите название пака' });
+  if (tags === null) {
+    return res.status(400).json({ error: 'Укажите не более 8 корректных тегов' });
+  }
+  if (!originalFileName) {
     return res.status(400).json({
-      error: 'Проверьте название, ссылку, описание и теги пака',
+      error: 'Выберите файл пакета SIGame в формате .siq',
     });
   }
 
-  const userId = Number(req.tokenData.userId);
-  const packId = db.transaction(() => {
-    const result = sigameStmts.insert.run(
-      input.title,
-      input.packAuthor,
-      input.description,
-      input.sourceUrl,
-      userId,
-      Date.now()
-    );
-    const id = Number(result.lastInsertRowid);
-    replaceSigamePackTags(id, input.tags);
-    return id;
-  })();
+  const expectedSize = Number(req.headers['content-length']);
+  if (!Number.isInteger(expectedSize) || expectedSize < 1) {
+    return res.status(400).json({ error: 'Выберите файл пака' });
+  }
+  if (expectedSize > MAX_SIGAME_PACK_BYTES) {
+    return res.status(413).json({ error: 'Файл пака слишком большой' });
+  }
 
-  const pack = getSigamePackForViewer(packId, userId);
-  io.emit('sigame-packs-changed', { action: 'created', pack_id: packId });
-  res.status(201).json(pack);
+  const storageKey = `${crypto.randomUUID()}.siq`;
+  const finalPath = getSigamePackFilePath(storageKey);
+  const temporaryPath = path.join(sigamePacksPath, `.${storageKey}.upload`);
+  let finalized = false;
+
+  try {
+    const fileSize = await receiveSigamePackFile(req, temporaryPath, expectedSize);
+    await fs.promises.link(temporaryPath, finalPath);
+    finalized = true;
+    await fs.promises.unlink(temporaryPath);
+
+    const userId = Number(req.tokenData.userId);
+    const packId = db.transaction(() => {
+      const result = sigameStmts.insert.run(
+        title,
+        userId,
+        Date.now(),
+        originalFileName,
+        storageKey,
+        fileSize
+      );
+      const id = Number(result.lastInsertRowid);
+      replaceSigamePackTags(id, tags);
+      return id;
+    })();
+
+    const pack = getSigamePackForViewer(packId, userId);
+    io.emit('sigame-packs-changed', { action: 'created', pack_id: packId });
+    return res.status(201).json(pack);
+  } catch (error) {
+    await Promise.allSettled([
+      fs.promises.unlink(temporaryPath),
+      ...(finalized ? [fs.promises.unlink(finalPath)] : []),
+    ]);
+    console.warn('[cheese-wheel] SIGame pack upload failed:', error.message);
+    return res.status(error.status || 500).json({
+      error: error.status ? error.message : 'Не удалось сохранить файл пака',
+    });
+  }
 });
 
 app.patch('/api/sigame-packs/:id', (req, res) => {
@@ -3990,19 +4119,11 @@ app.patch('/api/sigame-packs/:id', (req, res) => {
 
   const input = readSigamePackInput(req.body, existing);
   if (!input) {
-    return res.status(400).json({
-      error: 'Проверьте название, ссылку, описание и теги пака',
-    });
+    return res.status(400).json({ error: 'Проверьте название и теги пака' });
   }
 
   db.transaction(() => {
-    sigameStmts.update.run(
-      input.title,
-      input.packAuthor,
-      input.description,
-      input.sourceUrl,
-      packId
-    );
+    sigameStmts.update.run(input.title, packId);
     replaceSigamePackTags(packId, input.tags);
   })();
 
@@ -4018,12 +4139,12 @@ app.post('/api/sigame-packs/:id/status', (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Пак не найден' });
 
   const status = req.body?.status;
-  if (!['planned', 'played'].includes(status)) {
+  if (!['unplayed', 'played'].includes(status)) {
     return res.status(400).json({ error: 'Неверный статус пака' });
   }
-  if (status === 'planned' && !canManageSigamePack(existing, req.tokenData)) {
+  if (status === 'unplayed' && !canManageSigamePack(existing, req.tokenData)) {
     return res.status(403).json({
-      error: 'Вернуть пак в планы может его автор или администратор',
+      error: 'Вернуть пак в несыгранные может его владелец или администратор',
     });
   }
 
@@ -4031,7 +4152,10 @@ app.post('/api/sigame-packs/:id/status', (req, res) => {
   if (status === 'played') {
     sigameStmts.markPlayed.run(userId, Date.now(), packId);
   } else {
-    sigameStmts.restorePlanned.run(packId);
+    db.transaction(() => {
+      sigameStmts.deleteRatingsForPack.run(packId);
+      sigameStmts.restorePlanned.run(packId);
+    })();
   }
 
   const pack = getSigamePackForViewer(packId, userId);
@@ -4040,6 +4164,49 @@ app.post('/api/sigame-packs/:id/status', (req, res) => {
     pack_id: packId,
   });
   res.json(pack);
+});
+
+app.get('/api/sigame-packs/:id/download', (req, res) => {
+  const packId = parseIntStrict(req.params.id);
+  if (isNaN(packId)) return res.status(400).json({ error: 'Неверный ID пака' });
+  const pack = sigameStmts.getRawById.get(packId);
+  if (!pack) return res.status(404).json({ error: 'Пак не найден' });
+
+  const filePath = getSigamePackFilePath(pack.storage_key);
+  if (!filePath || !fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'Файл для этой записи недоступен' });
+  }
+
+  const originalName = sanitizeSigameOriginalFileName(pack.original_file_name)
+    || 'sigame-pack.siq';
+  const fallbackName = originalName
+    .replace(/[^\x20-\x7E]/g, '_')
+    .replace(/["\\]/g, '_');
+  const encodedName = encodeURIComponent(originalName)
+    .replace(/['()]/g, character => `%${character.charCodeAt(0).toString(16)}`);
+  let stat;
+  try {
+    stat = fs.statSync(filePath);
+    if (!stat.isFile()) {
+      return res.status(404).json({ error: 'Файл для этой записи недоступен' });
+    }
+  } catch {
+    return res.status(404).json({ error: 'Файл для этой записи недоступен' });
+  }
+  res.set({
+    'Content-Type': 'application/octet-stream',
+    'Content-Length': String(stat.size),
+    'Content-Disposition': `attachment; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
+    'Cache-Control': 'private, no-store',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  const stream = fs.createReadStream(filePath);
+  stream.once('error', error => {
+    console.warn('[cheese-wheel] SIGame pack download failed:', error.message);
+    if (!res.headersSent) res.status(404).json({ error: 'Файл пака не найден' });
+    else res.destroy(error);
+  });
+  stream.pipe(res);
 });
 
 app.put('/api/sigame-packs/:id/rating', (req, res) => {
@@ -4082,7 +4249,36 @@ app.delete('/api/sigame-packs/:id', (req, res) => {
     return res.status(403).json({ error: 'Можно удалять только свои паки' });
   }
 
-  sigameStmts.delete.run(packId);
+  const filePath = getSigamePackFilePath(existing.storage_key);
+  let quarantinedPath = null;
+  try {
+    if (filePath && fs.existsSync(filePath)) {
+      quarantinedPath = `${filePath}.deleting-${crypto.randomUUID()}`;
+      fs.renameSync(filePath, quarantinedPath);
+    }
+    sigameStmts.delete.run(packId);
+  } catch (error) {
+    if (quarantinedPath && fs.existsSync(quarantinedPath)) {
+      try {
+        fs.renameSync(quarantinedPath, filePath);
+      } catch (restoreError) {
+        console.error(
+          '[cheese-wheel] Failed to restore SIGame pack after delete error:',
+          restoreError.message
+        );
+      }
+    }
+    return res.status(500).json({ error: 'Не удалось удалить пак' });
+  }
+
+  if (quarantinedPath) {
+    try {
+      fs.unlinkSync(quarantinedPath);
+    } catch (error) {
+      console.error('[cheese-wheel] Failed to remove SIGame pack file:', error.message);
+      return res.status(500).json({ error: 'Запись удалена, но файл не удалось удалить' });
+    }
+  }
   io.emit('sigame-packs-changed', { action: 'deleted', pack_id: packId });
   res.json({ ok: true });
 });

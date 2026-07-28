@@ -1,15 +1,16 @@
 # Проверяемые резервные копии
 
 `scripts/backup.js` создаёт согласованную онлайн-копию SQLite через backup API,
-проверяет `integrity_check` и `foreign_key_check`, сохраняет загрузки, формирует
-и повторно проверяет `SHA256SUMS`. Незавершённая копия никогда не публикуется
-как готовый снимок.
+проверяет `integrity_check` и `foreign_key_check`, сохраняет изображения и
+файлы паков SIGame, формирует и повторно проверяет `SHA256SUMS`. Незавершённая
+копия никогда не публикуется как готовый снимок.
 
 Снимки находятся вне каталога приложения:
 
 ```text
 /var/backups/cheese-wheel/snapshot-YYYYMMDDTHHMMSSZ/
 ├── cheese_wheel.db
+├── sigame-packs.tar
 ├── uploads.tar
 └── SHA256SUMS
 ```
@@ -21,8 +22,8 @@
 После успешного локального снимка systemd запускает отдельный
 `cheese-wheel-offsite-backup.service`. Если настроен `/etc/cheese-wheel/offsite.env`,
 снимок ещё раз проверяется и отправляется во внешнее хранилище через `restic`.
-Restic шифрует базу и загрузки до отправки. Локальный сервис при этом остаётся
-без сетевого доступа.
+Restic шифрует базу, изображения и паки SIGame до отправки. Локальный сервис
+при этом остаётся без сетевого доступа.
 
 При ошибке локального или внешнего бэкапа
 `cheese-wheel-backup-alert@.service` отправляет уведомление в Discord. Webhook
@@ -112,12 +113,13 @@ cd "$snapshot"
 sha256sum --check SHA256SUMS
 sqlite3 -readonly cheese_wheel.db 'PRAGMA integrity_check; PRAGMA foreign_key_check;'
 tar --list --file uploads.tar >/dev/null
+tar --list --file sigame-packs.tar >/dev/null
 ```
 
 Для учебного восстановления скопируйте снимок во временный каталог, откройте
-копию базы с `sqlite3`, распакуйте `uploads.tar` и запустите приложение с
-временными `DATA_DIR` и `UPLOADS_PATH`. Не заменяйте рабочую базу во время
-работы процесса.
+копию базы с `sqlite3`, распакуйте `uploads.tar` и `sigame-packs.tar`, затем
+запустите приложение с временными `DATA_DIR` и `UPLOADS_PATH`. Не заменяйте
+рабочую базу во время работы процесса.
 
 Проверить всю цепочку и последние сообщения:
 

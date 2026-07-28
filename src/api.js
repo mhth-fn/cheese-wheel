@@ -361,11 +361,16 @@ export async function fetchSigamePacks() {
   return data;
 }
 
-export async function createSigamePack(pack) {
-  return apiFetch('/api/sigame-packs', {
+export async function createSigamePack(pack, file) {
+  const params = new URLSearchParams({
+    title: pack.title,
+    tags: JSON.stringify(pack.tags || []),
+    original_file_name: file.name,
+  });
+  return apiFetch(`/api/sigame-packs?${params.toString()}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(pack),
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: file,
   });
 }
 
@@ -399,4 +404,8 @@ export async function deleteSigamePackRating(id) {
 
 export async function deleteSigamePack(id) {
   return apiFetch(`/api/sigame-packs/${id}`, { method: 'DELETE' });
+}
+
+export function getSigamePackDownloadUrl(id) {
+  return `/api/sigame-packs/${encodeURIComponent(id)}/download`;
 }

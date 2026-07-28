@@ -14,16 +14,21 @@ const {
 
 const fsp = fs.promises;
 
-test('backup creates and verifies an atomic SQLite and uploads snapshot', async t => {
+test('backup creates and verifies an atomic database and file-storage snapshot', async t => {
   const fixtureRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'cheese-wheel-backup-test-'));
   t.after(() => fsp.rm(fixtureRoot, { recursive: true, force: true }));
 
   const dataRoot = path.join(fixtureRoot, 'data');
   const uploadsPath = path.join(dataRoot, 'uploads');
+  const sigamePacksPath = path.join(dataRoot, 'sigame-packs');
   const backupRoot = path.join(fixtureRoot, 'backups');
   const databasePath = path.join(dataRoot, 'cheese_wheel.db');
-  await fsp.mkdir(uploadsPath, { recursive: true });
+  await Promise.all([
+    fsp.mkdir(uploadsPath, { recursive: true }),
+    fsp.mkdir(sigamePacksPath, { recursive: true }),
+  ]);
   await fsp.writeFile(path.join(uploadsPath, 'center.jpg'), 'image fixture');
+  await fsp.writeFile(path.join(sigamePacksPath, 'safe-id.siq'), 'pack fixture');
 
   const db = new Database(databasePath);
   db.pragma('journal_mode = WAL');
@@ -38,6 +43,7 @@ test('backup creates and verifies an atomic SQLite and uploads snapshot', async 
   const result = await runBackup({
     databasePath,
     uploadsPath,
+    sigamePacksPath,
     backupRoot,
     tarPath: '/usr/bin/tar',
     retentionDays: 30,
@@ -47,7 +53,12 @@ test('backup creates and verifies an atomic SQLite and uploads snapshot', async 
 
   assert.equal(path.basename(result.snapshot), 'snapshot-20260725T000000Z');
   const snapshotFiles = (await fsp.readdir(result.snapshot)).sort();
-  assert.deepEqual(snapshotFiles, ['SHA256SUMS', 'cheese_wheel.db', 'uploads.tar']);
+  assert.deepEqual(snapshotFiles, [
+    'SHA256SUMS',
+    'cheese_wheel.db',
+    'sigame-packs.tar',
+    'uploads.tar',
+  ]);
   verifyDatabase(path.join(result.snapshot, 'cheese_wheel.db'), ['users', 'movies']);
 
   const restored = new Database(path.join(result.snapshot, 'cheese_wheel.db'), {
@@ -60,6 +71,7 @@ test('backup creates and verifies an atomic SQLite and uploads snapshot', async 
     runBackup({
       databasePath,
       uploadsPath,
+      sigamePacksPath,
       backupRoot,
       tarPath: '/usr/bin/tar',
       retentionDays: 30,

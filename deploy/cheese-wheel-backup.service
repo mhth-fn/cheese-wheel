@@ -13,6 +13,7 @@ Group=root
 UMask=0077
 Environment=CHEESE_WHEEL_DB=/var/lib/cheese-wheel/cheese_wheel.db
 Environment=CHEESE_WHEEL_UPLOADS=/var/lib/cheese-wheel/uploads
+Environment=CHEESE_WHEEL_SIGAME_PACKS=/var/lib/cheese-wheel/sigame-packs
 Environment=CHEESE_WHEEL_BACKUP_DIR=/var/backups/cheese-wheel
 Environment=CHEESE_WHEEL_BACKUP_RETENTION_DAYS=30
 ExecStart=/usr/bin/node /opt/cheese-wheel/scripts/backup.js

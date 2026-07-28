@@ -71,12 +71,18 @@ async function findLatestSnapshot(backupRoot) {
 }
 
 async function verifySnapshot(snapshot, tarBin, execute = execFileAsync) {
-  await verifyManifest(snapshot, ['cheese_wheel.db', 'uploads.tar']);
+  await verifyManifest(snapshot, [
+    'cheese_wheel.db',
+    'sigame-packs.tar',
+    'uploads.tar',
+  ]);
   verifyDatabase(path.join(snapshot, 'cheese_wheel.db'));
-  await execute(tarBin, ['--list', '--file', path.join(snapshot, 'uploads.tar')], {
-    maxBuffer: 16 * 1024 * 1024,
-    timeout: 5 * 60 * 1000,
-  });
+  for (const archive of ['sigame-packs.tar', 'uploads.tar']) {
+    await execute(tarBin, ['--list', '--file', path.join(snapshot, archive)], {
+      maxBuffer: 16 * 1024 * 1024,
+      timeout: 5 * 60 * 1000,
+    });
+  }
 }
 
 async function runOffsiteBackup(options = {}) {

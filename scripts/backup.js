@@ -13,6 +13,7 @@ const fsp = fs.promises;
 
 const DEFAULT_DB_PATH = '/var/lib/cheese-wheel/cheese_wheel.db';
 const DEFAULT_UPLOADS_PATH = '/var/lib/cheese-wheel/uploads';
+const DEFAULT_SIGAME_PACKS_PATH = '/var/lib/cheese-wheel/sigame-packs';
 const DEFAULT_BACKUP_ROOT = '/var/backups/cheese-wheel';
 const DEFAULT_TAR_PATH = '/usr/bin/tar';
 const DEFAULT_RETENTION_DAYS = 30;
@@ -35,9 +36,15 @@ const SECURITY_TABLES = Object.freeze([
   'rate_limit_buckets',
   'audit_log',
 ]);
+const SIGAME_TABLES = Object.freeze([
+  'sigame_packs',
+  'sigame_pack_tags',
+  'sigame_pack_ratings',
+]);
 const EXPECTED_TABLES = Object.freeze([
   ...LEGACY_EXPECTED_TABLES,
   ...SECURITY_TABLES,
+  ...SIGAME_TABLES,
 ]);
 
 function parsePositiveInteger(value, fallback, label) {
@@ -225,12 +232,12 @@ async function verifyManifest(snapshotDirectory, files) {
   }
 }
 
-async function archiveAndVerifyUploads(uploadsPath, archivePath, tarPath) {
-  const resolvedUploads = path.resolve(uploadsPath);
-  await assertRealDirectory(resolvedUploads, 'Uploads path');
+async function archiveAndVerifyDirectory(directoryPath, archivePath, tarPath, label) {
+  const resolvedDirectory = path.resolve(directoryPath);
+  await assertRealDirectory(resolvedDirectory, label);
 
-  const parent = path.dirname(resolvedUploads);
-  const basename = path.basename(resolvedUploads);
+  const parent = path.dirname(resolvedDirectory);
+  const basename = path.basename(resolvedDirectory);
   await execFileAsync(tarPath, [
     '--create',
     '--file',
@@ -301,6 +308,11 @@ async function runBackup(options = {}) {
   try {
     const databasePath = path.resolve(options.databasePath || process.env.CHEESE_WHEEL_DB || DEFAULT_DB_PATH);
     const uploadsPath = path.resolve(options.uploadsPath || process.env.CHEESE_WHEEL_UPLOADS || DEFAULT_UPLOADS_PATH);
+    const sigamePacksPath = path.resolve(
+      options.sigamePacksPath
+      || process.env.CHEESE_WHEEL_SIGAME_PACKS
+      || DEFAULT_SIGAME_PACKS_PATH
+    );
     const backupRoot = await ensureSecureDirectory(
       options.backupRoot || process.env.CHEESE_WHEEL_BACKUP_DIR || DEFAULT_BACKUP_ROOT
     );
@@ -320,6 +332,7 @@ async function runBackup(options = {}) {
     await assertRegularFile(databasePath, 'SQLite database');
     await assertRegularFile(tarPath, 'tar executable');
     await assertRealDirectory(uploadsPath, 'Uploads path');
+    await assertRealDirectory(sigamePacksPath, 'SIGame packs path');
 
     try {
       await fsp.lstat(finalDirectory);
@@ -333,6 +346,7 @@ async function runBackup(options = {}) {
 
     const backupDatabasePath = path.join(temporaryDirectory, 'cheese_wheel.db');
     const uploadsArchivePath = path.join(temporaryDirectory, 'uploads.tar');
+    const sigamePacksArchivePath = path.join(temporaryDirectory, 'sigame-packs.tar');
 
     sourceDb = new Database(databasePath, {
       readonly: true,
@@ -383,9 +397,21 @@ async function runBackup(options = {}) {
     await fsp.chmod(backupDatabasePath, 0o600);
 
     verifyDatabase(backupDatabasePath, snapshotTables);
-    await archiveAndVerifyUploads(uploadsPath, uploadsArchivePath, tarPath);
+    await archiveAndVerifyDirectory(
+      uploadsPath,
+      uploadsArchivePath,
+      tarPath,
+      'Uploads path'
+    );
+    await archiveAndVerifyDirectory(
+      sigamePacksPath,
+      sigamePacksArchivePath,
+      tarPath,
+      'SIGame packs path'
+    );
     await writeAndVerifyManifest(temporaryDirectory, [
       'cheese_wheel.db',
+      'sigame-packs.tar',
       'uploads.tar',
     ]);
 
@@ -435,6 +461,7 @@ module.exports = {
   EXPECTED_TABLES,
   LEGACY_EXPECTED_TABLES,
   SECURITY_TABLES,
+  SIGAME_TABLES,
   assertSafeSnapshotPath,
   formatTimestamp,
   makeDatabaseStandalone,

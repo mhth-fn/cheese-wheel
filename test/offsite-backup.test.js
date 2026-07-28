@@ -14,10 +14,15 @@ const fsp = fs.promises;
 async function createVerifiedSnapshot(root, currentDate) {
   const dataRoot = path.join(root, 'data');
   const uploadsPath = path.join(dataRoot, 'uploads');
+  const sigamePacksPath = path.join(dataRoot, 'sigame-packs');
   const backupRoot = path.join(root, 'backups');
   const databasePath = path.join(dataRoot, 'cheese_wheel.db');
-  await fsp.mkdir(uploadsPath, { recursive: true });
+  await Promise.all([
+    fsp.mkdir(uploadsPath, { recursive: true }),
+    fsp.mkdir(sigamePacksPath, { recursive: true }),
+  ]);
   await fsp.writeFile(path.join(uploadsPath, 'center.jpg'), 'image fixture');
+  await fsp.writeFile(path.join(sigamePacksPath, 'safe-id.siq'), 'pack fixture');
 
   const db = new Database(databasePath);
   for (const table of EXPECTED_TABLES) {
@@ -28,6 +33,7 @@ async function createVerifiedSnapshot(root, currentDate) {
   const result = await runBackup({
     databasePath,
     uploadsPath,
+    sigamePacksPath,
     backupRoot,
     tarPath: '/usr/bin/tar',
     retentionDays: 30,
@@ -67,7 +73,7 @@ test('encrypted off-site flow re-verifies and uploads only the latest snapshot',
   assert.equal(result.snapshot, latest);
   assert.deepEqual(
     calls.map(call => call.args[0]),
-    ['--list', 'backup', 'snapshots', 'forget', 'check']
+    ['--list', '--list', 'backup', 'snapshots', 'forget', 'check']
   );
   const backupCall = calls.find(call => call.args[0] === 'backup');
   assert.ok(backupCall.args.includes(latest));

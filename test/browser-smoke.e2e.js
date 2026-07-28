@@ -16,6 +16,10 @@ const {
 } = require('./helpers/server-fixture');
 
 const fsp = fs.promises;
+const browserSiqFile = Buffer.from([
+  0x50, 0x4b, 0x05, 0x06,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+]);
 
 test('mobile browser can log in and use watched and reviews navigation', async t => {
   const dataDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'cheese-wheel-browser-test-'));
@@ -128,6 +132,78 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   const profileButton = page.getByRole('button', { name: 'Меню пользователя Сергей' });
   await profileButton.waitFor();
   await page.getByRole('button', { name: 'VPN', exact: true }).waitFor();
+
+  await page.getByRole('button', { name: 'Паки SIGame', exact: true }).click();
+  await page.waitForURL(`${instance.baseUrl}/sigame`);
+  await page.getByRole('heading', { name: 'Паки SIGame', exact: true }).waitFor();
+  const sigameSort = page.locator('.sigame-sort select');
+  assert.deepEqual(
+    await sigameSort.locator('option').allTextContents(),
+    ['Сначала новые', 'Сначала старые', 'По названию А–Я', 'По названию Я–А']
+  );
+  assert.equal(
+    (await sigameSort.locator('option').allTextContents())
+      .some(label => label.toLocaleLowerCase('ru-RU').includes('оценк')),
+    false
+  );
+
+  await page.getByRole('button', { name: 'Добавить пак', exact: true }).click();
+  const sigameDialog = page.getByRole('dialog', { name: 'Добавить пак' });
+  await sigameDialog.waitFor();
+  const addPackButton = sigameDialog.getByRole(
+    'button',
+    { name: 'Добавить в библиотеку', exact: true }
+  );
+  assert.equal(await addPackButton.isDisabled(), true);
+  await sigameDialog.locator('input[type="file"]').setInputFiles({
+    name: 'Browser Smoke.siq',
+    mimeType: 'application/octet-stream',
+    buffer: browserSiqFile,
+  });
+  await sigameDialog.getByLabel('Название *').fill('Browser Smoke Pack');
+  await sigameDialog.getByLabel('Теги через запятую, до 8').fill('кино, сложный, КИНО');
+  assert.equal(await addPackButton.isEnabled(), true);
+  await addPackButton.click();
+
+  const sigameCard = page.locator('.sigame-card', { hasText: 'Browser Smoke Pack' });
+  await sigameCard.waitFor();
+  await page.getByRole('tab', { name: 'Не сыграны 1', exact: true }).waitFor();
+  const sigameSearch = page.getByPlaceholder('Название или тег…');
+  await sigameSearch.fill('browser smoke');
+  await sigameCard.waitFor();
+  await sigameSearch.fill('кино');
+  await sigameCard.waitFor();
+  await sigameSearch.fill('ничего-похожего');
+  await page.getByRole(
+    'heading',
+    { name: 'По вашему запросу ничего не найдено', exact: true }
+  ).waitFor();
+  await sigameSearch.fill('');
+  await sigameCard.getByRole(
+    'button',
+    { name: 'Отметить сыгранным', exact: true }
+  ).click();
+  await page.getByRole('tab', { name: 'Не сыграны 0', exact: true }).waitFor();
+  await page.getByRole('tab', { name: 'Сыгранные 1', exact: true }).click();
+  await sigameCard.waitFor();
+  assert.deepEqual(
+    await sigameSort.locator('option').allTextContents(),
+    [
+      'Недавно сыгранные',
+      'Давно сыгранные',
+      'С высокой оценкой',
+      'С низкой оценкой',
+      'По названию А–Я',
+      'По названию Я–А',
+    ]
+  );
+  await sigameCard.locator('.sigame-rating-control select').selectOption('9');
+  await sigameCard.getByText('9.0', { exact: true }).waitFor();
+  await sigameCard.getByRole(
+    'button',
+    { name: 'Вернуть в несыгранные', exact: true }
+  ).click();
+  await page.getByRole('tab', { name: 'Сыгранные 0', exact: true }).waitFor();
 
   await page.getByRole('button', { name: 'Просмотренные', exact: true }).click();
   await page.waitForURL(`${instance.baseUrl}/watched`);

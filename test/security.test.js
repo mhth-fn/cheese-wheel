@@ -32,7 +32,8 @@ test('TOTP secret encryption authenticates both ciphertext and user id', () => {
   const encrypted = encryptTotpSecret(secret, key, 2);
   assert.deepEqual(decryptTotpSecret(encrypted, key, 2), secret);
   assert.throws(() => decryptTotpSecret(encrypted, key, 3));
-  assert.throws(() => decryptTotpSecret(`${encrypted.slice(0, -1)}0`, key, 2));
+  const tampered = `${encrypted.slice(0, -1)}${encrypted.endsWith('0') ? '1' : '0'}`;
+  assert.throws(() => decryptTotpSecret(tampered, key, 2));
 });
 
 test('base32 encoding and RFC 6238 SHA-1 vector are correct', () => {

@@ -1,21 +1,39 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   createSigamePack,
   deleteSigamePack,
   deleteSigamePackRating,
   fetchSigamePacks,
+  getSigamePackDownloadUrl,
   rateSigamePack,
   setSigamePackStatus,
   updateSigamePack,
 } from '../api';
 import { useApp } from '../App';
 
-const EMPTY_FORM = {
-  title: '',
-  pack_author: '',
-  source_url: '',
-  description: '',
-  tags: '',
+const EMPTY_FORM = { title: '', tags: '' };
+const MAX_FILE_SIZE = 200 * 1024 * 1024;
+
+const SORT_OPTIONS = {
+  unplayed: [
+    { value: 'created-desc', label: 'Сначала новые' },
+    { value: 'created-asc', label: 'Сначала старые' },
+    { value: 'title-asc', label: 'По названию А–Я' },
+    { value: 'title-desc', label: 'По названию Я–А' },
+  ],
+  played: [
+    { value: 'played-desc', label: 'Недавно сыгранные' },
+    { value: 'played-asc', label: 'Давно сыгранные' },
+    { value: 'rating-desc', label: 'С высокой оценкой' },
+    { value: 'rating-asc', label: 'С низкой оценкой' },
+    { value: 'title-asc', label: 'По названию А–Я' },
+    { value: 'title-desc', label: 'По названию Я–А' },
+  ],
+};
+
+const DEFAULT_SORT = {
+  unplayed: 'created-desc',
+  played: 'played-desc',
 };
 
 const dateFormatter = new Intl.DateTimeFormat('ru-RU', {
@@ -34,28 +52,93 @@ function formatDate(timestamp) {
   return timestamp ? dateFormatter.format(new Date(timestamp)) : '';
 }
 
+function formatFileSize(bytes) {
+  if (bytes == null || !Number.isFinite(Number(bytes))) return 'Размер неизвестен';
+  const value = Number(bytes);
+  if (value < 1024) return `${value} Б`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(value < 10 * 1024 ? 1 : 0)} КБ`;
+  return `${(value / (1024 * 1024)).toFixed(value < 10 * 1024 * 1024 ? 1 : 0)} МБ`;
+}
+
 function normalizeTags(rawTags) {
-  return [...new Set(
-    String(rawTags || '')
-      .split(',')
-      .map(tag => tag.trim())
-      .filter(Boolean)
-  )];
+  const tags = [];
+  const seen = new Set();
+  String(rawTags || '')
+    .split(',')
+    .map(tag => tag.trim())
+    .filter(Boolean)
+    .forEach(tag => {
+      const key = tag.toLocaleLowerCase('ru-RU');
+      if (seen.has(key)) return;
+      seen.add(key);
+      tags.push(tag);
+    });
+  return tags;
+}
+
+function validateSiqFile(file) {
+  if (!file || !file.name.toLocaleLowerCase('ru-RU').endsWith('.siq')) {
+    return 'Выберите файл пакета SIGame в формате .siq';
+  }
+  if (file.size < 1) return 'Выбранный файл пуст';
+  if (file.size > MAX_FILE_SIZE) return 'Размер файла не должен превышать 200 МБ';
+  return '';
+}
+
+function sortPacks(packs, sort) {
+  return packs
+    .map((pack, index) => ({ pack, index }))
+    .sort((firstEntry, secondEntry) => {
+      const first = firstEntry.pack;
+      const second = secondEntry.pack;
+      let result = 0;
+
+      if (sort === 'created-desc') result = second.added_at - first.added_at;
+      if (sort === 'created-asc') result = first.added_at - second.added_at;
+      if (sort === 'played-desc') result = (second.played_at || 0) - (first.played_at || 0);
+      if (sort === 'played-asc') result = (first.played_at || 0) - (second.played_at || 0);
+      if (sort === 'title-asc') result = first.title.localeCompare(second.title, 'ru');
+      if (sort === 'title-desc') result = second.title.localeCompare(first.title, 'ru');
+      if (sort === 'rating-desc' || sort === 'rating-asc') {
+        const firstMissing = first.average_rating == null;
+        const secondMissing = second.average_rating == null;
+        if (firstMissing !== secondMissing) result = firstMissing ? 1 : -1;
+        else if (!firstMissing) {
+          result = sort === 'rating-desc'
+            ? second.average_rating - first.average_rating
+            : first.average_rating - second.average_rating;
+        }
+      }
+
+      return result || firstEntry.index - secondEntry.index;
+    })
+    .map(entry => entry.pack);
 }
 
 export default function SigamePacksPage() {
   const { currentUser, isGuest, isAdmin, socket, showToast } = useApp();
   const [packs, setPacks] = useState([]);
   const [loadState, setLoadState] = useState('loading');
-  const [activeTab, setActiveTab] = useState('planned');
+  const [activeTab, setActiveTab] = useState('unplayed');
   const [search, setSearch] = useState('');
   const [activeTag, setActiveTag] = useState('');
-  const [sort, setSort] = useState('recent');
+  const [sort, setSort] = useState(DEFAULT_SORT.unplayed);
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [fileError, setFileError] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
   const [formBusy, setFormBusy] = useState(false);
   const [busyId, setBusyId] = useState(null);
+  const [menuPackId, setMenuPackId] = useState(null);
+  const fileInputRef = useRef(null);
+  const formTags = normalizeTags(form.tags);
+  const tagError = formTags.length > 8
+    ? 'Можно указать не более 8 тегов'
+    : formTags.some(tag => tag.length > 24)
+      ? 'Каждый тег должен быть не длиннее 24 символов'
+      : '';
 
   const loadPacks = useCallback(async ({ quiet = false } = {}) => {
     if (!quiet) setLoadState('loading');
@@ -66,7 +149,7 @@ export default function SigamePacksPage() {
       setLoadState('ready');
     } catch (error) {
       if (!quiet) setLoadState('error');
-      if (quiet) showToast(error.message || 'Не удалось обновить паки', 'error');
+      else showToast(error.message || 'Не удалось обновить паки', 'error');
     }
   }, [showToast]);
 
@@ -81,27 +164,51 @@ export default function SigamePacksPage() {
     return () => socket.off('sigame-packs-changed', handleChange);
   }, [loadPacks, socket]);
 
+  useEffect(() => {
+    const available = SORT_OPTIONS[activeTab].some(option => option.value === sort);
+    if (!available) setSort(DEFAULT_SORT[activeTab]);
+  }, [activeTab, sort]);
+
+  useEffect(() => {
+    const closeMenu = event => {
+      if (!event.target.closest('.sigame-more')) setMenuPackId(null);
+    };
+    document.addEventListener('mousedown', closeMenu);
+    return () => document.removeEventListener('mousedown', closeMenu);
+  }, []);
+
+  useEffect(() => {
+    if (!formOpen) return undefined;
+    const closeOnEscape = event => {
+      if (event.key === 'Escape' && !formBusy) closeForm();
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [formBusy, formOpen]);
+
   const counts = useMemo(() => ({
-    planned: packs.filter(pack => pack.status === 'planned').length,
+    unplayed: packs.filter(pack => pack.status === 'unplayed').length,
     played: packs.filter(pack => pack.status === 'played').length,
   }), [packs]);
 
   const tags = useMemo(() => {
     const tagMap = new Map();
-    packs.forEach(pack => {
-      pack.tags.forEach(tag => {
-        const key = tag.toLocaleLowerCase('ru-RU');
-        const current = tagMap.get(key);
-        tagMap.set(key, {
-          label: current?.label || tag,
-          count: (current?.count || 0) + 1,
+    packs
+      .filter(pack => pack.status === activeTab)
+      .forEach(pack => {
+        pack.tags.forEach(tag => {
+          const key = tag.toLocaleLowerCase('ru-RU');
+          const current = tagMap.get(key);
+          tagMap.set(key, {
+            label: current?.label || tag,
+            count: (current?.count || 0) + 1,
+          });
         });
       });
-    });
     return [...tagMap.values()].sort((first, second) => (
       second.count - first.count || first.label.localeCompare(second.label, 'ru')
     ));
-  }, [packs]);
+  }, [activeTab, packs]);
 
   const visiblePacks = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('ru-RU');
@@ -114,81 +221,98 @@ export default function SigamePacksPage() {
         return false;
       }
       if (!query) return true;
-      return [
-        pack.title,
-        pack.pack_author,
-        pack.description,
-        pack.added_by_name,
-        ...pack.tags,
-      ].some(value => String(value || '').toLocaleLowerCase('ru-RU').includes(query));
+      return [pack.title, ...pack.tags].some(value => (
+        value.toLocaleLowerCase('ru-RU').includes(query)
+      ));
     });
-
-    return filtered.sort((first, second) => {
-      if (sort === 'title') return first.title.localeCompare(second.title, 'ru');
-      if (sort === 'rating') {
-        return (second.average_rating ?? -1) - (first.average_rating ?? -1)
-          || second.ratings_count - first.ratings_count;
-      }
-      const firstDate = activeTab === 'played' ? first.played_at : first.added_at;
-      const secondDate = activeTab === 'played' ? second.played_at : second.added_at;
-      return secondDate - firstDate;
-    });
+    return sortPacks(filtered, sort);
   }, [activeTab, activeTag, packs, search, sort]);
+
+  const upsertPack = pack => {
+    setPacks(previous => [
+      pack,
+      ...previous.filter(item => item.id !== pack.id),
+    ]);
+  };
+
+  const selectTab = tab => {
+    setActiveTab(tab);
+    setActiveTag('');
+    setSort(DEFAULT_SORT[tab]);
+  };
 
   const closeForm = () => {
     setFormOpen(false);
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setSelectedFile(null);
+    setFileError('');
+    setIsDragging(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const openCreateForm = () => {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setSelectedFile(null);
+    setFileError('');
     setFormOpen(true);
   };
 
   const openEditForm = pack => {
+    setMenuPackId(null);
     setEditingId(pack.id);
-    setForm({
-      title: pack.title,
-      pack_author: pack.pack_author,
-      source_url: pack.source_url,
-      description: pack.description,
-      tags: pack.tags.join(', '),
-    });
+    setForm({ title: pack.title, tags: pack.tags.join(', ') });
+    setSelectedFile(null);
+    setFileError('');
     setFormOpen(true);
-    window.requestAnimationFrame(() => {
-      document.querySelector('.sigame-pack-form')?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      });
-    });
   };
 
-  const updateForm = (field, value) => {
-    setForm(previous => ({ ...previous, [field]: value }));
+  const chooseFile = file => {
+    const error = validateSiqFile(file);
+    if (error) {
+      setSelectedFile(null);
+      setFileError(error);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    setSelectedFile(file);
+    setFileError('');
+  };
+
+  const removeSelectedFile = () => {
+    setSelectedFile(null);
+    setFileError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const submitPack = async event => {
     event.preventDefault();
-    if (formBusy || !form.title.trim()) return;
+    const title = form.title.trim();
+    if (!title || formBusy) return;
+    if (tagError) {
+      showToast(tagError, 'error');
+      return;
+    }
+    if (!editingId && (!selectedFile || validateSiqFile(selectedFile))) {
+      setFileError('Выберите файл пакета SIGame в формате .siq');
+      return;
+    }
+
     setFormBusy(true);
     try {
-      const payload = {
-        title: form.title.trim(),
-        pack_author: form.pack_author.trim(),
-        source_url: form.source_url.trim(),
-        description: form.description.trim(),
-        tags: normalizeTags(form.tags),
-      };
+      const payload = { title, tags: formTags };
       const response = editingId
         ? await updateSigamePack(editingId, payload)
-        : await createSigamePack(payload);
-      await readResponse(response);
-      showToast(editingId ? 'Пак обновлён' : 'Пак добавлен в библиотеку', 'success');
+        : await createSigamePack(payload, selectedFile);
+      const pack = await readResponse(response);
+      upsertPack(pack);
+      showToast(
+        editingId ? 'Пак обновлён' : 'Пак добавлен в библиотеку',
+        'success'
+      );
       closeForm();
-      setActiveTab('planned');
-      await loadPacks({ quiet: true });
+      selectTab(pack.status);
     } catch (error) {
       showToast(error.message || 'Не удалось сохранить пак', 'error');
     } finally {
@@ -199,15 +323,14 @@ export default function SigamePacksPage() {
   const changeStatus = async (pack, status) => {
     setBusyId(pack.id);
     try {
-      await readResponse(await setSigamePackStatus(pack.id, status));
+      const updated = await readResponse(await setSigamePackStatus(pack.id, status));
+      upsertPack(updated);
       showToast(
         status === 'played'
-          ? `«${pack.title}» перенесён в сыгранные`
-          : `«${pack.title}» возвращён в планы`,
+          ? `«${pack.title}» отмечен сыгранным`
+          : `«${pack.title}» возвращён в несыгранные`,
         'success'
       );
-      await loadPacks({ quiet: true });
-      if (visiblePacks.length === 1) setActiveTab(status);
     } catch (error) {
       showToast(error.message || 'Не удалось изменить статус', 'error');
     } finally {
@@ -216,14 +339,15 @@ export default function SigamePacksPage() {
   };
 
   const changeRating = async (pack, rawRating) => {
+    if (pack.status !== 'played') return;
     setBusyId(pack.id);
     try {
       const response = rawRating
         ? await rateSigamePack(pack.id, Number(rawRating))
         : await deleteSigamePackRating(pack.id);
-      await readResponse(response);
+      const updated = await readResponse(response);
+      upsertPack(updated);
       showToast(rawRating ? `Ваша оценка — ${rawRating}` : 'Оценка удалена', 'success');
-      await loadPacks({ quiet: true });
     } catch (error) {
       showToast(error.message || 'Не удалось сохранить оценку', 'error');
     } finally {
@@ -232,13 +356,17 @@ export default function SigamePacksPage() {
   };
 
   const removePack = async pack => {
-    if (!window.confirm(`Удалить пак «${pack.title}»? Оценки тоже будут удалены.`)) return;
+    setMenuPackId(null);
+    if (!window.confirm(
+      `Удалить пак “${pack.title}”? Файл будет удалён из библиотеки`
+    )) {
+      return;
+    }
     setBusyId(pack.id);
     try {
       await readResponse(await deleteSigamePack(pack.id));
+      setPacks(previous => previous.filter(item => item.id !== pack.id));
       showToast('Пак удалён', 'info');
-      if (editingId === pack.id) closeForm();
-      await loadPacks({ quiet: true });
     } catch (error) {
       showToast(error.message || 'Не удалось удалить пак', 'error');
     } finally {
@@ -246,125 +374,48 @@ export default function SigamePacksPage() {
     }
   };
 
-  const showEmptyLibrary = loadState === 'ready' && packs.length === 0;
+  const noStatusPacks = loadState === 'ready' && counts[activeTab] === 0;
+  const noSearchResults = loadState === 'ready'
+    && counts[activeTab] > 0
+    && visiblePacks.length === 0;
 
   return (
     <main className="sigame-page">
       <section className="sigame-hero">
-        <div className="sigame-hero-copy">
-          <span className="sigame-kicker">Библиотека для своих игр</span>
+        <div>
           <h1>Паки SIGame</h1>
-          <p>
-            Собирайте интересные пакеты, выбирайте игру на вечер и сохраняйте
-            общую историю с оценками.
-          </p>
-        </div>
-        <div className="sigame-summary" aria-label="Статистика библиотеки">
-          <div><strong>{counts.planned}</strong><span>на игру</span></div>
-          <div><strong>{counts.played}</strong><span>сыграно</span></div>
+          <p>Файлы паков для следующей игры и история уже сыгранных.</p>
         </div>
         {!isGuest && (
-          <button
-            className="sigame-add-button"
-            type="button"
-            onClick={formOpen && !editingId ? closeForm : openCreateForm}
-          >
-            <span aria-hidden="true">{formOpen && !editingId ? '×' : '+'}</span>
-            {formOpen && !editingId ? 'Закрыть форму' : 'Добавить пак'}
+          <button className="sigame-add-button" type="button" onClick={openCreateForm}>
+            <span aria-hidden="true">+</span>
+            Добавить пак
           </button>
         )}
       </section>
-
-      {formOpen && !isGuest && (
-        <form className="sigame-pack-form" onSubmit={submitPack}>
-          <div className="sigame-form-heading">
-            <div>
-              <span>{editingId ? 'Редактирование' : 'Новая находка'}</span>
-              <h2>{editingId ? 'Обновить пак' : 'Добавить пак в библиотеку'}</h2>
-            </div>
-            <button type="button" className="sigame-form-close" onClick={closeForm} aria-label="Закрыть форму">×</button>
-          </div>
-          <div className="sigame-form-grid">
-            <label className="sigame-field sigame-field-wide">
-              <span>Название *</span>
-              <input
-                value={form.title}
-                onChange={event => updateForm('title', event.target.value)}
-                maxLength={200}
-                placeholder="Например, Наука вокруг нас"
-                required
-                autoFocus
-              />
-            </label>
-            <label className="sigame-field">
-              <span>Автор пака</span>
-              <input
-                value={form.pack_author}
-                onChange={event => updateForm('pack_author', event.target.value)}
-                maxLength={120}
-                placeholder="Ник или имя автора"
-              />
-            </label>
-            <label className="sigame-field">
-              <span>Ссылка на пак</span>
-              <input
-                type="url"
-                value={form.source_url}
-                onChange={event => updateForm('source_url', event.target.value)}
-                maxLength={1000}
-                placeholder="https://…"
-              />
-            </label>
-            <label className="sigame-field sigame-field-wide">
-              <span>Теги <small>через запятую, до 8</small></span>
-              <input
-                value={form.tags}
-                onChange={event => updateForm('tags', event.target.value)}
-                placeholder="кино, музыка, сложный, 18+"
-              />
-            </label>
-            <label className="sigame-field sigame-field-wide">
-              <span>Коротко о паке</span>
-              <textarea
-                value={form.description}
-                onChange={event => updateForm('description', event.target.value)}
-                maxLength={2000}
-                rows={3}
-                placeholder="Чем он хорош и для какой компании подойдёт?"
-              />
-              <small className="sigame-symbol-count">{form.description.length}/2000</small>
-            </label>
-          </div>
-          <div className="sigame-form-actions">
-            <button className="button-ghost" type="button" onClick={closeForm}>Отмена</button>
-            <button className="button-primary" type="submit" disabled={formBusy || !form.title.trim()}>
-              {formBusy ? 'Сохраняем…' : editingId ? 'Сохранить изменения' : 'Добавить в планы'}
-            </button>
-          </div>
-        </form>
-      )}
 
       <section className="sigame-controls" aria-label="Фильтры библиотеки">
         <div className="sigame-tabs" role="tablist" aria-label="Статус паков">
           <button
             type="button"
             role="tab"
-            aria-selected={activeTab === 'planned'}
-            className={activeTab === 'planned' ? 'active' : ''}
-            onClick={() => setActiveTab('planned')}
+            aria-selected={activeTab === 'unplayed'}
+            className={activeTab === 'unplayed' ? 'active' : ''}
+            onClick={() => selectTab('unplayed')}
           >
-            На игру <span>{counts.planned}</span>
+            Не сыграны <span>{counts.unplayed}</span>
           </button>
           <button
             type="button"
             role="tab"
             aria-selected={activeTab === 'played'}
             className={activeTab === 'played' ? 'active' : ''}
-            onClick={() => setActiveTab('played')}
+            onClick={() => selectTab('played')}
           >
             Сыгранные <span>{counts.played}</span>
           </button>
         </div>
+
         <div className="sigame-search-row">
           <label className="sigame-search">
             <span aria-hidden="true">⌕</span>
@@ -373,7 +424,7 @@ export default function SigamePacksPage() {
               type="search"
               value={search}
               onChange={event => setSearch(event.target.value)}
-              placeholder="Название, автор или тег…"
+              placeholder="Название или тег…"
             />
             {search && (
               <button type="button" onClick={() => setSearch('')} aria-label="Очистить поиск">×</button>
@@ -382,12 +433,13 @@ export default function SigamePacksPage() {
           <label className="sigame-sort">
             <span className="sr-only">Сортировка</span>
             <select value={sort} onChange={event => setSort(event.target.value)}>
-              <option value="recent">Сначала новые</option>
-              <option value="rating">По оценке</option>
-              <option value="title">По названию</option>
+              {SORT_OPTIONS[activeTab].map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
             </select>
           </label>
         </div>
+
         {tags.length > 0 && (
           <div className="sigame-tags-filter" aria-label="Фильтр по тегам">
             <button
@@ -418,7 +470,6 @@ export default function SigamePacksPage() {
         <div className="sigame-loading" role="status">
           <div className="sigame-card-skeleton" />
           <div className="sigame-card-skeleton" />
-          <div className="sigame-card-skeleton" />
         </div>
       )}
 
@@ -426,25 +477,29 @@ export default function SigamePacksPage() {
         <div className="sigame-empty" role="alert">
           <span aria-hidden="true">📡</span>
           <h2>Не удалось загрузить библиотеку</h2>
-          <p>Проверьте соединение и попробуйте ещё раз.</p>
           <button className="button-primary" type="button" onClick={() => loadPacks()}>Повторить</button>
         </div>
       )}
 
-      {showEmptyLibrary && (
+      {noStatusPacks && (
         <div className="sigame-empty">
-          <span aria-hidden="true">🧠</span>
-          <h2>Здесь появится первая игра</h2>
-          <p>Добавьте найденный пак, чтобы не потерять его до следующей встречи.</p>
-          {!isGuest && <button className="button-primary" type="button" onClick={openCreateForm}>Добавить первый пак</button>}
+          <span aria-hidden="true">{activeTab === 'unplayed' ? '📦' : '🏁'}</span>
+          <h2>{activeTab === 'unplayed' ? 'Нет несыгранных паков' : 'Пока ничего не сыграно'}</h2>
+          <p>
+            {activeTab === 'unplayed'
+              ? 'Добавьте новый пак или верните сюда ранее сыгранный'
+              : 'Отмечайте сыгранные паки — здесь появятся оценки и история'}
+          </p>
+          {activeTab === 'unplayed' && !isGuest && (
+            <button className="button-primary" type="button" onClick={openCreateForm}>Добавить пак</button>
+          )}
         </div>
       )}
 
-      {loadState === 'ready' && packs.length > 0 && visiblePacks.length === 0 && (
+      {noSearchResults && (
         <div className="sigame-empty sigame-empty-compact">
           <span aria-hidden="true">🔎</span>
-          <h2>Ничего не нашлось</h2>
-          <p>Попробуйте убрать тег или изменить запрос.</p>
+          <h2>По вашему запросу ничего не найдено</h2>
           <button
             className="button-ghost"
             type="button"
@@ -479,61 +534,97 @@ export default function SigamePacksPage() {
                       </button>
                     ))}
                   </div>
-                  {pack.status === 'played' && (
-                    <span className="sigame-played-badge">Сыгран</span>
+                  {canManage && (
+                    <div className="sigame-more">
+                      <button
+                        type="button"
+                        className="sigame-more-trigger"
+                        aria-label={`Действия с паком ${pack.title}`}
+                        aria-expanded={menuPackId === pack.id}
+                        onClick={() => setMenuPackId(
+                          menuPackId === pack.id ? null : pack.id
+                        )}
+                      >
+                        •••
+                      </button>
+                      {menuPackId === pack.id && (
+                        <div className="sigame-more-menu" role="menu">
+                          <button type="button" role="menuitem" onClick={() => openEditForm(pack)}>
+                            Переименовать и изменить теги
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="danger"
+                            onClick={() => removePack(pack)}
+                            disabled={isBusy}
+                          >
+                            Удалить
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
+
                 <div className="sigame-card-heading">
+                  <h2>{pack.title}</h2>
+                  {pack.status === 'played' && pack.average_rating != null && (
+                    <div className="sigame-rating-summary" title={`${pack.ratings_count} оценок`}>
+                      <strong>{pack.average_rating.toFixed(1)}</strong>
+                      <span>★ · {pack.ratings_count}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="sigame-file-info">
+                  <span aria-hidden="true">📄</span>
                   <div>
-                    <h2>{pack.title}</h2>
-                    {pack.pack_author && <p>Автор пака: {pack.pack_author}</p>}
-                  </div>
-                  <div
-                    className={`sigame-rating-summary ${pack.average_rating == null ? 'empty' : ''}`}
-                    title={`${pack.ratings_count} оценок`}
-                  >
-                    <strong>{pack.average_rating == null ? '—' : pack.average_rating.toFixed(1)}</strong>
-                    <span>★ · {pack.ratings_count}</span>
+                    <strong>{pack.original_file_name || 'Файл не прикреплён'}</strong>
+                    <small>{formatFileSize(pack.file_size)}</small>
                   </div>
                 </div>
-                {pack.description && <p className="sigame-description">{pack.description}</p>}
+
                 <div className="sigame-card-meta">
-                  <span>Добавил {pack.added_by_name}</span>
-                  <span>{formatDate(pack.added_at)}</span>
-                  {pack.status === 'played' && pack.played_by_name && (
-                    <span>Сыграл: {pack.played_by_name}, {formatDate(pack.played_at)}</span>
+                  <span>Добавлен {formatDate(pack.added_at)}</span>
+                  {pack.status === 'played' && (
+                    <span>Сыгран {formatDate(pack.played_at)}</span>
                   )}
                 </div>
+
                 <div className="sigame-card-footer">
-                  <div className="sigame-card-links">
-                    {pack.source_url && (
-                      <a href={pack.source_url} target="_blank" rel="noopener noreferrer">
-                        Открыть пак <span aria-hidden="true">↗</span>
+                  <div className="sigame-primary-actions">
+                    {pack.has_file ? (
+                      <a
+                        className="sigame-download-button"
+                        href={getSigamePackDownloadUrl(pack.id)}
+                        download={pack.original_file_name || undefined}
+                      >
+                        Скачать
                       </a>
+                    ) : (
+                      <button className="sigame-download-button" type="button" disabled>
+                        Файл недоступен
+                      </button>
                     )}
-                    {canManage && (
-                      <>
-                        <button type="button" onClick={() => openEditForm(pack)}>Изменить</button>
-                        <button className="danger" type="button" onClick={() => removePack(pack)} disabled={isBusy}>Удалить</button>
-                      </>
+
+                    {pack.status === 'unplayed' && !isGuest && (
+                      <button
+                        className="sigame-status-button"
+                        type="button"
+                        onClick={() => changeStatus(pack, 'played')}
+                        disabled={isBusy}
+                      >
+                        {isBusy ? 'Сохраняем…' : 'Отметить сыгранным'}
+                      </button>
                     )}
                   </div>
-                  {pack.status === 'planned' && !isGuest && (
-                    <button
-                      className="sigame-play-button"
-                      type="button"
-                      onClick={() => changeStatus(pack, 'played')}
-                      disabled={isBusy}
-                    >
-                      <span aria-hidden="true">✓</span>
-                      {isBusy ? 'Переносим…' : 'Отметить сыгранным'}
-                    </button>
-                  )}
+
                   {pack.status === 'played' && (
-                    <div className="sigame-rating-control">
-                      {!isGuest ? (
-                        <label>
-                          <span>Ваша оценка</span>
+                    <div className="sigame-played-actions">
+                      {!isGuest && (
+                        <label className="sigame-rating-control">
+                          <span>{pack.my_rating == null ? 'Оценить' : 'Ваша оценка'}</span>
                           <select
                             value={pack.my_rating ?? ''}
                             onChange={event => changeRating(pack, event.target.value)}
@@ -545,17 +636,15 @@ export default function SigamePacksPage() {
                             ))}
                           </select>
                         </label>
-                      ) : (
-                        <span>Войдите участником, чтобы оценить</span>
                       )}
                       {canManage && (
                         <button
                           type="button"
                           className="sigame-restore-button"
-                          onClick={() => changeStatus(pack, 'planned')}
+                          onClick={() => changeStatus(pack, 'unplayed')}
                           disabled={isBusy}
                         >
-                          Вернуть в планы
+                          Вернуть в несыгранные
                         </button>
                       )}
                     </div>
@@ -571,6 +660,138 @@ export default function SigamePacksPage() {
         <p className="sigame-guest-note">
           Гостям доступен просмотр. Войдите участником, чтобы добавлять и оценивать паки.
         </p>
+      )}
+
+      {formOpen && (
+        <div
+          className="sigame-modal-backdrop"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget && !formBusy) closeForm();
+          }}
+        >
+          <form
+            className="sigame-pack-form"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sigame-form-title"
+            onSubmit={submitPack}
+          >
+            <div className="sigame-form-heading">
+              <h2 id="sigame-form-title">{editingId ? 'Изменить пак' : 'Добавить пак'}</h2>
+              <button
+                type="button"
+                className="sigame-form-close"
+                onClick={closeForm}
+                disabled={formBusy}
+                aria-label="Закрыть форму"
+              >
+                ×
+              </button>
+            </div>
+
+            {!editingId && (
+              <div className="sigame-file-field">
+                <span className="sigame-field-label">Файл пака *</span>
+                {!selectedFile ? (
+                  <label
+                    className={`sigame-dropzone ${isDragging ? 'dragging' : ''} ${fileError ? 'invalid' : ''}`}
+                    onDragEnter={event => {
+                      event.preventDefault();
+                      setIsDragging(true);
+                    }}
+                    onDragOver={event => event.preventDefault()}
+                    onDragLeave={event => {
+                      event.preventDefault();
+                      setIsDragging(false);
+                    }}
+                    onDrop={event => {
+                      event.preventDefault();
+                      setIsDragging(false);
+                      chooseFile(event.dataTransfer.files?.[0]);
+                    }}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".siq"
+                      onChange={event => chooseFile(event.target.files?.[0])}
+                    />
+                    <span className="sigame-dropzone-icon" aria-hidden="true">⇧</span>
+                    <strong>Перетащите .siq-файл сюда</strong>
+                    <span>или выберите файл</span>
+                  </label>
+                ) : (
+                  <div className="sigame-selected-file">
+                    <span aria-hidden="true">📦</span>
+                    <div>
+                      <strong>{selectedFile.name}</strong>
+                      <small>{formatFileSize(selectedFile.size)}</small>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={removeSelectedFile}
+                      disabled={formBusy}
+                      aria-label="Удалить выбранный файл"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+                {fileError && <span className="sigame-file-error" role="alert">{fileError}</span>}
+              </div>
+            )}
+
+            <label className="sigame-field">
+              <span>Название *</span>
+              <input
+                value={form.title}
+                onChange={event => setForm(previous => ({
+                  ...previous,
+                  title: event.target.value,
+                }))}
+                maxLength={200}
+                placeholder="Например, История Древней Греции"
+                required
+                autoFocus={Boolean(editingId)}
+              />
+            </label>
+
+            <label className="sigame-field">
+              <span>Теги <small>через запятую, до 8</small></span>
+              <input
+                value={form.tags}
+                onChange={event => setForm(previous => ({
+                  ...previous,
+                  tags: event.target.value,
+                }))}
+                placeholder="история, кино, сложный, 18+"
+              />
+              {tagError && (
+                <span className="sigame-file-error" role="alert">{tagError}</span>
+              )}
+            </label>
+
+            <div className="sigame-form-actions">
+              <button className="button-ghost" type="button" onClick={closeForm} disabled={formBusy}>
+                Отмена
+              </button>
+              <button
+                className="button-primary"
+                type="submit"
+                disabled={
+                  formBusy
+                  || !form.title.trim()
+                  || Boolean(tagError)
+                  || (!editingId && (!selectedFile || Boolean(fileError)))
+                }
+              >
+                {formBusy
+                  ? (editingId ? 'Сохраняем…' : 'Загружаем…')
+                  : (editingId ? 'Сохранить' : 'Добавить в библиотеку')}
+              </button>
+            </div>
+          </form>
+        </div>
       )}
     </main>
   );
