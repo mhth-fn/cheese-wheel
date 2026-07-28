@@ -53,6 +53,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
       active: activePage === 'movie-reviews' || activePage === 'wine-reviews',
     },
     { key: 'games', icon: '🎮', label: 'Игры' },
+    { key: 'sigame', icon: '🧠', label: 'Паки SIGame', shortLabel: 'Паки' },
     ...(!isGuest ? [{ key: 'vpn', icon: '🔐', label: 'VPN' }] : []),
   ];
 

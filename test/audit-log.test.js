@@ -22,6 +22,14 @@ test('known mutation routes get stable human-readable actions', () => {
   assert.equal(routeToAction('PATCH', '/api/admin/users/2/role'), 'user.role_changed');
   assert.equal(routeToAction('DELETE', '/api/watched/42'), 'watched.deleted');
   assert.equal(routeToAction('POST', '/api/2fa/enable'), 'two_factor.enabled');
+  assert.equal(
+    routeToAction('POST', '/api/sigame-packs/17/status'),
+    'sigame_pack.status_changed'
+  );
+  assert.equal(
+    routeToAction('PUT', '/api/sigame-packs/17/rating'),
+    'sigame_pack.rating_set'
+  );
 });
 
 test('audit rows are cursor ordered and never expose IP hashes', () => {

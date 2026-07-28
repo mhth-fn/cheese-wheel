@@ -353,3 +353,50 @@ export async function createVpnClient(serverId, deviceName) {
 export async function deleteVpnClient(id) {
   return apiFetch(`/api/vpn/clients/${id}`, { method: 'DELETE' });
 }
+
+export async function fetchSigamePacks() {
+  const res = await apiFetch('/api/sigame-packs');
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error || 'Не удалось загрузить паки SIGame');
+  return data;
+}
+
+export async function createSigamePack(pack) {
+  return apiFetch('/api/sigame-packs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(pack),
+  });
+}
+
+export async function updateSigamePack(id, pack) {
+  return apiFetch(`/api/sigame-packs/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(pack),
+  });
+}
+
+export async function setSigamePackStatus(id, status) {
+  return apiFetch(`/api/sigame-packs/${id}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function rateSigamePack(id, rating) {
+  return apiFetch(`/api/sigame-packs/${id}/rating`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rating }),
+  });
+}
+
+export async function deleteSigamePackRating(id) {
+  return apiFetch(`/api/sigame-packs/${id}/rating`, { method: 'DELETE' });
+}
+
+export async function deleteSigamePack(id) {
+  return apiFetch(`/api/sigame-packs/${id}`, { method: 'DELETE' });
+}

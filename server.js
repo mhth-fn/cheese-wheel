@@ -856,6 +856,45 @@ db.exec(`
     FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE SET NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
+
+  CREATE TABLE IF NOT EXISTS sigame_packs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    pack_author TEXT,
+    description TEXT,
+    source_url TEXT,
+    status TEXT NOT NULL DEFAULT 'planned'
+      CHECK(status IN ('planned', 'played')),
+    added_by INTEGER NOT NULL,
+    added_at INTEGER NOT NULL,
+    played_by INTEGER,
+    played_at INTEGER,
+    FOREIGN KEY (added_by) REFERENCES users(id),
+    FOREIGN KEY (played_by) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS sigame_pack_tags (
+    pack_id INTEGER NOT NULL,
+    tag TEXT COLLATE NOCASE NOT NULL,
+    PRIMARY KEY (pack_id, tag),
+    FOREIGN KEY (pack_id) REFERENCES sigame_packs(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS sigame_pack_ratings (
+    pack_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 10),
+    rated_at INTEGER NOT NULL,
+    PRIMARY KEY (pack_id, user_id),
+    FOREIGN KEY (pack_id) REFERENCES sigame_packs(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_sigame_packs_status_added
+    ON sigame_packs(status, added_at DESC);
+
+  CREATE INDEX IF NOT EXISTS idx_sigame_pack_tags_tag
+    ON sigame_pack_tags(tag);
 `);
 
 // Миграция: добавляем колонку password_hash если её нет
@@ -1383,6 +1422,95 @@ const vpnStmts = {
   deleteByIdAndUser: db.prepare('DELETE FROM vpn_clients WHERE id = ? AND user_id = ?'),
 };
 
+const sigameStmts = {
+  list: db.prepare(`
+    SELECT
+      p.*,
+      added_user.name AS added_by_name,
+      played_user.name AS played_by_name,
+      ROUND(AVG(r.rating), 1) AS average_rating,
+      COUNT(r.rating) AS ratings_count,
+      (
+        SELECT own.rating
+        FROM sigame_pack_ratings own
+        WHERE own.pack_id = p.id AND own.user_id = ?
+      ) AS my_rating
+    FROM sigame_packs p
+    JOIN users added_user ON added_user.id = p.added_by
+    LEFT JOIN users played_user ON played_user.id = p.played_by
+    LEFT JOIN sigame_pack_ratings r ON r.pack_id = p.id
+    GROUP BY p.id
+    ORDER BY
+      CASE p.status WHEN 'planned' THEN 0 ELSE 1 END,
+      CASE WHEN p.status = 'planned' THEN p.added_at END DESC,
+      CASE WHEN p.status = 'played' THEN p.played_at END DESC,
+      p.id DESC
+  `),
+  getById: db.prepare(`
+    SELECT
+      p.*,
+      added_user.name AS added_by_name,
+      played_user.name AS played_by_name,
+      ROUND(AVG(r.rating), 1) AS average_rating,
+      COUNT(r.rating) AS ratings_count,
+      (
+        SELECT own.rating
+        FROM sigame_pack_ratings own
+        WHERE own.pack_id = p.id AND own.user_id = ?
+      ) AS my_rating
+    FROM sigame_packs p
+    JOIN users added_user ON added_user.id = p.added_by
+    LEFT JOIN users played_user ON played_user.id = p.played_by
+    LEFT JOIN sigame_pack_ratings r ON r.pack_id = p.id
+    WHERE p.id = ?
+    GROUP BY p.id
+  `),
+  getRawById: db.prepare('SELECT * FROM sigame_packs WHERE id = ?'),
+  getTags: db.prepare(`
+    SELECT tag
+    FROM sigame_pack_tags
+    WHERE pack_id = ?
+    ORDER BY tag COLLATE NOCASE
+  `),
+  insert: db.prepare(`
+    INSERT INTO sigame_packs (
+      title, pack_author, description, source_url, added_by, added_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `),
+  update: db.prepare(`
+    UPDATE sigame_packs
+    SET title = ?, pack_author = ?, description = ?, source_url = ?
+    WHERE id = ?
+  `),
+  delete: db.prepare('DELETE FROM sigame_packs WHERE id = ?'),
+  deleteTags: db.prepare('DELETE FROM sigame_pack_tags WHERE pack_id = ?'),
+  insertTag: db.prepare(`
+    INSERT INTO sigame_pack_tags (pack_id, tag)
+    VALUES (?, ?)
+  `),
+  markPlayed: db.prepare(`
+    UPDATE sigame_packs
+    SET status = 'played', played_by = ?, played_at = ?
+    WHERE id = ?
+  `),
+  restorePlanned: db.prepare(`
+    UPDATE sigame_packs
+    SET status = 'planned', played_by = NULL, played_at = NULL
+    WHERE id = ?
+  `),
+  upsertRating: db.prepare(`
+    INSERT INTO sigame_pack_ratings (pack_id, user_id, rating, rated_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(pack_id, user_id) DO UPDATE SET
+      rating = excluded.rating,
+      rated_at = excluded.rated_at
+  `),
+  deleteRating: db.prepare(`
+    DELETE FROM sigame_pack_ratings
+    WHERE pack_id = ? AND user_id = ?
+  `),
+};
+
 const authSecurityStmts = {
   getTotp: db.prepare(`
     SELECT user_id, secret_enc, enabled, pending_expires, last_used_step, enabled_at
@@ -1647,6 +1775,129 @@ function sanitizeTitle(title) {
   const trimmed = title.trim();
   if (trimmed.length === 0 || trimmed.length > MAX_TITLE_LENGTH) return null;
   return trimmed;
+}
+
+function sanitizeSigameOptionalText(value, maxLength, { multiline = false } = {}) {
+  if (value === undefined || value === null || value === '') return '';
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  const invalidCharacters = multiline
+    ? /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\p{Cf}]/u
+    : /[\p{Cc}\p{Cf}]/u;
+  if (trimmed.length > maxLength || invalidCharacters.test(trimmed)) return null;
+  return trimmed;
+}
+
+function sanitizeSigameSourceUrl(value) {
+  const sourceUrl = sanitizeSigameOptionalText(value, 1000);
+  if (sourceUrl === null || sourceUrl === '') return sourceUrl;
+  try {
+    const parsed = new URL(sourceUrl);
+    if (
+      !['http:', 'https:'].includes(parsed.protocol)
+      || parsed.username
+      || parsed.password
+    ) {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeSigameTags(value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 8) return null;
+  const tags = [];
+  const seen = new Set();
+  for (const rawTag of value) {
+    const tag = sanitizeSigameOptionalText(rawTag, 24);
+    if (!tag) return null;
+    const key = tag.toLocaleLowerCase('ru-RU');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tags.push(tag);
+  }
+  return tags;
+}
+
+function readSigamePackInput(body, existing = null) {
+  const source = body && typeof body === 'object' ? body : {};
+  const title = source.title === undefined && existing
+    ? existing.title
+    : sanitizeTitle(source.title);
+  const packAuthor = source.pack_author === undefined && existing
+    ? existing.pack_author || ''
+    : sanitizeSigameOptionalText(source.pack_author, 120);
+  const description = source.description === undefined && existing
+    ? existing.description || ''
+    : sanitizeSigameOptionalText(source.description, 2000, { multiline: true });
+  const sourceUrl = source.source_url === undefined && existing
+    ? existing.source_url || ''
+    : sanitizeSigameSourceUrl(source.source_url);
+  const tags = source.tags === undefined && existing
+    ? sigameStmts.getTags.all(existing.id).map(row => row.tag)
+    : sanitizeSigameTags(source.tags);
+
+  if (
+    !title
+    || packAuthor === null
+    || description === null
+    || sourceUrl === null
+    || tags === null
+  ) {
+    return null;
+  }
+  return {
+    title,
+    packAuthor,
+    description,
+    sourceUrl,
+    tags,
+  };
+}
+
+function serializeSigamePack(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    title: row.title,
+    pack_author: row.pack_author || '',
+    description: row.description || '',
+    source_url: row.source_url || '',
+    status: row.status,
+    tags: sigameStmts.getTags.all(row.id).map(item => item.tag),
+    added_by: Number(row.added_by),
+    added_by_name: row.added_by_name,
+    added_at: Number(row.added_at),
+    played_by: row.played_by == null ? null : Number(row.played_by),
+    played_by_name: row.played_by_name || null,
+    played_at: row.played_at == null ? null : Number(row.played_at),
+    average_rating: row.average_rating == null ? null : Number(row.average_rating),
+    ratings_count: Number(row.ratings_count || 0),
+    my_rating: row.my_rating == null ? null : Number(row.my_rating),
+  };
+}
+
+function getSigamePackForViewer(packId, viewerId) {
+  return serializeSigamePack(sigameStmts.getById.get(viewerId || null, packId));
+}
+
+function canManageSigamePack(pack, tokenData) {
+  return Boolean(
+    pack
+    && tokenData
+    && (
+      Number(pack.added_by) === Number(tokenData.userId)
+      || tokenData.role === 'admin'
+    )
+  );
+}
+
+function replaceSigamePackTags(packId, tags) {
+  sigameStmts.deleteTags.run(packId);
+  tags.forEach(tag => sigameStmts.insertTag.run(packId, tag));
 }
 
 function toWheelSnapshotMovie(movie) {
@@ -3691,6 +3942,149 @@ app.post('/api/review-reactions', (req, res) => {
   const payload = { review_type, review_id: reviewId, likes, dislikes, reactions };
   io.emit('review-reaction-updated', payload);
   res.json(payload);
+});
+
+// ============ SIGAME PACKS ============
+
+app.get('/api/sigame-packs', (req, res) => {
+  const viewerId = req.tokenData.isGuest ? null : Number(req.tokenData.userId);
+  res.json(sigameStmts.list.all(viewerId).map(serializeSigamePack));
+});
+
+app.post('/api/sigame-packs', (req, res) => {
+  const input = readSigamePackInput(req.body);
+  if (!input) {
+    return res.status(400).json({
+      error: 'Проверьте название, ссылку, описание и теги пака',
+    });
+  }
+
+  const userId = Number(req.tokenData.userId);
+  const packId = db.transaction(() => {
+    const result = sigameStmts.insert.run(
+      input.title,
+      input.packAuthor,
+      input.description,
+      input.sourceUrl,
+      userId,
+      Date.now()
+    );
+    const id = Number(result.lastInsertRowid);
+    replaceSigamePackTags(id, input.tags);
+    return id;
+  })();
+
+  const pack = getSigamePackForViewer(packId, userId);
+  io.emit('sigame-packs-changed', { action: 'created', pack_id: packId });
+  res.status(201).json(pack);
+});
+
+app.patch('/api/sigame-packs/:id', (req, res) => {
+  const packId = parseIntStrict(req.params.id);
+  if (isNaN(packId)) return res.status(400).json({ error: 'Неверный ID пака' });
+  const existing = sigameStmts.getRawById.get(packId);
+  if (!existing) return res.status(404).json({ error: 'Пак не найден' });
+  if (!canManageSigamePack(existing, req.tokenData)) {
+    return res.status(403).json({ error: 'Можно редактировать только свои паки' });
+  }
+
+  const input = readSigamePackInput(req.body, existing);
+  if (!input) {
+    return res.status(400).json({
+      error: 'Проверьте название, ссылку, описание и теги пака',
+    });
+  }
+
+  db.transaction(() => {
+    sigameStmts.update.run(
+      input.title,
+      input.packAuthor,
+      input.description,
+      input.sourceUrl,
+      packId
+    );
+    replaceSigamePackTags(packId, input.tags);
+  })();
+
+  const pack = getSigamePackForViewer(packId, Number(req.tokenData.userId));
+  io.emit('sigame-packs-changed', { action: 'updated', pack_id: packId });
+  res.json(pack);
+});
+
+app.post('/api/sigame-packs/:id/status', (req, res) => {
+  const packId = parseIntStrict(req.params.id);
+  if (isNaN(packId)) return res.status(400).json({ error: 'Неверный ID пака' });
+  const existing = sigameStmts.getRawById.get(packId);
+  if (!existing) return res.status(404).json({ error: 'Пак не найден' });
+
+  const status = req.body?.status;
+  if (!['planned', 'played'].includes(status)) {
+    return res.status(400).json({ error: 'Неверный статус пака' });
+  }
+  if (status === 'planned' && !canManageSigamePack(existing, req.tokenData)) {
+    return res.status(403).json({
+      error: 'Вернуть пак в планы может его автор или администратор',
+    });
+  }
+
+  const userId = Number(req.tokenData.userId);
+  if (status === 'played') {
+    sigameStmts.markPlayed.run(userId, Date.now(), packId);
+  } else {
+    sigameStmts.restorePlanned.run(packId);
+  }
+
+  const pack = getSigamePackForViewer(packId, userId);
+  io.emit('sigame-packs-changed', {
+    action: status === 'played' ? 'played' : 'restored',
+    pack_id: packId,
+  });
+  res.json(pack);
+});
+
+app.put('/api/sigame-packs/:id/rating', (req, res) => {
+  const packId = parseIntStrict(req.params.id);
+  const rating = parseIntStrict(req.body?.rating);
+  if (isNaN(packId) || !Number.isInteger(rating) || rating < 1 || rating > 10) {
+    return res.status(400).json({ error: 'Оценка должна быть от 1 до 10' });
+  }
+  const existing = sigameStmts.getRawById.get(packId);
+  if (!existing) return res.status(404).json({ error: 'Пак не найден' });
+  if (existing.status !== 'played') {
+    return res.status(409).json({ error: 'Оценивать можно только сыгранные паки' });
+  }
+
+  const userId = Number(req.tokenData.userId);
+  sigameStmts.upsertRating.run(packId, userId, rating, Date.now());
+  const pack = getSigamePackForViewer(packId, userId);
+  io.emit('sigame-packs-changed', { action: 'rated', pack_id: packId });
+  res.json(pack);
+});
+
+app.delete('/api/sigame-packs/:id/rating', (req, res) => {
+  const packId = parseIntStrict(req.params.id);
+  if (isNaN(packId)) return res.status(400).json({ error: 'Неверный ID пака' });
+  const existing = sigameStmts.getRawById.get(packId);
+  if (!existing) return res.status(404).json({ error: 'Пак не найден' });
+
+  sigameStmts.deleteRating.run(packId, Number(req.tokenData.userId));
+  const pack = getSigamePackForViewer(packId, Number(req.tokenData.userId));
+  io.emit('sigame-packs-changed', { action: 'rating-removed', pack_id: packId });
+  res.json(pack);
+});
+
+app.delete('/api/sigame-packs/:id', (req, res) => {
+  const packId = parseIntStrict(req.params.id);
+  if (isNaN(packId)) return res.status(400).json({ error: 'Неверный ID пака' });
+  const existing = sigameStmts.getRawById.get(packId);
+  if (!existing) return res.status(404).json({ error: 'Пак не найден' });
+  if (!canManageSigamePack(existing, req.tokenData)) {
+    return res.status(403).json({ error: 'Можно удалять только свои паки' });
+  }
+
+  sigameStmts.delete.run(packId);
+  io.emit('sigame-packs-changed', { action: 'deleted', pack_id: packId });
+  res.json({ ok: true });
 });
 
 app.use('/api', (req, res) => {

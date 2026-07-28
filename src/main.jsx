@@ -15,6 +15,7 @@ import './css/watched.css';
 import './css/stats.css';
 import './css/connection.css';
 import './css/games.css';
+import './css/sigame.css';
 import './css/reviews.css';
 import './css/vpn.css';
 import './css/responsive.css';

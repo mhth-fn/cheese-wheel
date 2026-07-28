@@ -40,6 +40,7 @@ import ThemeDecorations from './components/ThemeDecorations';
 
 const WatchedPage = lazy(() => import('./components/WatchedPage'));
 const GamesPage = lazy(() => import('./components/GamesPage'));
+const SigamePacksPage = lazy(() => import('./components/SigamePacksPage'));
 const ReviewsJournalPage = lazy(() => import('./components/ReviewsJournalPage'));
 const VpnPage = lazy(() => import('./components/VpnPage'));
 
@@ -55,6 +56,7 @@ const BROWSER_THEME_COLORS = {
 function pageFromLocation() {
   if (location.pathname === '/watched') return 'watched';
   if (location.pathname === '/games') return 'games';
+  if (location.pathname === '/sigame') return 'sigame';
   if (location.pathname === '/vpn') return 'vpn';
   if (location.pathname === '/reviews/wine' || location.pathname === '/wine-reviews') {
     return 'wine-reviews';
@@ -72,6 +74,7 @@ function pageFromLocation() {
 function pathForPage(page) {
   if (page === 'watched') return '/watched';
   if (page === 'games') return '/games';
+  if (page === 'sigame') return '/sigame';
   if (page === 'vpn') return '/vpn';
   if (page === 'wine-reviews') return '/reviews/wine';
   if (page === 'movie-reviews') return '/reviews';
@@ -765,6 +768,13 @@ export default function App() {
             <div id="games-page" className="page active">
               <Suspense fallback={<PageLoading />}>
                 <GamesPage />
+              </Suspense>
+            </div>
+          )}
+          {page === 'sigame' && (
+            <div id="sigame-page" className="page active">
+              <Suspense fallback={<PageLoading />}>
+                <SigamePacksPage />
               </Suspense>
             </div>
           )}
