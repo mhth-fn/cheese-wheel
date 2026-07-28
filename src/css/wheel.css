@@ -23,7 +23,7 @@
   position: relative;
   width: 100%;
   aspect-ratio: 1;
-  filter: drop-shadow(0 12px 24px rgba(100, 60, 0, 0.2));
+  filter: drop-shadow(0 8px 10px rgba(126, 78, 6, 0.16));
 }
 
 .cheese-wheel-stage canvas {
@@ -292,8 +292,8 @@
 }
 
 @keyframes wheelGlow {
-  0%, 100% { filter: drop-shadow(0 12px 24px rgba(100, 60, 0, 0.2)); }
-  50% { filter: drop-shadow(0 16px 36px rgba(23, 107, 104, 0.34)); }
+  0%, 100% { filter: drop-shadow(0 8px 10px rgba(126, 78, 6, 0.16)); }
+  50% { filter: drop-shadow(0 12px 22px rgba(196, 105, 18, 0.28)); }
 }
 
 @keyframes wheelPulse {

@@ -145,7 +145,7 @@
   height: 60px;
   padding: 0 var(--space-2);
   border-bottom: 1px solid var(--color-primary-border);
-  background: linear-gradient(180deg, #23827e 0%, var(--color-primary) 100%);
+  background: var(--theme-btn);
   color: #fff;
   text-align: center;
 }
@@ -186,7 +186,7 @@
 }
 
 .table-sort-button:hover {
-  color: #dcfffc;
+  color: #fff0d5;
 }
 
 .sort-icon {
@@ -238,7 +238,7 @@
 }
 
 .watched-table tbody tr:hover td {
-  background: #eff9f7;
+  background: #fff3e2;
 }
 
 .watched-table td.watched-actions-sticky {
@@ -318,7 +318,7 @@
 
 .movie-title-cell:hover {
   border-left-color: var(--color-primary);
-  background: rgba(23, 107, 104, 0.08);
+  background: rgba(180, 83, 9, 0.08);
 }
 
 .movie-title-cell strong,
@@ -357,7 +357,7 @@
 }
 
 .movie-review-trigger {
-  background: rgba(23, 107, 104, 0.08);
+  background: rgba(180, 83, 9, 0.08);
   color: var(--color-primary-active);
 }
 
@@ -382,11 +382,11 @@
   width: 56px;
   min-height: 40px;
   padding: 0 7px;
-  border: 1px solid rgba(23, 107, 104, 0.42);
+  border: 1px solid rgba(180, 83, 9, 0.42);
   border-radius: var(--radius-pill);
   background: #fff;
   color: var(--color-primary-active);
-  box-shadow: inset 0 0 0 1px rgba(23, 107, 104, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(180, 83, 9, 0.04);
   font-size: 0.9rem;
   font-weight: 800;
   text-align: center;
@@ -397,7 +397,7 @@
 
 .rating-select:hover:not(:disabled) {
   border-color: var(--color-primary);
-  background: #f5fcfb;
+  background: #fff8ed;
 }
 
 .rating-saving {
@@ -413,7 +413,7 @@
   min-height: 36px;
   place-items: center;
   border-radius: var(--radius-pill);
-  background: rgba(23, 107, 104, 0.09);
+  background: rgba(180, 83, 9, 0.09);
   color: var(--color-primary-active);
   font-weight: 800;
 }
