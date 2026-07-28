@@ -1,59 +1,31 @@
 import { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { initAudio, playClick, playWinSound } from '../audio';
 
-const WHEEL_PALETTE = {
-  edge: "#D99A25",
-  wedges: ["#F6D365", "#F9DA73"],
-  divider: "rgba(151, 101, 22, 0.35)",
-  text: "#5F4214",
+const RIND_THEMES = {
+  cheese: {
+    outer: "#8B5E20",
+    mid: "#E8A020",
+    inner: "#D49418",
+    marker: "#D43030",
+    markerStroke: "#A82020",
+  },
+  newyear: {
+    outer: "#8b0000",
+    mid: "#c41e3a",
+    inner: "#a01030",
+    marker: "#ffd700",
+    markerStroke: "#daa520",
+  },
+  spring: {
+    outer: "#2e7d32",
+    mid: "#66bb6a",
+    inner: "#43a047",
+    marker: "#ec407a",
+    markerStroke: "#d81b60",
+  },
 };
 
-function getLabelLayout(title, sectorCount, radius, sliceAngle) {
-  const label = title.length > 24 ? `${title.slice(0, 22)}\u2026` : title;
-  const textR = radius * (sectorCount <= 4 ? 0.6 : 0.67);
-  const sectorWidth = Math.max(
-    54,
-    2 * textR * Math.sin(Math.min(sliceAngle * 0.38, Math.PI / 3))
-  );
-  const baseFontSize = sectorCount >= 9 ? 12 : sectorCount >= 7 ? 13 : 15;
-  const estimatedWidth = Math.max(1, label.length * baseFontSize * 0.6);
-  const fittedFontSize = baseFontSize * Math.min(1, sectorWidth / estimatedWidth);
-  const fontSize = Math.max(baseFontSize - 2, fittedFontSize);
-  return { label, textR, sectorWidth, fontSize };
-}
-
-function traceWheelContour(ctx, cx, cy, radius, rotation, yOffset = 0) {
-  const pointCount = 120;
-  ctx.beginPath();
-  for (let index = 0; index <= pointCount; index += 1) {
-    const angle = (index / pointCount) * Math.PI * 2;
-    const localAngle = angle - rotation;
-    const wobble = (
-      Math.sin(localAngle * 5 + 0.7) * 0.55
-      + Math.sin(localAngle * 11 + 1.9) * 0.25
-      + Math.sin(localAngle * 17 + 0.3) * 0.12
-    );
-    const x = cx + (radius + wobble) * Math.cos(angle);
-    const y = cy + yOffset + (radius + wobble) * Math.sin(angle);
-    if (index === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.closePath();
-}
-
-function distanceToSegment(px, py, x1, y1, x2, y2) {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const lengthSquared = dx * dx + dy * dy;
-  if (lengthSquared === 0) return Math.hypot(px - x1, py - y1);
-  const amount = Math.max(
-    0,
-    Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lengthSquared)
-  );
-  return Math.hypot(px - (x1 + amount * dx), py - (y1 + amount * dy));
-}
-
-const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete }, ref) {
+const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete, theme = 'cheese' }, ref) {
   const canvasRef = useRef(null);
   const [spinning, setSpinning] = useState(false);
   const [pointerTick, setPointerTick] = useState(0);
@@ -65,94 +37,62 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete }, 
 
   /* pre-generate holes — regenerate when movie count changes */
   const holesRef = useRef(null);
-  const holeSignatureRef = useRef('');
+  const holeCountRef = useRef(0);
 
-  const ensureHoles = useCallback((n, radius) => {
-    const signature = movies.map(movie => `${movie.id}:${movie.title}`).join('|');
-    if (holesRef.current && holeSignatureRef.current === signature) return;
-    const rng = seeded(42 + n * 97);
+  const ensureHoles = useCallback((n) => {
+    if (holesRef.current && holeCountRef.current === n) return;
+    const rng = seeded(42);
     const holes = [];
     const sliceAngle = (2 * Math.PI) / n;
     for (let s = 0; s < n; s++) {
-      const targetCount = 2 + Math.floor(rng() * 2);
-      const layout = getLabelLayout(movies[s].title, n, radius, sliceAngle);
-      const labelAngle = s * sliceAngle + sliceAngle / 2;
-      const labelX = layout.textR * Math.cos(labelAngle);
-      const labelY = layout.textR * Math.sin(labelAngle);
-      let created = 0;
-      let attempts = 0;
-
-      while (created < targetCount && attempts < 90) {
-        attempts += 1;
-        const angleOff = sliceAngle * (0.09 + rng() * 0.82);
-        const distFrac = 0.33 + rng() * 0.47;
-        const hr = 4 + rng() * 7;
-        const absoluteAngle = s * sliceAngle + angleOff;
-        const x = radius * distFrac * Math.cos(absoluteAngle);
-        const y = radius * distFrac * Math.sin(absoluteAngle);
-        const dx = x - labelX;
-        const dy = y - labelY;
-        const radialOffset = dx * Math.cos(labelAngle) + dy * Math.sin(labelAngle);
-        const tangentOffset = dx * Math.cos(labelAngle + Math.PI / 2)
-          + dy * Math.sin(labelAngle + Math.PI / 2);
-        const overlapsLabel = (
-          Math.abs(tangentOffset) < layout.sectorWidth / 2 + hr + 7
-          && Math.abs(radialOffset) < layout.fontSize * 0.8 + hr + 5
-        );
-        const overlapsHole = holes.some(hole => {
-          const holeAngle = hole.sector * sliceAngle + hole.angleOff;
-          const holeX = radius * hole.distFrac * Math.cos(holeAngle);
-          const holeY = radius * hole.distFrac * Math.sin(holeAngle);
-          return Math.hypot(x - holeX, y - holeY) < hr + hole.hr + 5;
-        });
-        const overlapsDivider = n > 1 && [s * sliceAngle, (s + 1) * sliceAngle].some(
-          dividerAngle => distanceToSegment(
-            x,
-            y,
-            0,
-            0,
-            radius * Math.cos(dividerAngle),
-            radius * Math.sin(dividerAngle)
-          ) < hr + 5
-        );
-
-        if (overlapsLabel || overlapsHole || overlapsDivider) continue;
+      const count = 5 + Math.floor(rng() * 3);
+      for (let h = 0; h < count; h++) {
+        const t = (h + 0.2 + rng() * 0.6) / count;
+        const angleOff = t * sliceAngle;
+        const distFrac = 0.22 + rng() * 0.62;
+        const hr = 4 + rng() * 9;
         holes.push({ sector: s, angleOff, distFrac, hr });
-        created += 1;
       }
     }
     holesRef.current = holes;
-    holeSignatureRef.current = signature;
-  }, [movies]);
+    holeCountRef.current = n;
+  }, []);
 
   const draw = useCallback((ctx, w, h, rot) => {
-    const cx = w / 2;
-    const cy = h / 2;
-    const edgeOuter = Math.min(cx, cy) - 16;
-    const edgeWidth = 13;
-    const r = edgeOuter - edgeWidth;
+    const cx = w / 2, cy = h / 2, r = Math.min(cx, cy) - 44;
     ctx.clearRect(0, 0, w, h);
 
     const n = movies.length;
     if (n === 0) return;
     const sliceAngle = (2 * Math.PI) / n;
 
-    ensureHoles(n, r);
+    ensureHoles(n);
 
-    /* A small downward shadow grounds the wheel without forming a second rim. */
-    traceWheelContour(ctx, cx, cy, edgeOuter, rot, 3);
-    ctx.fillStyle = "rgba(112, 72, 12, 0.14)";
+    const rind = RIND_THEMES[theme] || RIND_THEMES.cheese;
+    const rindOuter = r + 28;
+    const rindMid = r + 16;
+    const rindInner = r + 4;
+
+    /* outer dark border */
+    ctx.beginPath();
+    ctx.arc(cx, cy, rindOuter, 0, 2 * Math.PI);
+    ctx.fillStyle = rind.outer;
     ctx.fill();
 
-    /* A single restrained caramel edge keeps the wheel interface-like. */
-    traceWheelContour(ctx, cx, cy, edgeOuter, rot);
-    ctx.fillStyle = WHEEL_PALETTE.edge;
+    /* mid rind */
+    ctx.beginPath();
+    ctx.arc(cx, cy, rindMid, 0, 2 * Math.PI);
+    ctx.fillStyle = rind.mid;
     ctx.fill();
-    ctx.strokeStyle = "rgba(119, 78, 13, 0.18)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
+
+    /* inner rind edge */
+    ctx.beginPath();
+    ctx.arc(cx, cy, rindInner, 0, 2 * Math.PI);
+    ctx.fillStyle = rind.inner;
+    ctx.fill();
 
     /* cheese sectors */
+    const wedgeColors = ["#FFE56A", "#F7D94C", "#F2C94C", "#FFEA7A"];
     movies.forEach((m, i) => {
       const startAngle = rot + i * sliceAngle;
       const endAngle = startAngle + sliceAngle;
@@ -160,19 +100,13 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete }, 
       ctx.moveTo(cx, cy);
       ctx.arc(cx, cy, r, startAngle, endAngle);
       ctx.closePath();
-      ctx.fillStyle = WHEEL_PALETTE.wedges[i % WHEEL_PALETTE.wedges.length];
+      ctx.fillStyle = wedgeColors[i % wedgeColors.length];
       ctx.fill();
       if (hoveredSectorRef.current === i && !spinningRef.current) {
-        ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
+        ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
         ctx.fill();
       }
     });
-
-    ctx.beginPath();
-    ctx.arc(cx, cy, r - 0.5, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(255, 246, 194, 0.24)";
-    ctx.lineWidth = 0.8;
-    ctx.stroke();
 
     /* divider lines */
     if (n > 1) {
@@ -181,8 +115,8 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete }, 
         ctx.beginPath();
         ctx.moveTo(cx, cy);
         ctx.lineTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
-        ctx.strokeStyle = WHEEL_PALETTE.divider;
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = "#C89428";
+        ctx.lineWidth = 2.5;
         ctx.stroke();
       });
     }
@@ -194,22 +128,55 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete }, 
       const hx = cx + dist * Math.cos(angle);
       const hy = cy + dist * Math.sin(angle);
 
-      const holeGradient = ctx.createRadialGradient(
-        hx - hr * 0.18,
-        hy - hr * 0.2,
-        hr * 0.08,
-        hx,
-        hy,
-        hr
-      );
-      holeGradient.addColorStop(0, "rgba(151, 101, 22, 0.2)");
-      holeGradient.addColorStop(0.72, "rgba(151, 101, 22, 0.14)");
-      holeGradient.addColorStop(1, "rgba(151, 101, 22, 0.06)");
-
       ctx.beginPath();
       ctx.arc(hx, hy, hr, 0, 2 * Math.PI);
-      ctx.fillStyle = holeGradient;
+      ctx.fillStyle = "#DBA428";
       ctx.fill();
+
+      /* top shadow crescent */
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(hx, hy, hr, 0, 2 * Math.PI);
+      ctx.clip();
+      ctx.beginPath();
+      ctx.arc(hx, hy - hr * 0.35, hr * 0.95, 0, 2 * Math.PI);
+      ctx.fillStyle = "#C48E18";
+      ctx.fill();
+      ctx.restore();
+
+      /* bottom highlight crescent */
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(hx, hy, hr, 0, 2 * Math.PI);
+      ctx.clip();
+      ctx.beginPath();
+      ctx.arc(hx, hy + hr * 0.45, hr * 0.85, 0, 2 * Math.PI);
+      ctx.fillStyle = "#E8B840";
+      ctx.fill();
+      ctx.restore();
+    });
+
+    /* red triangle markers on rind */
+    const markerR = (rindMid + rindOuter) / 2 - 1;
+    movies.forEach((m, i) => {
+      const angle = rot + i * sliceAngle;
+      const mx = cx + markerR * Math.cos(angle);
+      const my = cy + markerR * Math.sin(angle);
+      const sz = 7;
+      ctx.save();
+      ctx.translate(mx, my);
+      ctx.rotate(angle + Math.PI / 2);
+      ctx.beginPath();
+      ctx.moveTo(0, -sz);
+      ctx.lineTo(-sz * 0.7, sz * 0.5);
+      ctx.lineTo(sz * 0.7, sz * 0.5);
+      ctx.closePath();
+      ctx.fillStyle = rind.marker;
+      ctx.fill();
+      ctx.strokeStyle = rind.markerStroke;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
     });
 
     /* Labels stay upright and shrink to fit their sector. */
@@ -220,14 +187,12 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete }, 
 
     movies.forEach((m, i) => {
       const midAngle = rot + i * sliceAngle + sliceAngle / 2;
-      const { label, textR, sectorWidth, fontSize } = getLabelLayout(
-        m.title,
-        n,
-        r,
-        sliceAngle
-      );
+      const label = m.title.length > 24 ? m.title.slice(0, 22) + "\u2026" : m.title;
+      const textR = r * (n <= 4 ? 0.6 : 0.67);
       const x = cx + textR * Math.cos(midAngle);
       const y = cy + textR * Math.sin(midAngle);
+      const sectorWidth = Math.max(54, 2 * textR * Math.sin(Math.min(sliceAngle * 0.38, Math.PI / 3)));
+      const fontSize = Math.max(10, Math.min(16, 190 / Math.max(n, 7), 230 / Math.max(label.length, 8)));
       let rotation = midAngle + Math.PI / 2;
       const normalizedRotation = ((rotation % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
       if (normalizedRotation > Math.PI / 2 && normalizedRotation < Math.PI * 1.5) rotation += Math.PI;
@@ -235,16 +200,16 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete }, 
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(rotation);
-      ctx.font = `700 ${fontSize}px 'Nunito', 'Comfortaa', sans-serif`;
+      ctx.font = `800 ${fontSize}px 'Nunito', 'Comfortaa', sans-serif`;
       ctx.lineJoin = "round";
-      ctx.strokeStyle = WHEEL_PALETTE.wedges[i % WHEEL_PALETTE.wedges.length];
-      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = wedgeColors[i % wedgeColors.length];
+      ctx.lineWidth = 4;
       ctx.strokeText(label, 0, 0, sectorWidth);
-      ctx.fillStyle = WHEEL_PALETTE.text;
+      ctx.fillStyle = "#5B3D08";
       ctx.fillText(label, 0, 0, sectorWidth);
       ctx.restore();
     });
-  }, [movies, ensureHoles]);
+  }, [movies, theme, ensureHoles]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -337,7 +302,7 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete }, 
     const y = (event.clientY - rect.top) * (canvas.height / rect.height);
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
-    const radius = Math.min(cx, cy) - 29;
+    const radius = Math.min(cx, cy) - 44;
     if (Math.hypot(x - cx, y - cy) > radius) {
       hoveredSectorRef.current = -1;
     } else {
