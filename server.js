@@ -3248,9 +3248,6 @@ app.post('/api/one-off-wheel/result', requireAdmin, (req, res) => {
   if (typeof req.body?.add_to_watched !== 'boolean') {
     return res.status(400).json({ error: 'Укажите, добавлять ли фильм в просмотренные' });
   }
-  if (activeOneOffSpinUntil > Date.now()) {
-    return res.status(409).json({ error: 'Дождитесь окончания прокрутки разового колеса' });
-  }
   const result = readOneOffResult();
   if (!result) return res.status(409).json({ error: 'У разового колеса пока нет результата' });
 
