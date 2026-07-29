@@ -619,9 +619,12 @@ function requireAuth(req, res, next) {
 
 const MIN_SPIN_DURATION = 5;
 const MAX_SPIN_DURATION = 30;
+const ONE_OFF_MIN_SPIN_DURATION = 2;
+const ONE_OFF_MAX_SPIN_DURATION = 12;
 const MAX_TITLE_LENGTH = 200;
 const MAX_SIGAME_PACK_BYTES = 200 * 1024 * 1024;
 let activeSpinUntil = 0;
+let activeOneOffSpinUntil = 0;
 
 function rejectWheelMutationDuringSpin(req, res, next) {
   if (Date.now() < activeSpinUntil || readPendingSpin()) {
@@ -766,6 +769,17 @@ db.exec(`
     is_watched INTEGER DEFAULT 0,
     watched_at DATETIME
   );
+
+  CREATE TABLE IF NOT EXISTS one_off_movies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    added_by INTEGER NOT NULL,
+    added_at INTEGER NOT NULL,
+    FOREIGN KEY (added_by) REFERENCES users(id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_one_off_movies_added_at
+    ON one_off_movies(added_at, id);
 
   CREATE TABLE IF NOT EXISTS ratings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1278,6 +1292,8 @@ db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('theme', 'cheese
 db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('spin_enabled', '1')").run();
 db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('add_enabled', '1')").run();
 db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('decorations_enabled', '1')").run();
+db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('one_off_enabled', '0')").run();
+db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('one_off_mode', 'selection')").run();
 
 // Подготовленные выражения (кешируем для производительности)
 const stmts = {
@@ -1339,6 +1355,22 @@ const stmts = {
   deleteNextMovie: db.prepare('DELETE FROM movies WHERE id = ? AND is_watched = 0 AND is_next_wheel = 1'),
   markWatched: db.prepare("UPDATE movies SET is_watched = 1, watched_at = datetime('now') WHERE id = ?"),
   insertWatched: db.prepare("INSERT INTO movies (title, is_watched, added_by, watched_at) VALUES (?, 1, ?, datetime('now'))"),
+  getOneOffMovies: db.prepare(`
+    SELECT m.id, m.title, m.added_by, m.added_at, u.name AS added_by_name
+    FROM one_off_movies m
+    JOIN users u ON u.id = m.added_by
+    ORDER BY m.added_at, m.id
+  `),
+  getOneOffMovieById: db.prepare(`
+    SELECT m.id, m.title, m.added_by, m.added_at, u.name AS added_by_name
+    FROM one_off_movies m
+    JOIN users u ON u.id = m.added_by
+    WHERE m.id = ?
+  `),
+  insertOneOffMovie: db.prepare(
+    'INSERT INTO one_off_movies (title, added_by, added_at) VALUES (?, ?, ?)'
+  ),
+  deleteOneOffMovie: db.prepare('DELETE FROM one_off_movies WHERE id = ?'),
   getWatchedMoviesForReviewLink: db.prepare('SELECT id, title FROM movies WHERE is_watched = 1'),
   getWatched: null, // инициализируется ниже динамически
   updateMovie: db.prepare('UPDATE movies SET title = ?, added_at = ? WHERE id = ?'),
@@ -2234,6 +2266,85 @@ function updateFormedWheelSnapshot(movieId, updater) {
   return true;
 }
 
+const ONE_OFF_RESULT_SETTING = 'one_off_result_v1';
+const ONE_OFF_MODES = new Set(['selection', 'elimination']);
+const MAX_ONE_OFF_MOVIES = 60;
+
+function serializeOneOffMovie(movie) {
+  if (!movie) return null;
+  return {
+    id: Number(movie.id),
+    title: movie.title,
+    added_by: Number(movie.added_by),
+    added_by_name: movie.added_by_name || null,
+    added_at: Number(movie.added_at),
+  };
+}
+
+function getOneOffSetting(key, fallback) {
+  return db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value ?? fallback;
+}
+
+function setOneOffSetting(key, value) {
+  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
+    .run(key, String(value));
+}
+
+function readOneOffResult() {
+  const raw = getOneOffSetting(ONE_OFF_RESULT_SETTING, '');
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    const movie = serializeOneOffMovie(parsed?.movie);
+    if (!movie || !Number.isFinite(Number(parsed.created_at))) return null;
+    return {
+      movie,
+      created_at: Number(parsed.created_at),
+      mode: ONE_OFF_MODES.has(parsed.mode) ? parsed.mode : 'selection',
+      eliminated_movie: serializeOneOffMovie(parsed.eliminated_movie),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function setOneOffResult(result) {
+  if (!result) {
+    db.prepare('DELETE FROM settings WHERE key = ?').run(ONE_OFF_RESULT_SETTING);
+    return;
+  }
+  setOneOffSetting(ONE_OFF_RESULT_SETTING, JSON.stringify(result));
+}
+
+function getOneOffState() {
+  const modeValue = getOneOffSetting('one_off_mode', 'selection');
+  return {
+    enabled: getOneOffSetting('one_off_enabled', '0') === '1',
+    mode: ONE_OFF_MODES.has(modeValue) ? modeValue : 'selection',
+    movies: stmts.getOneOffMovies.all().map(serializeOneOffMovie),
+    result: readOneOffResult(),
+    spinning_until: activeOneOffSpinUntil > Date.now() ? activeOneOffSpinUntil : null,
+  };
+}
+
+function broadcastOneOffState() {
+  io.emit('one-off-state-changed', getOneOffState());
+}
+
+function rejectOneOffMutation(req, res, next) {
+  const state = getOneOffState();
+  if (!state.enabled) {
+    return res.status(409).json({ error: 'Разовое колесо сейчас не опубликовано' });
+  }
+  if (activeOneOffSpinUntil > Date.now()) {
+    return res.status(409).json({ error: 'Дождитесь окончания прокрутки разового колеса' });
+  }
+  if (state.result) {
+    return res.status(409).json({ error: 'Сначала завершите выбор выпавшего фильма' });
+  }
+  next();
+}
+
 function rejectFormedCurrentWheelMutation(req, res, next) {
   if (readFormedWheel().length > 0) {
     return res.status(409).json({ error: 'Текущее колесо уже сформировано' });
@@ -3060,6 +3171,118 @@ app.delete('/api/next-wheel/:id', rejectWheelMutationDuringSpin, (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Ошибка удаления' });
+  }
+});
+
+app.get('/api/one-off-wheel', (req, res) => {
+  res.json(getOneOffState());
+});
+
+app.patch('/api/one-off-wheel/settings', requireAdmin, (req, res) => {
+  const hasEnabled = Object.prototype.hasOwnProperty.call(req.body || {}, 'enabled');
+  const hasMode = Object.prototype.hasOwnProperty.call(req.body || {}, 'mode');
+  if (!hasEnabled && !hasMode) {
+    return res.status(400).json({ error: 'Укажите публикацию или режим колеса' });
+  }
+  if (hasEnabled && typeof req.body.enabled !== 'boolean') {
+    return res.status(400).json({ error: 'Неверное значение публикации' });
+  }
+  if (hasMode && !ONE_OFF_MODES.has(req.body.mode)) {
+    return res.status(400).json({ error: 'Режим: выбор или выбывание' });
+  }
+  if (activeOneOffSpinUntil > Date.now()) {
+    return res.status(409).json({ error: 'Дождитесь окончания прокрутки разового колеса' });
+  }
+  if (hasMode && readOneOffResult()) {
+    return res.status(409).json({ error: 'Сначала завершите текущий выбор' });
+  }
+
+  if (hasEnabled) setOneOffSetting('one_off_enabled', req.body.enabled ? '1' : '0');
+  if (hasMode) setOneOffSetting('one_off_mode', req.body.mode);
+  const state = getOneOffState();
+  broadcastOneOffState();
+  res.json(state);
+});
+
+app.post('/api/one-off-wheel', rejectOneOffMutation, (req, res) => {
+  const title = sanitizeTitle(req.body.title);
+  if (!title) {
+    return res.status(400).json({ error: 'Введите название фильма (до 200 символов)' });
+  }
+  const userId = Number(req.tokenData.userId);
+  if (!Number.isInteger(userId) || !stmts.getUserById.get(userId)) {
+    return res.status(403).json({ error: 'Добавлять фильмы могут только участники' });
+  }
+  if (stmts.getOneOffMovies.all().length >= MAX_ONE_OFF_MOVIES) {
+    return res.status(409).json({ error: `В разовом колесе может быть до ${MAX_ONE_OFF_MOVIES} фильмов` });
+  }
+
+  try {
+    const result = stmts.insertOneOffMovie.run(title, userId, Date.now());
+    const movie = serializeOneOffMovie(stmts.getOneOffMovieById.get(result.lastInsertRowid));
+    io.emit('one-off-movie-added', movie);
+    broadcastOneOffState();
+    res.json(movie);
+  } catch (error) {
+    console.error('[cheese-wheel] Could not add one-off movie:', error.message);
+    res.status(500).json({ error: 'Не удалось добавить фильм в разовое колесо' });
+  }
+});
+
+app.delete('/api/one-off-wheel/:id', rejectOneOffMutation, (req, res) => {
+  const id = parseIntStrict(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Неверный ID' });
+  const movie = stmts.getOneOffMovieById.get(id);
+  if (!movie) return res.status(404).json({ error: 'Фильм не найден в разовом колесе' });
+  if (!canManageMovie(req, movie)) {
+    return res.status(403).json({ error: 'Можно удалить только свой фильм' });
+  }
+
+  stmts.deleteOneOffMovie.run(id);
+  io.emit('one-off-movie-removed', { id });
+  broadcastOneOffState();
+  res.json({ success: true });
+});
+
+app.post('/api/one-off-wheel/result', requireAdmin, (req, res) => {
+  if (typeof req.body?.add_to_watched !== 'boolean') {
+    return res.status(400).json({ error: 'Укажите, добавлять ли фильм в просмотренные' });
+  }
+  if (activeOneOffSpinUntil > Date.now()) {
+    return res.status(409).json({ error: 'Дождитесь окончания прокрутки разового колеса' });
+  }
+  const result = readOneOffResult();
+  if (!result) return res.status(409).json({ error: 'У разового колеса пока нет результата' });
+
+  try {
+    const watchedMovie = db.transaction(() => {
+      let watched = null;
+      if (req.body.add_to_watched) {
+        const inserted = stmts.insertWatched.run(result.movie.title, req.tokenData.userId);
+        watched = stmts.getMovieById.get(inserted.lastInsertRowid);
+      }
+      stmts.deleteOneOffMovie.run(result.movie.id);
+      setOneOffResult(null);
+      return watched;
+    })();
+
+    if (watchedMovie) {
+      io.emit('watched-added', watchedMovie);
+      void notifyDiscord(
+        '*' + escapeDiscordMarkdown(result.movie.title)
+        + '* добавлен в историю из разового колеса'
+      );
+    }
+    const state = getOneOffState();
+    io.emit('one-off-result-resolved', {
+      movie_id: result.movie.id,
+      added_to_watched: Boolean(watchedMovie),
+    });
+    broadcastOneOffState();
+    res.json({ state, watched_movie: watchedMovie });
+  } catch (error) {
+    console.error('[cheese-wheel] Could not resolve one-off result:', error.message);
+    res.status(500).json({ error: 'Не удалось завершить выбор' });
   }
 });
 
@@ -4506,6 +4729,119 @@ io.on('connection', (socket) => {
       turns,
       initiatorSocketId: socket.id,
     });
+  });
+
+  socket.on('spin-one-off', (data) => {
+    const tokenData = getTokenData(socket.data.authToken);
+    if (!isMemberToken(tokenData) || tokenData.role !== 'admin') {
+      socket.emit('one-off-spin-rejected', {
+        error: 'Разовое колесо прокручивает администратор',
+      });
+      return;
+    }
+
+    const now = Date.now();
+    if (now - (socket.data.lastOneOffSpinAttemptAt || 0) < 1000) {
+      socket.emit('one-off-spin-rejected', { error: 'Слишком много запросов' });
+      return;
+    }
+    socket.data.lastOneOffSpinAttemptAt = now;
+    const spinLimit = consumeRateLimit(
+      'socket-one-off-spin-user',
+      tokenData.userId,
+      20,
+      60 * 1000
+    );
+    if (!spinLimit.allowed) {
+      socket.emit('one-off-spin-rejected', { error: 'Слишком много прокруток' });
+      return;
+    }
+    if (activeOneOffSpinUntil > now) {
+      socket.emit('one-off-spin-rejected', { error: 'Разовое колесо уже вращается' });
+      return;
+    }
+
+    const state = getOneOffState();
+    if (!state.enabled) {
+      socket.emit('one-off-spin-rejected', { error: 'Разовое колесо не опубликовано' });
+      return;
+    }
+    if (state.result) {
+      socket.emit('one-off-spin-rejected', { error: 'Сначала завершите текущий выбор' });
+      return;
+    }
+    if (state.movies.length === 0) {
+      socket.emit('one-off-spin-rejected', { error: 'Добавьте хотя бы один фильм' });
+      return;
+    }
+
+    const spinDuration = parseIntStrict(data?.spinDuration);
+    if (
+      isNaN(spinDuration)
+      || spinDuration < ONE_OFF_MIN_SPIN_DURATION
+      || spinDuration > ONE_OFF_MAX_SPIN_DURATION
+    ) {
+      socket.emit('one-off-spin-rejected', { error: 'Неверное время прокрутки' });
+      return;
+    }
+
+    const selectedIndex = crypto.randomInt(state.movies.length);
+    const selectedMovie = state.movies[selectedIndex];
+    const randomOffset = 0.08 + (crypto.randomInt(8401) / 10000);
+    const turns = 12 + crypto.randomInt(7);
+    const spinId = crypto.randomUUID();
+    let outcome;
+
+    try {
+      outcome = db.transaction(() => {
+        if (state.mode === 'selection' || state.movies.length === 1) {
+          const winnerResult = {
+            movie: selectedMovie,
+            mode: state.mode,
+            created_at: Date.now(),
+          };
+          setOneOffResult(winnerResult);
+          return { type: 'winner', movie: selectedMovie, winner: selectedMovie };
+        }
+
+        stmts.deleteOneOffMovie.run(selectedMovie.id);
+        const remaining = stmts.getOneOffMovies.all().map(serializeOneOffMovie);
+        if (remaining.length === 1) {
+          const winnerResult = {
+            movie: remaining[0],
+            eliminated_movie: selectedMovie,
+            mode: state.mode,
+            created_at: Date.now(),
+          };
+          setOneOffResult(winnerResult);
+          return {
+            type: 'eliminated-and-winner',
+            movie: selectedMovie,
+            winner: remaining[0],
+          };
+        }
+        return { type: 'eliminated', movie: selectedMovie, winner: null };
+      })();
+    } catch (error) {
+      console.error('[cheese-wheel] Could not spin one-off wheel:', error.message);
+      socket.emit('one-off-spin-rejected', { error: 'Не удалось сохранить результат' });
+      return;
+    }
+
+    activeOneOffSpinUntil = Date.now() + spinDuration * 1000 + 500;
+    io.emit('one-off-spinning', {
+      spinId,
+      movies: state.movies,
+      winnerIndex: selectedIndex,
+      winnerMovieId: selectedMovie.id,
+      spinDuration,
+      randomOffset,
+      turns,
+      mode: state.mode,
+      outcome,
+      initiatorSocketId: socket.id,
+    });
+    broadcastOneOffState();
   });
 
   socket.on('disconnect', () => {

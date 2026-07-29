@@ -79,6 +79,40 @@ export async function deleteNextMovie(id) {
   return apiFetch(`/api/next-wheel/${id}`, { method: 'DELETE' });
 }
 
+export async function fetchOneOffWheel() {
+  const res = await apiFetch('/api/one-off-wheel');
+  if (!res.ok) throw new Error('Не удалось загрузить разовое колесо');
+  return res.json();
+}
+
+export async function patchOneOffWheelSettings(settings) {
+  return apiFetch('/api/one-off-wheel/settings', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+}
+
+export async function postOneOffMovie(title) {
+  return apiFetch('/api/one-off-wheel', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  });
+}
+
+export async function deleteOneOffMovie(id) {
+  return apiFetch(`/api/one-off-wheel/${id}`, { method: 'DELETE' });
+}
+
+export async function resolveOneOffResult(addToWatched) {
+  return apiFetch('/api/one-off-wheel/result', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ add_to_watched: addToWatched }),
+  });
+}
+
 export async function fetchWatched() {
   const res = await apiFetch('/api/watched');
   return res.json();

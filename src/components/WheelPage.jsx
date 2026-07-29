@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../App';
 import CheeseWheel from './CheeseWheel';
+import OneOffWheelPanel from './OneOffWheelPanel';
 
 export default function WheelPage() {
   const {
@@ -20,6 +21,7 @@ export default function WheelPage() {
     refreshWheelData,
     centerImage,
     setWheelIsSpinning,
+    oneOffState,
   } = useApp();
   const [isSpinning, setIsSpinning] = useState(false);
   const [spinPending, setSpinPending] = useState(false);
@@ -149,70 +151,73 @@ export default function WheelPage() {
       : '';
 
   return (
-    <section className="wheel-page-layout">
-      {readinessText && (
-        <div
-          className={`wheel-readiness${isSpinning ? ' is-spinning' : !isAdmin ? ' is-info' : ' is-warning'}`}
-          aria-live="polite"
-        >
-          <span aria-hidden="true" />
-          {readinessText}
-        </div>
-      )}
-
-      {movies.length > 0 ? (
-        <div className="wheel-container">
-          <div className="wheel-wrapper">
-            <CheeseWheel
-              ref={wheelRef}
-              movies={movies}
-              onSpinComplete={handleSpinComplete}
-              theme={theme}
-            />
-            <button
-              type="button"
-              className={`wheel-center-btn${spinPending ? ' is-pending' : ''}${isSpinning ? ' is-spinning' : ''}`}
-              onClick={handleSpin}
-              disabled={spinDisabled}
-              aria-label="Крутить колесо"
-              aria-disabled={spinDisabled}
-              aria-busy={spinPending || isSpinning}
-              title={
-                !isAdmin
-                  ? 'Прокрутку запускает администратор'
-                  : wheelReady ? 'Крутить колесо' : 'Сначала сформируйте колесо'
-              }
-            >
-              {centerImage
-                ? <img src={centerImage} alt="" className="wheel-center-img" />
-                : <span className="wheel-center-fallback" aria-hidden="true">🧀</span>}
-            </button>
+    <section className={`wheel-page-layout${oneOffState.enabled ? ' has-one-off' : ''}`}>
+      <div className="wheel-primary">
+        {readinessText && (
+          <div
+            className={`wheel-readiness${isSpinning ? ' is-spinning' : !isAdmin ? ' is-info' : ' is-warning'}`}
+            aria-live="polite"
+          >
+            <span aria-hidden="true" />
+            {readinessText}
           </div>
-        </div>
-      ) : (
-        <div className="wheel-not-ready" aria-live="polite">
-          <span className="wheel-not-ready-icon" aria-hidden="true">🧀</span>
-          <strong>
-            {wheelStatusLoadState === 'loading'
-              ? 'Загружаем колесо'
-              : wheelStatus.formed
-                ? 'Все фильмы просмотрены'
-                : 'Колесо не готово'}
-          </strong>
-          <span>
-            {wheelStatusLoadState === 'error'
-              ? 'Не удалось получить состав колеса.'
-              : wheelStatus.formed
-                ? 'Для нового выбора сформируйте следующий раунд.'
-              : isGuest
-                ? 'Ждём, когда участники сформируют состав.'
-                : 'Откройте панель слева и сформируйте состав.'}
-          </span>
-          {wheelStatusLoadState === 'error' && (
-            <button className="button-secondary" type="button" onClick={refreshWheelData}>Повторить</button>
-          )}
-        </div>
-      )}
+        )}
+
+        {movies.length > 0 ? (
+          <div className="wheel-container">
+            <div className="wheel-wrapper">
+              <CheeseWheel
+                ref={wheelRef}
+                movies={movies}
+                onSpinComplete={handleSpinComplete}
+                theme={theme}
+              />
+              <button
+                type="button"
+                className={`wheel-center-btn${spinPending ? ' is-pending' : ''}${isSpinning ? ' is-spinning' : ''}`}
+                onClick={handleSpin}
+                disabled={spinDisabled}
+                aria-label="Крутить колесо"
+                aria-disabled={spinDisabled}
+                aria-busy={spinPending || isSpinning}
+                title={
+                  !isAdmin
+                    ? 'Прокрутку запускает администратор'
+                    : wheelReady ? 'Крутить колесо' : 'Сначала сформируйте колесо'
+                }
+              >
+                {centerImage
+                  ? <img src={centerImage} alt="" className="wheel-center-img" />
+                  : <span className="wheel-center-fallback" aria-hidden="true">🧀</span>}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="wheel-not-ready" aria-live="polite">
+            <span className="wheel-not-ready-icon" aria-hidden="true">🧀</span>
+            <strong>
+              {wheelStatusLoadState === 'loading'
+                ? 'Загружаем колесо'
+                : wheelStatus.formed
+                  ? 'Все фильмы просмотрены'
+                  : 'Колесо не готово'}
+            </strong>
+            <span>
+              {wheelStatusLoadState === 'error'
+                ? 'Не удалось получить состав колеса.'
+                : wheelStatus.formed
+                  ? 'Для нового выбора сформируйте следующий раунд.'
+                : isGuest
+                  ? 'Ждём, когда участники сформируют состав.'
+                  : 'Откройте панель слева и сформируйте состав.'}
+            </span>
+            {wheelStatusLoadState === 'error' && (
+              <button className="button-secondary" type="button" onClick={refreshWheelData}>Повторить</button>
+            )}
+          </div>
+        )}
+      </div>
+      {oneOffState.enabled && <OneOffWheelPanel />}
     </section>
   );
 }

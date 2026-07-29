@@ -27,6 +27,7 @@ import {
   fetchNextWheelMovies,
   postNextMovie,
   deleteNextMovie,
+  fetchOneOffWheel,
 } from './api';
 import AuthPage from './components/AuthPage';
 import Nav from './components/Nav';
@@ -150,12 +151,21 @@ export default function App() {
   const [nextWheelMovies, setNextWheelMovies] = useState([]);
   const [centerImage, setCenterImage] = useState(null);
   const [wheelIsSpinning, setWheelIsSpinning] = useState(false);
+  const [oneOffIsSpinning, setOneOffIsSpinning] = useState(false);
+  const [oneOffState, setOneOffState] = useState({
+    enabled: false,
+    mode: 'selection',
+    movies: [],
+    result: null,
+    spinning_until: null,
+  });
   const socketRef = useRef(null);
   const processedSpinIdsRef = useRef(new Set());
   const toastIdRef = useRef(0);
 
   // Spin broadcast state
   const [remoteSpin, setRemoteSpin] = useState(null);
+  const [remoteOneOffSpin, setRemoteOneOffSpin] = useState(null);
 
   const showToast = useCallback((message, type = 'info') => {
     const id = ++toastIdRef.current;
@@ -203,17 +213,24 @@ export default function App() {
   const refreshWheelData = useCallback(async () => {
     setWheelStatusLoadState('loading');
     try {
-      const [currentMovies, nextMovies, status] = await Promise.all([
+      const [currentMovies, nextMovies, status, oneOff] = await Promise.all([
         fetchWheelMovies(),
         fetchNextWheelMovies(),
         fetchWheelStatus(),
+        fetchOneOffWheel(),
       ]);
-      if (!Array.isArray(currentMovies) || !Array.isArray(nextMovies) || !Array.isArray(status.movies)) {
+      if (
+        !Array.isArray(currentMovies)
+        || !Array.isArray(nextMovies)
+        || !Array.isArray(status.movies)
+        || !Array.isArray(oneOff.movies)
+      ) {
         throw new Error('Некорректный ответ сервера');
       }
       setWheelMovies(currentMovies);
       setNextWheelMovies(nextMovies);
       setWheelStatus(status);
+      setOneOffState(oneOff);
       setWheelStatusLoadState('ready');
     } catch {
       setWheelStatusLoadState('error');
@@ -239,7 +256,16 @@ export default function App() {
         fetchWheelMovies(),
         fetchNextWheelMovies(),
         fetchWheelStatus(),
-      ]).then(([settingsResult, themeResult, centerResult, wheelResult, nextResult, wheelStatusResult]) => {
+        fetchOneOffWheel(),
+      ]).then(([
+        settingsResult,
+        themeResult,
+        centerResult,
+        wheelResult,
+        nextResult,
+        wheelStatusResult,
+        oneOffResult,
+      ]) => {
         if (settingsResult.status === 'fulfilled') {
           const settings = settingsResult.value;
           if (settings.spin_duration !== undefined) setSpinDuration(settings.spin_duration);
@@ -255,6 +281,7 @@ export default function App() {
           setWheelStatus(wheelStatusResult.value);
           setWheelStatusLoadState('ready');
         }
+        if (oneOffResult.status === 'fulfilled') setOneOffState(oneOffResult.value);
         setLastSyncedAt(Date.now());
       });
     };
@@ -334,6 +361,8 @@ export default function App() {
       setNextWheelMovies([]);
       setWheelMovies(movies);
     });
+    socket.on('one-off-state-changed', setOneOffState);
+    socket.on('one-off-spinning', setRemoteOneOffSpin);
 
     return () => {
       socket.off('connect', onConnect);
@@ -348,6 +377,8 @@ export default function App() {
       socket.off('user-role-changed', onUserRoleChanged);
       socket.off('next-movie-added', onNextMovieAdded);
       socket.off('next-movie-updated', onNextMovieUpdated);
+      socket.off('one-off-state-changed', setOneOffState);
+      socket.off('one-off-spinning', setRemoteOneOffSpin);
       socket.disconnect();
     };
   }, []);
@@ -676,6 +707,9 @@ export default function App() {
     centerImage, setCenterImage,
     connected, connectionState, lastSyncedAt, reconnect,
     wheelIsSpinning, setWheelIsSpinning,
+    oneOffState, setOneOffState,
+    oneOffIsSpinning, setOneOffIsSpinning,
+    remoteOneOffSpin, setRemoteOneOffSpin,
     refreshSession,
   };
 
@@ -752,7 +786,7 @@ export default function App() {
       )}
 
       {isLoggedIn && (
-        <div className={`app-container${page === 'wheel' ? ' wheel-active' : ''}`}>
+        <div className={`app-container${page === 'wheel' ? ' wheel-active' : ''}${page === 'wheel' && oneOffState.enabled ? ' one-off-active' : ''}`}>
           <Nav activePage={page} onNavigate={navigate} onLogout={logout}
                userName={isGuest ? 'Гость' : currentUser?.name} />
           <div id="wheel-page" className={`page ${page === 'wheel' ? 'active' : ''}`}

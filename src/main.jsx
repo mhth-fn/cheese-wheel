@@ -9,6 +9,7 @@ import './css/toast.css';
 import './css/nav.css';
 import './css/auth.css';
 import './css/wheel.css';
+import './css/one-off.css';
 import './css/movies.css';
 import './css/modal.css';
 import './css/watched.css';

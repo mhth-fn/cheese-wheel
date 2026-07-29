@@ -6,6 +6,7 @@ import {
   postSpinEnabled,
   postAddEnabled,
   postDecorationsEnabled,
+  patchOneOffWheelSettings,
   updateAdminUserRole,
 } from '../api';
 import { useApp } from '../App';
@@ -36,6 +37,8 @@ const actionLabels = {
   'wheel.formed': 'Сформировано колесо',
   'wheel.next_promoted': 'Сформировано следующее колесо',
   'wheel.spin_completed': 'Завершено вращение',
+  'one_off.setting_changed': 'Изменено разовое колесо',
+  'one_off.result_resolved': 'Завершён выбор разового колеса',
   'movie.marked_watched': 'Фильм отмечен просмотренным',
   'watched.created': 'Фильм добавлен в историю',
   'watched.updated': 'Фильм изменён в истории',
@@ -137,6 +140,9 @@ export default function AdminModal({ theme, onClose }) {
     setAddEnabled,
     decorationsEnabled,
     setDecorationsEnabled,
+    oneOffState,
+    setOneOffState,
+    oneOffIsSpinning,
     showToast,
     refreshSession,
   } = useApp();
@@ -205,6 +211,29 @@ export default function AdminModal({ theme, onClose }) {
     } catch (error) {
       setValue(currentValue);
       showToast(error.message || 'Не удалось изменить настройку', 'error');
+    } finally {
+      setBusySetting('');
+    }
+  };
+
+  const updateOneOffSettings = async (changes, busyKey) => {
+    const previous = oneOffState;
+    setBusySetting(busyKey);
+    setOneOffState(current => ({ ...current, ...changes }));
+    try {
+      const nextState = await readResponse(await patchOneOffWheelSettings(changes));
+      setOneOffState(nextState);
+      showToast(
+        changes.enabled === true
+          ? 'Разовое колесо опубликовано'
+          : changes.enabled === false
+            ? 'Разовое колесо скрыто'
+            : 'Режим разового колеса обновлён',
+        'success'
+      );
+    } catch (error) {
+      setOneOffState(previous);
+      showToast(error.message || 'Не удалось изменить разовое колесо', 'error');
     } finally {
       setBusySetting('');
     }
@@ -310,6 +339,37 @@ export default function AdminModal({ theme, onClose }) {
                 />
                 <span className="admin-toggle-slider"></span>
                 <span className="admin-toggle-label">Декорации (снег / лепестки)</span>
+              </label>
+              <label className="admin-toggle">
+                <input
+                  type="checkbox"
+                  checked={Boolean(oneOffState.enabled)}
+                  disabled={Boolean(busySetting) || oneOffIsSpinning}
+                  onChange={() => updateOneOffSettings(
+                    { enabled: !oneOffState.enabled },
+                    'one-off-enabled'
+                  )}
+                />
+                <span className="admin-toggle-slider"></span>
+                <span className="admin-toggle-label">Опубликовать разовое колесо</span>
+              </label>
+              <label className="admin-one-off-mode">
+                <span>Режим разового колеса</span>
+                <select
+                  value={oneOffState.mode}
+                  disabled={Boolean(busySetting) || oneOffIsSpinning || Boolean(oneOffState.result)}
+                  onChange={event => updateOneOffSettings(
+                    { mode: event.target.value },
+                    'one-off-mode'
+                  )}
+                  aria-label="Режим разового колеса"
+                >
+                  <option value="selection">Сразу выбрать фильм</option>
+                  <option value="elimination">Крутить на выбывание</option>
+                </select>
+                <small>
+                  В режиме выбывания колесо убирает по одному фильму, пока не останется победитель.
+                </small>
               </label>
             </div>
           </div>
