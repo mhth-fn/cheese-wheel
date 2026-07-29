@@ -155,6 +155,7 @@ export default function App() {
   const [oneOffState, setOneOffState] = useState({
     enabled: false,
     mode: 'selection',
+    spin_duration: 5,
     movies: [],
     result: null,
     spinning_until: null,
@@ -694,6 +695,10 @@ export default function App() {
     if (adminOpen && !isAdmin) setAdminOpen(false);
   }, [adminOpen, isAdmin]);
 
+  const oneOffVisible = Boolean(
+    oneOffState.enabled || oneOffIsSpinning || remoteOneOffSpin
+  );
+
   const ctx = {
     currentUser, isGuest, isAdmin, users, page, theme, spinDuration,
     spinEnabled, addEnabled, decorationsEnabled,
@@ -733,7 +738,7 @@ export default function App() {
         <AdminModal theme={theme} onClose={() => setAdminOpen(false)} />
       )}
 
-      {isLoggedIn && page === 'wheel' && (
+      {isLoggedIn && page === 'wheel' && !oneOffVisible && (
         <button
           className="drawer-toggle"
           onClick={() => setDrawerOpen(true)}
@@ -786,7 +791,7 @@ export default function App() {
       )}
 
       {isLoggedIn && (
-        <div className={`app-container${page === 'wheel' ? ' wheel-active' : ''}${page === 'wheel' && oneOffState.enabled ? ' one-off-active' : ''}`}>
+        <div className={`app-container${page === 'wheel' ? ' wheel-active' : ''}${page === 'wheel' && oneOffVisible ? ' one-off-active' : ''}`}>
           <Nav activePage={page} onNavigate={navigate} onLogout={logout}
                userName={isGuest ? 'Гость' : currentUser?.name} />
           <div id="wheel-page" className={`page ${page === 'wheel' ? 'active' : ''}`}

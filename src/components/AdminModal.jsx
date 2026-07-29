@@ -351,25 +351,7 @@ export default function AdminModal({ theme, onClose }) {
                   )}
                 />
                 <span className="admin-toggle-slider"></span>
-                <span className="admin-toggle-label">Опубликовать разовое колесо</span>
-              </label>
-              <label className="admin-one-off-mode">
-                <span>Режим разового колеса</span>
-                <select
-                  value={oneOffState.mode}
-                  disabled={Boolean(busySetting) || oneOffIsSpinning || Boolean(oneOffState.result)}
-                  onChange={event => updateOneOffSettings(
-                    { mode: event.target.value },
-                    'one-off-mode'
-                  )}
-                  aria-label="Режим разового колеса"
-                >
-                  <option value="selection">Сразу выбрать фильм</option>
-                  <option value="elimination">Крутить на выбывание</option>
-                </select>
-                <small>
-                  В режиме выбывания колесо убирает по одному фильму, пока не останется победитель.
-                </small>
+                <span className="admin-toggle-label">Показать разовое колесо на одну прокрутку</span>
               </label>
             </div>
           </div>

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../App';
 import CheeseWheel from './CheeseWheel';
 import OneOffWheelPanel from './OneOffWheelPanel';
+import OneOffResultModal from './OneOffResultModal';
 
 export default function WheelPage() {
   const {
@@ -22,6 +23,8 @@ export default function WheelPage() {
     centerImage,
     setWheelIsSpinning,
     oneOffState,
+    oneOffIsSpinning,
+    remoteOneOffSpin,
   } = useApp();
   const [isSpinning, setIsSpinning] = useState(false);
   const [spinPending, setSpinPending] = useState(false);
@@ -150,9 +153,17 @@ export default function WheelPage() {
         ? 'Прокрутку запускает администратор'
       : '';
 
+  const oneOffVisible = Boolean(
+    oneOffState.enabled || oneOffIsSpinning || remoteOneOffSpin
+  );
+  if (oneOffVisible) {
+    return <OneOffWheelPanel />;
+  }
+
   return (
-    <section className={`wheel-page-layout${oneOffState.enabled ? ' has-one-off' : ''}`}>
-      <div className="wheel-primary">
+    <>
+      <section className="wheel-page-layout">
+        <div className="wheel-primary">
         {readinessText && (
           <div
             className={`wheel-readiness${isSpinning ? ' is-spinning' : !isAdmin ? ' is-info' : ' is-warning'}`}
@@ -216,8 +227,9 @@ export default function WheelPage() {
             )}
           </div>
         )}
-      </div>
-      {oneOffState.enabled && <OneOffWheelPanel />}
-    </section>
+        </div>
+      </section>
+      <OneOffResultModal visible />
+    </>
   );
 }

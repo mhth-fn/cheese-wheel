@@ -619,8 +619,8 @@ function requireAuth(req, res, next) {
 
 const MIN_SPIN_DURATION = 5;
 const MAX_SPIN_DURATION = 30;
-const ONE_OFF_MIN_SPIN_DURATION = 2;
-const ONE_OFF_MAX_SPIN_DURATION = 12;
+const ONE_OFF_MIN_SPIN_DURATION = MIN_SPIN_DURATION;
+const ONE_OFF_MAX_SPIN_DURATION = MAX_SPIN_DURATION;
 const MAX_TITLE_LENGTH = 200;
 const MAX_SIGAME_PACK_BYTES = 200 * 1024 * 1024;
 let activeSpinUntil = 0;
@@ -1294,6 +1294,7 @@ db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('add_enabled', '
 db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('decorations_enabled', '1')").run();
 db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('one_off_enabled', '0')").run();
 db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('one_off_mode', 'selection')").run();
+db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('one_off_spin_duration', '5')").run();
 
 // Подготовленные выражения (кешируем для производительности)
 const stmts = {
@@ -2318,9 +2319,15 @@ function setOneOffResult(result) {
 
 function getOneOffState() {
   const modeValue = getOneOffSetting('one_off_mode', 'selection');
+  const durationValue = parseIntStrict(getOneOffSetting('one_off_spin_duration', '5'));
   return {
     enabled: getOneOffSetting('one_off_enabled', '0') === '1',
     mode: ONE_OFF_MODES.has(modeValue) ? modeValue : 'selection',
+    spin_duration: (
+      !isNaN(durationValue)
+      && durationValue >= ONE_OFF_MIN_SPIN_DURATION
+      && durationValue <= ONE_OFF_MAX_SPIN_DURATION
+    ) ? durationValue : ONE_OFF_MIN_SPIN_DURATION,
     movies: stmts.getOneOffMovies.all().map(serializeOneOffMovie),
     result: readOneOffResult(),
     spinning_until: activeOneOffSpinUntil > Date.now() ? activeOneOffSpinUntil : null,
@@ -3181,8 +3188,12 @@ app.get('/api/one-off-wheel', (req, res) => {
 app.patch('/api/one-off-wheel/settings', requireAdmin, (req, res) => {
   const hasEnabled = Object.prototype.hasOwnProperty.call(req.body || {}, 'enabled');
   const hasMode = Object.prototype.hasOwnProperty.call(req.body || {}, 'mode');
-  if (!hasEnabled && !hasMode) {
-    return res.status(400).json({ error: 'Укажите публикацию или режим колеса' });
+  const hasSpinDuration = Object.prototype.hasOwnProperty.call(
+    req.body || {},
+    'spin_duration'
+  );
+  if (!hasEnabled && !hasMode && !hasSpinDuration) {
+    return res.status(400).json({ error: 'Укажите настройку разового колеса' });
   }
   if (hasEnabled && typeof req.body.enabled !== 'boolean') {
     return res.status(400).json({ error: 'Неверное значение публикации' });
@@ -3190,15 +3201,34 @@ app.patch('/api/one-off-wheel/settings', requireAdmin, (req, res) => {
   if (hasMode && !ONE_OFF_MODES.has(req.body.mode)) {
     return res.status(400).json({ error: 'Режим: выбор или выбывание' });
   }
+  const spinDuration = hasSpinDuration
+    ? parseIntStrict(req.body.spin_duration)
+    : null;
+  if (
+    hasSpinDuration
+    && (
+      isNaN(spinDuration)
+      || spinDuration < ONE_OFF_MIN_SPIN_DURATION
+      || spinDuration > ONE_OFF_MAX_SPIN_DURATION
+    )
+  ) {
+    return res.status(400).json({
+      error: `Время от ${ONE_OFF_MIN_SPIN_DURATION} до ${ONE_OFF_MAX_SPIN_DURATION} секунд`,
+    });
+  }
   if (activeOneOffSpinUntil > Date.now()) {
     return res.status(409).json({ error: 'Дождитесь окончания прокрутки разового колеса' });
   }
   if (hasMode && readOneOffResult()) {
     return res.status(409).json({ error: 'Сначала завершите текущий выбор' });
   }
+  if (hasEnabled && req.body.enabled && readOneOffResult()) {
+    return res.status(409).json({ error: 'Сначала завершите текущий выбор' });
+  }
 
   if (hasEnabled) setOneOffSetting('one_off_enabled', req.body.enabled ? '1' : '0');
   if (hasMode) setOneOffSetting('one_off_mode', req.body.mode);
+  if (hasSpinDuration) setOneOffSetting('one_off_spin_duration', spinDuration);
   const state = getOneOffState();
   broadcastOneOffState();
   res.json(state);
@@ -4772,15 +4802,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const spinDuration = parseIntStrict(data?.spinDuration);
-    if (
-      isNaN(spinDuration)
-      || spinDuration < ONE_OFF_MIN_SPIN_DURATION
-      || spinDuration > ONE_OFF_MAX_SPIN_DURATION
-    ) {
-      socket.emit('one-off-spin-rejected', { error: 'Неверное время прокрутки' });
-      return;
-    }
+    const spinDuration = state.spin_duration;
 
     const selectedIndex = crypto.randomInt(state.movies.length);
     const selectedMovie = state.movies[selectedIndex];
@@ -4791,6 +4813,10 @@ io.on('connection', (socket) => {
 
     try {
       outcome = db.transaction(() => {
+        // A published one-off wheel is intentionally good for exactly one spin.
+        // Clients keep rendering the spin snapshot until the animation ends,
+        // while everyone else already receives the restored main-wheel state.
+        setOneOffSetting('one_off_enabled', '0');
         if (state.mode === 'selection' || state.movies.length === 1) {
           const winnerResult = {
             movie: selectedMovie,

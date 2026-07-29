@@ -83,10 +83,11 @@ test('one-off wheel is admin-published and supports selection and elimination', 
   const published = await request(instance, '/api/one-off-wheel/settings', {
     method: 'PATCH',
     cookie: admin.cookie,
-    body: { enabled: true, mode: 'selection' },
+    body: { enabled: true, mode: 'selection', spin_duration: 5 },
   });
   assert.equal(published.status, 200, JSON.stringify(published.payload));
   assert.equal(published.payload.enabled, true);
+  assert.equal(published.payload.spin_duration, 5);
 
   const first = await request(instance, '/api/one-off-wheel', {
     method: 'POST',
@@ -120,11 +121,11 @@ test('one-off wheel is admin-published and supports selection and elimination', 
   sockets.push(memberSocket, adminSocket);
 
   const rejectedPromise = waitForSocket(memberSocket, 'one-off-spin-rejected');
-  memberSocket.emit('spin-one-off', { spinDuration: 2 });
+  memberSocket.emit('spin-one-off');
   assert.match((await rejectedPromise).error, /администратор/);
 
   const selectionSpinPromise = waitForSocket(adminSocket, 'one-off-spinning');
-  adminSocket.emit('spin-one-off', { spinDuration: 2 });
+  adminSocket.emit('spin-one-off');
   const selectionSpin = await selectionSpinPromise;
   assert.equal(selectionSpin.mode, 'selection');
   assert.equal(selectionSpin.movies.length, 2);
@@ -134,8 +135,8 @@ test('one-off wheel is admin-published and supports selection and elimination', 
     cookie: admin.cookie,
   });
   assert.equal(selectedState.status, 200);
+  assert.equal(selectedState.payload.enabled, false);
   assert.ok(selectedState.payload.result?.movie);
-  await delay(2_600);
   const skipped = await request(instance, '/api/one-off-wheel/result', {
     method: 'POST',
     cookie: admin.cookie,
@@ -145,10 +146,11 @@ test('one-off wheel is admin-published and supports selection and elimination', 
   assert.equal(skipped.payload.state.result, null);
   assert.equal(skipped.payload.state.movies.length, 1);
 
+  await delay(5_600);
   const eliminationSettings = await request(instance, '/api/one-off-wheel/settings', {
     method: 'PATCH',
     cookie: admin.cookie,
-    body: { mode: 'elimination' },
+    body: { enabled: true, mode: 'elimination' },
   });
   assert.equal(eliminationSettings.status, 200);
   const challenger = await request(instance, '/api/one-off-wheel', {
@@ -159,7 +161,7 @@ test('one-off wheel is admin-published and supports selection and elimination', 
   assert.equal(challenger.status, 200);
 
   const eliminationSpinPromise = waitForSocket(adminSocket, 'one-off-spinning');
-  adminSocket.emit('spin-one-off', { spinDuration: 2 });
+  adminSocket.emit('spin-one-off');
   const eliminationSpin = await eliminationSpinPromise;
   assert.equal(eliminationSpin.mode, 'elimination');
   assert.equal(eliminationSpin.outcome.type, 'eliminated-and-winner');
@@ -167,8 +169,11 @@ test('one-off wheel is admin-published and supports selection and elimination', 
     eliminationSpin.outcome.movie.id,
     eliminationSpin.outcome.winner.id
   );
+  const hiddenAfterElimination = await request(instance, '/api/one-off-wheel', {
+    cookie: admin.cookie,
+  });
+  assert.equal(hiddenAfterElimination.payload.enabled, false);
 
-  await delay(2_600);
   const saved = await request(instance, '/api/one-off-wheel/result', {
     method: 'POST',
     cookie: admin.cookie,

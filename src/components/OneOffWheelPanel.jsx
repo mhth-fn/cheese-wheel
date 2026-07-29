@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../App';
 import {
+  deleteCenterImage,
   deleteOneOffMovie,
+  patchOneOffWheelSettings,
   postOneOffMovie,
-  resolveOneOffResult,
+  uploadCenterImage,
 } from '../api';
 import CheeseWheel from './CheeseWheel';
 
@@ -20,8 +22,9 @@ export default function OneOffWheelPanel() {
     isAdmin,
     connected,
     socket,
-    spinDuration,
     theme,
+    centerImage,
+    setCenterImage,
     oneOffState,
     setOneOffState,
     oneOffIsSpinning,
@@ -35,17 +38,26 @@ export default function OneOffWheelPanel() {
   const [deletingId, setDeletingId] = useState(null);
   const [spinPending, setSpinPending] = useState(false);
   const [activeSpin, setActiveSpin] = useState(null);
-  const [lastOutcome, setLastOutcome] = useState(null);
-  const [resolving, setResolving] = useState(false);
+  const [settingBusy, setSettingBusy] = useState('');
+  const [durationDraft, setDurationDraft] = useState(
+    Number(oneOffState.spin_duration) || 5
+  );
+  const [uploading, setUploading] = useState(false);
   const wheelRef = useRef(null);
+  const fileRef = useRef(null);
   const startedSpinIdRef = useRef(null);
 
   const movies = Array.isArray(oneOffState.movies) ? oneOffState.movies : [];
-  const displayMovies = activeSpin?.movies?.length ? activeSpin.movies : movies;
+  const spinSnapshot = activeSpin || remoteOneOffSpin;
+  const displayMovies = spinSnapshot?.movies?.length ? spinSnapshot.movies : movies;
   const result = oneOffState.result;
   const modeLabel = oneOffState.mode === 'elimination'
     ? 'На выбывание'
-    : 'Сразу выбрать';
+    : 'На выпадение';
+
+  useEffect(() => {
+    setDurationDraft(Number(oneOffState.spin_duration) || 5);
+  }, [oneOffState.spin_duration]);
 
   useEffect(() => {
     if (!socket) return undefined;
@@ -61,7 +73,6 @@ export default function OneOffWheelPanel() {
   useEffect(() => {
     if (!remoteOneOffSpin) return;
     setSpinPending(false);
-    setLastOutcome(null);
     setActiveSpin(remoteOneOffSpin);
     setOneOffIsSpinning(true);
     setRemoteOneOffSpin(null);
@@ -69,10 +80,10 @@ export default function OneOffWheelPanel() {
 
   useEffect(() => {
     if (!activeSpin || startedSpinIdRef.current === activeSpin.spinId) return;
-    const winnerIndex = activeSpin.movies.findIndex(
+    const selectedIndex = activeSpin.movies.findIndex(
       movie => Number(movie.id) === Number(activeSpin.winnerMovieId)
     );
-    if (winnerIndex < 0) {
+    if (selectedIndex < 0) {
       setActiveSpin(null);
       setOneOffIsSpinning(false);
       showToast('Состав разового колеса изменился', 'error');
@@ -80,7 +91,7 @@ export default function OneOffWheelPanel() {
     }
     startedSpinIdRef.current = activeSpin.spinId;
     wheelRef.current?.spin(
-      winnerIndex,
+      selectedIndex,
       activeSpin.spinDuration,
       activeSpin.randomOffset,
       activeSpin.turns
@@ -91,10 +102,35 @@ export default function OneOffWheelPanel() {
 
   const handleSpinComplete = useCallback(() => {
     if (!activeSpin) return;
-    setLastOutcome(activeSpin.outcome || null);
+    if (activeSpin.outcome?.type === 'eliminated') {
+      showToast(`«${activeSpin.outcome.movie.title}» выбывает`, 'info');
+    }
     setActiveSpin(null);
     setOneOffIsSpinning(false);
-  }, [activeSpin, setOneOffIsSpinning]);
+  }, [activeSpin, setOneOffIsSpinning, showToast]);
+
+  const updateSettings = async (changes, busyKey) => {
+    const previous = oneOffState;
+    setSettingBusy(busyKey);
+    setOneOffState(current => ({ ...current, ...changes }));
+    try {
+      const nextState = await readResponse(await patchOneOffWheelSettings(changes));
+      setOneOffState(nextState);
+    } catch (error) {
+      setOneOffState(previous);
+      showToast(error.message || 'Не удалось изменить настройки', 'error');
+    } finally {
+      setSettingBusy('');
+    }
+  };
+
+  const saveDuration = () => {
+    const duration = Math.max(5, Math.min(30, Math.round(Number(durationDraft))));
+    setDurationDraft(duration);
+    if (duration !== Number(oneOffState.spin_duration)) {
+      void updateSettings({ spin_duration: duration }, 'duration');
+    }
+  };
 
   const handleAdd = async event => {
     event.preventDefault();
@@ -124,6 +160,45 @@ export default function OneOffWheelPanel() {
     }
   };
 
+  const handleUpload = async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
+      showToast('Выберите PNG, JPG, GIF или WebP', 'error');
+      event.target.value = '';
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Файл больше 5 МБ', 'error');
+      event.target.value = '';
+      return;
+    }
+    setUploading(true);
+    try {
+      const data = await readResponse(await uploadCenterImage(file));
+      setCenterImage(data.url);
+      showToast('Центр колеса обновлён', 'success');
+    } catch (error) {
+      showToast(error.message || 'Ошибка загрузки', 'error');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const handleImageDelete = async () => {
+    setUploading(true);
+    try {
+      await readResponse(await deleteCenterImage());
+      setCenterImage(null);
+      showToast('Изображение центра удалено', 'info');
+    } catch (error) {
+      showToast(error.message || 'Ошибка удаления изображения', 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleSpin = () => {
     if (!isAdmin) {
       showToast('Разовое колесо прокручивает администратор', 'info');
@@ -135,28 +210,7 @@ export default function OneOffWheelPanel() {
     }
     if (movies.length === 0 || result || oneOffIsSpinning || spinPending) return;
     setSpinPending(true);
-    socket.emit('spin-one-off', {
-      spinDuration: Math.max(2, Math.min(12, Math.round(spinDuration))),
-    });
-  };
-
-  const handleResolve = async addToWatched => {
-    setResolving(true);
-    try {
-      const data = await readResponse(await resolveOneOffResult(addToWatched));
-      if (data.state) setOneOffState(data.state);
-      setLastOutcome(null);
-      showToast(
-        addToWatched
-          ? 'Фильм добавлен в просмотренные'
-          : 'Выбор завершён без добавления в просмотренные',
-        addToWatched ? 'success' : 'info'
-      );
-    } catch (error) {
-      showToast(error.message || 'Не удалось завершить выбор', 'error');
-    } finally {
-      setResolving(false);
-    }
+    socket.emit('spin-one-off');
   };
 
   const spinDisabled = (
@@ -168,156 +222,203 @@ export default function OneOffWheelPanel() {
     || spinPending
   );
   const canMutate = connected && !isGuest && !oneOffIsSpinning && !result;
+  const settingsDisabled = !isAdmin || oneOffIsSpinning || Boolean(settingBusy);
 
   return (
-    <aside className="one-off-panel" aria-labelledby="one-off-title">
-      <header className="one-off-header">
-        <div>
-          <p>Разовый сеанс</p>
-          <h2 id="one-off-title">Гостевое колесо</h2>
-        </div>
-        <span className={`one-off-mode is-${oneOffState.mode}`}>{modeLabel}</span>
-      </header>
-
-      <div className="one-off-wheel-visual">
+    <section className="one-off-replacement" aria-labelledby="one-off-title">
+      <div className="one-off-main">
+        <div className="one-off-banner" id="one-off-title">Разовое колесо</div>
         {displayMovies.length > 0 ? (
-          <>
-            <CheeseWheel
-              ref={wheelRef}
-              movies={displayMovies}
-              onSpinComplete={handleSpinComplete}
-              theme={theme}
-            />
-            <button
-              type="button"
-              className={`wheel-center-btn one-off-spin-btn${spinPending ? ' is-pending' : ''}`}
-              onClick={handleSpin}
-              disabled={spinDisabled}
-              aria-label="Крутить разовое колесо"
-              aria-busy={spinPending || oneOffIsSpinning}
-              title={isAdmin ? 'Крутить разовое колесо' : 'Прокручивает администратор'}
-            >
-              <span aria-hidden="true">{oneOffIsSpinning || spinPending ? '…' : '🎟️'}</span>
-            </button>
-          </>
+          <div className="wheel-container">
+            <div className="wheel-wrapper one-off-wheel-wrapper">
+              <CheeseWheel
+                ref={wheelRef}
+                movies={displayMovies}
+                onSpinComplete={handleSpinComplete}
+                theme={theme}
+              />
+              <button
+                type="button"
+                className={`wheel-center-btn${spinPending ? ' is-pending' : ''}${oneOffIsSpinning ? ' is-spinning' : ''}`}
+                onClick={handleSpin}
+                disabled={spinDisabled}
+                aria-label="Крутить разовое колесо"
+                aria-busy={spinPending || oneOffIsSpinning}
+                title={isAdmin ? 'Крутить разовое колесо' : 'Прокручивает администратор'}
+              >
+                {centerImage
+                  ? <img src={centerImage} alt="" className="wheel-center-img" />
+                  : <span className="wheel-center-fallback" aria-hidden="true">🧀</span>}
+              </button>
+            </div>
+          </div>
         ) : (
-          <div className="one-off-empty-wheel">
-            <span aria-hidden="true">🎟️</span>
-            <strong>Пока пусто</strong>
-            <small>Добавьте фильмы ниже</small>
+          <div className="wheel-not-ready one-off-not-ready" aria-live="polite">
+            <span className="wheel-not-ready-icon" aria-hidden="true">🧀</span>
+            <strong>Добавьте фильмы</strong>
+            <span>Список для разовой прокрутки находится в меню справа.</span>
           </div>
         )}
       </div>
 
-      {lastOutcome?.type === 'eliminated' && !oneOffIsSpinning && (
-        <div className="one-off-outcome is-eliminated" role="status">
-          <span aria-hidden="true">✕</span>
+      <aside className="one-off-panel" aria-label="Меню разового колеса">
+        <header className="one-off-header">
           <div>
-            <strong>Выбывает «{lastOutcome.movie.title}»</strong>
-            <small>В колесе осталось: {movies.length}</small>
+            <p>Одна публикация — одна прокрутка</p>
+            <h2>Меню колеса</h2>
           </div>
-        </div>
-      )}
+          <span className={`one-off-mode is-${oneOffState.mode}`}>{modeLabel}</span>
+        </header>
 
-      {result && !oneOffIsSpinning && !remoteOneOffSpin && (
-        <section className="one-off-result" aria-live="polite">
-          <span className="one-off-result-label">Выпал фильм</span>
-          <strong>{result.movie.title}</strong>
-          {result.eliminated_movie && (
-            <small>«{result.eliminated_movie.title}» выбыл последним</small>
-          )}
-          {isAdmin ? (
-            <div className="one-off-result-actions">
+        <section className="one-off-settings">
+          <h3>Параметры</h3>
+          <label>
+            <span>Режим</span>
+            <select
+              value={oneOffState.mode}
+              disabled={settingsDisabled || Boolean(result)}
+              onChange={event => updateSettings(
+                { mode: event.target.value },
+                'mode'
+              )}
+            >
+              <option value="selection">На выпадение</option>
+              <option value="elimination">На выбывание</option>
+            </select>
+          </label>
+          <label>
+            <span>Время прокрутки: <strong>{durationDraft} сек</strong></span>
+            <input
+              type="range"
+              min="5"
+              max="30"
+              step="1"
+              value={durationDraft}
+              disabled={settingsDisabled}
+              onChange={event => setDurationDraft(Number(event.target.value))}
+              aria-label="Время прокрутки разового колеса"
+            />
+            {isAdmin && Number(durationDraft) !== Number(oneOffState.spin_duration) && (
               <button
-                className="button-primary"
+                className="button-secondary one-off-duration-save"
                 type="button"
-                onClick={() => handleResolve(true)}
-                disabled={resolving}
+                onClick={saveDuration}
+                disabled={settingsDisabled}
               >
-                Добавить в просмотренные
+                Сохранить время
               </button>
-              <button
-                className="button-secondary"
-                type="button"
-                onClick={() => handleResolve(false)}
-                disabled={resolving}
-              >
-                Не добавлять
-              </button>
+            )}
+          </label>
+          <div className="one-off-center-setting">
+            <span>Центр колеса</span>
+            <div>
+              <span className="one-off-center-preview" aria-hidden="true">
+                {centerImage ? <img src={centerImage} alt="" /> : '🧀'}
+              </span>
+              {isAdmin && (
+                <div>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/gif,image/webp"
+                    onChange={handleUpload}
+                    disabled={uploading || oneOffIsSpinning}
+                    aria-label="Загрузить изображение центра"
+                  />
+                  <button
+                    className="button-secondary"
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={uploading || oneOffIsSpinning}
+                  >
+                    {uploading ? 'Загрузка…' : 'Выбрать'}
+                  </button>
+                  {centerImage && (
+                    <button
+                      className="button-ghost danger"
+                      type="button"
+                      onClick={handleImageDelete}
+                      disabled={uploading || oneOffIsSpinning}
+                    >
+                      Удалить
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
-          ) : (
-            <small>Администратор решит, добавлять ли фильм в просмотренные.</small>
-          )}
+          </div>
         </section>
-      )}
 
-      <form className="one-off-add" onSubmit={handleAdd}>
-        <label htmlFor="one-off-movie-input">Добавить разовый фильм</label>
-        <div>
-          <input
-            id="one-off-movie-input"
-            type="text"
-            value={title}
-            maxLength={200}
-            placeholder={isGuest ? 'Гостям доступен только просмотр' : 'Название фильма…'}
-            onChange={event => setTitle(event.target.value)}
-            disabled={!canMutate || saving}
-          />
-          <button
-            className="button-primary"
-            type="submit"
-            disabled={!canMutate || saving || !title.trim()}
-          >
-            Добавить
-          </button>
-        </div>
-      </form>
+        <form className="one-off-add" onSubmit={handleAdd}>
+          <label htmlFor="one-off-movie-input">Добавить фильм</label>
+          <div>
+            <input
+              id="one-off-movie-input"
+              type="text"
+              value={title}
+              maxLength={200}
+              placeholder={isGuest ? 'Гостям доступен только просмотр' : 'Название фильма…'}
+              onChange={event => setTitle(event.target.value)}
+              disabled={!canMutate || saving}
+            />
+            <button
+              className="button-primary"
+              type="submit"
+              disabled={!canMutate || saving || !title.trim()}
+            >
+              Добавить
+            </button>
+          </div>
+        </form>
 
-      <div className="one-off-table-wrap">
-        <table className="one-off-table">
-          <caption>Фильмы разового колеса: {movies.length}</caption>
-          <thead>
-            <tr>
-              <th>Фильм</th>
-              <th>Добавил</th>
-              <th><span className="sr-only">Действия</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {movies.map(movie => {
-              const manageable = (
-                !isGuest
-                && (isAdmin || Number(movie.added_by) === Number(currentUser?.id))
-              );
-              return (
-                <tr key={movie.id}>
-                  <td title={movie.title}>{movie.title}</td>
-                  <td>{movie.added_by_name}</td>
-                  <td>
-                    {manageable && (
-                      <button
-                        className="one-off-delete"
-                        type="button"
-                        onClick={() => handleDelete(movie)}
-                        disabled={!canMutate || deletingId === movie.id}
-                        aria-label={`Удалить фильм ${movie.title}`}
-                        title="Удалить"
-                      >
-                        ✕
-                      </button>
-                    )}
+        <div className="one-off-table-wrap">
+          <table className="one-off-table">
+            <caption>Фильмы: {movies.length}</caption>
+            <thead>
+              <tr>
+                <th>Фильм</th>
+                <th>Добавил</th>
+                <th><span className="sr-only">Действия</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {movies.map(movie => {
+                const manageable = (
+                  !isGuest
+                  && (isAdmin || Number(movie.added_by) === Number(currentUser?.id))
+                );
+                return (
+                  <tr key={movie.id}>
+                    <td title={movie.title}>{movie.title}</td>
+                    <td>{movie.added_by_name}</td>
+                    <td>
+                      {manageable && (
+                        <button
+                          className="one-off-delete"
+                          type="button"
+                          onClick={() => handleDelete(movie)}
+                          disabled={!canMutate || deletingId === movie.id}
+                          aria-label={`Удалить фильм ${movie.title}`}
+                          title="Удалить"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {movies.length === 0 && (
+                <tr>
+                  <td colSpan="3" className="one-off-empty-row">
+                    Здесь появятся предложения участников
                   </td>
                 </tr>
-              );
-            })}
-            {movies.length === 0 && (
-              <tr>
-                <td colSpan="3" className="one-off-empty-row">Здесь появятся предложения участников</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </aside>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </aside>
+    </section>
   );
 }
