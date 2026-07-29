@@ -38,11 +38,11 @@ import Toast from './components/Toast';
 import ConnectionStatus from './components/ConnectionStatus';
 import DrawerPanel from './components/DrawerPanel';
 import ThemeDecorations from './components/ThemeDecorations';
+import ReviewsJournalPage from './components/ReviewsJournalPage';
 
 const WatchedPage = lazy(() => import('./components/WatchedPage'));
 const GamesPage = lazy(() => import('./components/GamesPage'));
 const SigamePacksPage = lazy(() => import('./components/SigamePacksPage'));
-const ReviewsJournalPage = lazy(() => import('./components/ReviewsJournalPage'));
 const VpnPage = lazy(() => import('./components/VpnPage'));
 
 export const AppContext = createContext(null);
@@ -828,12 +828,10 @@ export default function App() {
           )}
           {(page === 'movie-reviews' || page === 'wine-reviews') && (
             <div id="reviews-page" className="page active">
-              <Suspense fallback={<PageLoading />}>
-                <ReviewsJournalPage
-                  kind={page === 'wine-reviews' ? 'wine' : 'movies'}
-                  onKindChange={kind => navigate(kind === 'wine' ? 'wine-reviews' : 'movie-reviews')}
-                />
-              </Suspense>
+              <ReviewsJournalPage
+                kind={page === 'wine-reviews' ? 'wine' : 'movies'}
+                onKindChange={kind => navigate(kind === 'wine' ? 'wine-reviews' : 'movie-reviews')}
+              />
             </div>
           )}
         </div>

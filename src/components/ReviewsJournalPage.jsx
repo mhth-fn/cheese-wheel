@@ -1,20 +1,11 @@
-import { lazy, Suspense, useRef } from 'react';
-
-const MovieReviewsPage = lazy(() => import('./MovieReviewsPage'));
-const WineReviewsPage = lazy(() => import('./WineReviewsPage'));
+import { useRef } from 'react';
+import MovieReviewsPage from './MovieReviewsPage';
+import WineReviewsPage from './WineReviewsPage';
 
 const REVIEW_KINDS = [
   { key: 'movies', icon: '🎬', label: 'Кино' },
   { key: 'wine', icon: '🍷', label: 'Вино' },
 ];
-
-function JournalLoading() {
-  return (
-    <div className="reviews-journal-loading" role="status" aria-live="polite">
-      Загружаем обзоры…
-    </div>
-  );
-}
 
 export default function ReviewsJournalPage({ kind = 'movies', onKindChange }) {
   const tabRefs = useRef({});
@@ -86,11 +77,9 @@ export default function ReviewsJournalPage({ kind = 'movies', onKindChange }) {
         aria-labelledby={activeTabId}
         tabIndex={0}
       >
-        <Suspense fallback={<JournalLoading />}>
-          {kind === 'wine'
-            ? <WineReviewsPage embedded />
-            : <MovieReviewsPage embedded />}
-        </Suspense>
+        {kind === 'wine'
+          ? <WineReviewsPage embedded />
+          : <MovieReviewsPage embedded />}
       </section>
     </main>
   );
