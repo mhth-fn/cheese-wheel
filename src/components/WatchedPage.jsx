@@ -54,7 +54,7 @@ function useMediaQuery(query) {
   return matches;
 }
 
-const CORE_USER_NAMES = ['Антон', 'Митя', 'Пётр', 'Сергей'];
+const CORE_USER_NAMES = ['Антон', 'Митя', 'Пётр', 'Сергей', 'Егор'];
 
 function normalizeUserName(value) {
   return String(value || '').trim().toLocaleLowerCase('ru').replaceAll('ё', 'е');
@@ -550,9 +550,9 @@ export default function WatchedPage() {
         <div className="watched-scope-control">
           <span aria-live="polite">
             {personalMode
-              ? `Только мои оценки: ${scopedMovies.length} фильмов${coreFilterEnabled ? ' · сравнение только с основной тройкой' : ''}`
+              ? `Только мои оценки: ${scopedMovies.length} фильмов${coreFilterEnabled ? ' · сравнение только с основной пятёркой' : ''}`
               : coreMode
-                ? 'Основной состав: 4 участника'
+                ? 'Основной состав: 5 участников'
                 : 'Сейчас показаны все участники'}
           </span>
           <div className="watched-scope-actions" role="group" aria-label="Фильтры статистики">
@@ -631,13 +631,13 @@ export default function WatchedPage() {
             <div className="empty-state-title">Вы ещё ничего не оценили</div>
             <p>Вернитесь к полному списку, чтобы поставить первую оценку.</p>
             <button className="button-ghost" type="button" onClick={togglePersonalFilter}>
-              {coreFilterEnabled ? 'Вернуться к основной четвёрке' : 'Показать все фильмы'}
+              {coreFilterEnabled ? 'Вернуться к основной пятёрке' : 'Показать все фильмы'}
             </button>
           </div>
         ) : coreMode && scopedMovies.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon" aria-hidden="true">👥</div>
-            <div className="empty-state-title">У основной четвёрки пока нет оценок</div>
+            <div className="empty-state-title">У основной пятёрки пока нет оценок</div>
             <p>Вернитесь к полному списку, чтобы поставить первую оценку.</p>
           </div>
         ) : filtered.length === 0 ? (
@@ -685,7 +685,7 @@ export default function WatchedPage() {
                 personalMode
                   ? 'Фильмы, которые я оценил'
                   : coreMode
-                    ? 'Просмотренные фильмы основной четвёрки'
+                    ? 'Просмотренные фильмы основной пятёрки'
                     : 'Все просмотренные фильмы'
               }
             >
@@ -700,7 +700,7 @@ export default function WatchedPage() {
               personalMode
                 ? 'Фильмы, которые я оценил'
                 : coreMode
-                  ? 'Просмотренные фильмы основной четвёрки'
+                  ? 'Просмотренные фильмы основной пятёрки'
                   : 'Все просмотренные фильмы'
             }
           >

@@ -169,9 +169,9 @@ export default function StatsPanel({ refreshKey, scope = 'all', comparisonScope 
       className={`stats-panel${scope === 'core' ? ' core-scope' : ''}${isPersonal ? ' personal-scope' : ''}`}
       aria-label={
         isPersonal
-          ? `Личная статистика ${stats.subject_name || ''}${comparisonScope === 'core' ? ' по основной четвёрке' : ''}`.trim()
+          ? `Личная статистика ${stats.subject_name || ''}${comparisonScope === 'core' ? ' по основной пятёрке' : ''}`.trim()
           : scope === 'core'
-            ? 'Статистика основной четвёрки'
+            ? 'Статистика основной пятёрки'
             : 'Статистика просмотренных фильмов'
       }
     >
@@ -181,12 +181,12 @@ export default function StatsPanel({ refreshKey, scope = 'all', comparisonScope 
           isPersonal
             ? 'Количество просмотренных фильмов с вашей оценкой'
             : scope === 'core'
-              ? 'Фильмы с оценкой хотя бы одного участника основной четвёрки'
+              ? 'Фильмы с оценкой хотя бы одного участника основной пятёрки'
               : 'Количество фильмов в общей истории'
         }
       >
         <div className="stat-card-label">
-          {isPersonal ? 'Оценено мной' : scope === 'core' ? 'Оценено четвёркой' : 'Просмотрено вместе'}
+          {isPersonal ? 'Оценено мной' : scope === 'core' ? 'Оценено пятёркой' : 'Просмотрено вместе'}
         </div>
         <div className="stat-card-value">{stats.total_watched}</div>
         <div className="stat-card-sub">{pluralFilms(stats.total_watched)}</div>

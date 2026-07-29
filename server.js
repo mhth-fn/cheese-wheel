@@ -1169,7 +1169,7 @@ const seedUsers = [
   { id: 6, name: 'Женя' },
   { id: 7, name: 'Юлий' },
 ];
-const CORE_STATS_USER_NAMES = Object.freeze(['Антон', 'Митя', 'Пётр', 'Сергей']);
+const CORE_STATS_USER_NAMES = Object.freeze(['Антон', 'Митя', 'Пётр', 'Сергей', 'Егор']);
 const insertUser = db.prepare('INSERT OR IGNORE INTO users (id, name, password_hash) VALUES (?, ?, ?)');
 seedUsers.forEach(u => insertUser.run(u.id, u.name, hashPassword(DEFAULT_PASSWORD)));
 
