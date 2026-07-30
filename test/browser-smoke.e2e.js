@@ -393,6 +393,7 @@ test('mobile browser can log in and use watched and reviews navigation', async t
       const form = document.querySelector('.review-form');
       const input = document.querySelector('#movie-review-title');
       const nav = document.querySelector('.nav-pages');
+      const navLayer = document.querySelector('.nav-pages-layer');
       const profile = document.querySelector('.nav-user');
       const connection = document.querySelector('.connection-status');
       const formRect = form?.getBoundingClientRect();
@@ -405,6 +406,8 @@ test('mobile browser can log in and use watched and reviews navigation', async t
         documentWidth: document.documentElement.scrollWidth,
         formWidth: form?.clientWidth,
         formContentWidth: form?.scrollWidth,
+        navLayerPosition: navLayer ? getComputedStyle(navLayer).position : null,
+        navLayerBackground: navLayer ? getComputedStyle(navLayer).backgroundColor : null,
         formRect: formRect && {
           left: formRect.left,
           right: formRect.right,
@@ -453,6 +456,16 @@ test('mobile browser can log in and use watched and reviews navigation', async t
       layout.navPosition,
       'absolute',
       `${orientation}: iOS navigation must avoid Safari fixed-edge tinting`
+    );
+    assert.equal(
+      layout.navLayerPosition,
+      'fixed',
+      `${orientation}: the transparent navigation layer must move natively`
+    );
+    assert.equal(
+      layout.navLayerBackground,
+      'rgba(0, 0, 0, 0)',
+      `${orientation}: the fixed navigation layer must stay transparent`
     );
     assert.equal(
       layout.navRect.left < layout.profileRect.right

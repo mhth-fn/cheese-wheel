@@ -17,6 +17,28 @@ test('mobile viewport extends behind Safari controls without forcing a solid too
   assert.doesNotMatch(html, /<meta\s+name=["']theme-color["']/i);
 });
 
+test('Safari mobile dock follows the viewport without scroll-position JavaScript', () => {
+  const navComponent = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'components', 'Nav.jsx'),
+    'utf8'
+  );
+  const navCss = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'css', 'nav.css'),
+    'utf8'
+  );
+
+  assert.match(navComponent, /className=["']nav-pages-layer["']/);
+  assert.doesNotMatch(navComponent, /visualViewport|--mobile-nav-top/);
+  assert.match(
+    navCss,
+    /html\.ios-safari \.nav-pages-layer\s*\{[^}]*position:\s*fixed;[^}]*width:\s*0;/s
+  );
+  assert.match(
+    navCss,
+    /html\.ios-safari \.nav-pages\s*\{[^}]*position:\s*absolute;[^}]*100dvh/s
+  );
+});
+
 test('production refuses to start without the current frontend build', async t => {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'cheese-wheel-frontend-'));
   t.after(() => fsp.rm(root, { recursive: true, force: true }));

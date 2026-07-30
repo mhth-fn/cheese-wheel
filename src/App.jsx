@@ -723,15 +723,17 @@ export default function App() {
       {decorationsEnabled && <ThemeDecorations theme={theme} />}
 
       {isAdmin && (
-        <button
-          className={`admin-btn visible ${page === 'wheel' ? 'with-drawer' : ''}`}
-          onClick={() => setAdminOpen(true)}
-          aria-expanded={adminOpen}
-          aria-label="Открыть админ-панель"
-          title="Админ-панель"
-        >
-          ⚙️
-        </button>
+        <div className="admin-btn-layer">
+          <button
+            className={`admin-btn visible ${page === 'wheel' ? 'with-drawer' : ''}`}
+            onClick={() => setAdminOpen(true)}
+            aria-expanded={adminOpen}
+            aria-label="Открыть админ-панель"
+            title="Админ-панель"
+          >
+            ⚙️
+          </button>
+        </div>
       )}
 
       {adminOpen && (
@@ -739,16 +741,18 @@ export default function App() {
       )}
 
       {isLoggedIn && page === 'wheel' && !oneOffVisible && (
-        <button
-          className="drawer-toggle"
-          onClick={() => setDrawerOpen(true)}
-          disabled={wheelIsSpinning}
-          aria-expanded={drawerOpen}
-          aria-label="Открыть управление колесом"
-          title="Управление колесом"
-        >
-          <span className="drawer-toggle-cheese">🧀</span>
-        </button>
+        <div className="drawer-toggle-layer">
+          <button
+            className="drawer-toggle"
+            onClick={() => setDrawerOpen(true)}
+            disabled={wheelIsSpinning}
+            aria-expanded={drawerOpen}
+            aria-label="Открыть управление колесом"
+            title="Управление колесом"
+          >
+            <span className="drawer-toggle-cheese">🧀</span>
+          </button>
+        </div>
       )}
 
       {isLoggedIn && (

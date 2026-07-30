@@ -292,6 +292,10 @@
   background: var(--color-surface);
 }
 
+.admin-btn-layer {
+  display: contents;
+}
+
 .admin-btn {
   position: fixed;
   bottom: 20px;
@@ -643,10 +647,22 @@
     left: 68px;
   }
 
+  html.ios-safari .admin-btn-layer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 910;
+    display: block;
+    width: 0;
+    height: 0;
+    background: transparent;
+    pointer-events: none;
+  }
+
   html.ios-safari .admin-btn {
     position: absolute;
-    top: calc(var(--mobile-nav-top, 100dvh) - 62px);
-    bottom: auto;
+    bottom: calc(82px + env(safe-area-inset-bottom) - 100dvh);
+    pointer-events: auto;
   }
 
   body.mobile-nav-hidden .admin-btn {

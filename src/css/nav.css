@@ -7,6 +7,10 @@
   margin-bottom: var(--space-8);
 }
 
+.nav-pages-layer {
+  display: contents;
+}
+
 .nav-pages {
   display: flex;
   flex: 1 1 auto;
@@ -392,14 +396,29 @@
       visibility 0s linear 0.36s;
   }
 
-  html.ios-safari .nav {
-    position: static;
+  html.ios-safari .nav-pages-layer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 900;
+    display: block;
+    width: 0;
+    height: 0;
+    background: transparent;
+    pointer-events: none;
   }
 
   html.ios-safari .nav-pages {
     position: absolute;
-    top: var(--mobile-nav-top, calc(100dvh - 96px));
-    bottom: auto;
+    right: auto;
+    bottom: calc(var(--space-3) - 100dvh);
+    left: max(var(--space-3), env(safe-area-inset-left));
+    width: calc(
+      100vw
+      - max(var(--space-3), env(safe-area-inset-left))
+      - max(var(--space-3), env(safe-area-inset-right))
+    );
+    pointer-events: auto;
   }
 
   .nav-btn {
