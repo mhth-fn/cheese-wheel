@@ -213,6 +213,32 @@ test('real server enforces authentication, dynamic roles and content ownership',
   assert.equal((await request(instance, '/api/stats?scope=selected&user_ids=999', {
     cookie: sergey.cookie,
   })).status, 400);
+  const personalSelectedStats = await request(
+    instance,
+    '/api/stats?scope=personal&comparison_scope=selected&user_ids=3',
+    { cookie: anton.cookie }
+  );
+  assert.equal(
+    personalSelectedStats.status,
+    200,
+    JSON.stringify(personalSelectedStats.payload)
+  );
+  assert.equal(personalSelectedStats.payload.scope, 'personal');
+  assert.equal(personalSelectedStats.payload.comparison_scope, 'selected');
+  assert.deepEqual(personalSelectedStats.payload.comparison_user_ids, [3]);
+  assert.equal(personalSelectedStats.payload.closest_rating_pair.second_user, 'Пётр');
+  assert.equal(personalSelectedStats.payload.closest_rating_pair.average_difference, 1);
+  assert.equal(personalSelectedStats.payload.furthest_rating_pair.second_user, 'Пётр');
+  assert.equal((await request(
+    instance,
+    '/api/stats?scope=personal&comparison_scope=selected&user_ids=1',
+    { cookie: anton.cookie }
+  )).status, 400);
+  assert.equal((await request(
+    instance,
+    '/api/stats?scope=personal&comparison_scope=selected&user_ids=999',
+    { cookie: anton.cookie }
+  )).status, 400);
 
   const lastAdmin = await request(instance, '/api/admin/users/2/role', {
     method: 'PATCH',

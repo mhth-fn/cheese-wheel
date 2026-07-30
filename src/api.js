@@ -161,7 +161,9 @@ export async function fetchStats(
   const query = scope === 'selected'
     ? `?scope=selected&user_ids=${selectedUserIds.map(id => encodeURIComponent(id)).join(',')}`
     : scope === 'personal'
-    ? `?scope=personal${comparisonScope === 'core' ? '&comparison_scope=core' : ''}`
+    ? comparisonScope === 'selected'
+      ? `?scope=personal&comparison_scope=selected&user_ids=${selectedUserIds.map(id => encodeURIComponent(id)).join(',')}`
+      : `?scope=personal${comparisonScope === 'core' ? '&comparison_scope=core' : ''}`
     : scope === 'core'
       ? '?scope=core'
       : '';

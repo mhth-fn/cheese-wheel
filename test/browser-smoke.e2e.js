@@ -223,8 +223,15 @@ test('mobile browser can log in and use watched and reviews navigation', async t
     'rgba(0, 0, 0, 0)',
     'user filter chips must not have a shared background'
   );
-  await userFilters.getByRole('button', { name: 'Сергей', exact: true }).click();
-  await page.getByText('У выбранных участников пока нет оценок', { exact: true }).waitFor();
+  assert.equal(
+    await userFilters.getByRole('button', { name: 'Сергей', exact: true }).count(),
+    0,
+    'current user must not appear among filter chips'
+  );
+  const antonFilter = userFilters.getByRole('button', { name: 'Антон', exact: true });
+  await antonFilter.click();
+  assert.equal(await antonFilter.getAttribute('aria-pressed'), 'false');
+  await page.getByRole('list', { name: 'Просмотренные фильмы выбранных участников' }).waitFor();
   await page.getByRole('button', { name: 'Показать всех', exact: true }).click();
   await page.getByRole('list', { name: 'Все просмотренные фильмы' }).waitFor();
   const personalStatsButton = userFilters.getByRole(
@@ -234,8 +241,15 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   await personalStatsButton.click();
   await page.getByRole('list', { name: 'Фильмы с моими оценками' }).waitFor();
   assert.equal(await personalStatsButton.getAttribute('aria-pressed'), 'true');
+  await antonFilter.click();
+  await page.getByRole('list', { name: 'Фильмы с моими оценками' }).waitFor();
+  assert.equal(await personalStatsButton.getAttribute('aria-pressed'), 'true');
+  assert.equal(await antonFilter.getAttribute('aria-pressed'), 'false');
   await personalStatsButton.click();
-  await page.getByRole('list', { name: 'Все просмотренные фильмы' }).waitFor();
+  await page.getByRole(
+    'list',
+    { name: 'Просмотренные фильмы выбранных участников' }
+  ).waitFor();
   assert.equal(await page.locator('table.watched-table').count(), 0);
   assert.equal(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),

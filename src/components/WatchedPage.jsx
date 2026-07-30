@@ -162,47 +162,62 @@ export default function WatchedPage() {
     };
   }, [socket, loadMovies]);
 
-  const allUserIds = useMemo(() => users.map(user => Number(user.id)), [users]);
-  const allUserIdsKey = allUserIds.join(',');
-  const userFilterEnabled = (
-    Array.isArray(selectedUserIds)
-    && selectedUserIds.length > 0
-    && selectedUserIds.length < allUserIds.length
-  );
   const currentParticipant = useMemo(
     () => users.find(user => Number(user.id) === Number(currentUser?.id)) || null,
     [users, currentUser?.id]
   );
   const canUsePersonalFilter = !isGuest && Boolean(currentParticipant);
+  const filterUsers = useMemo(
+    () => canUsePersonalFilter
+      ? users.filter(user => Number(user.id) !== Number(currentParticipant.id))
+      : users,
+    [canUsePersonalFilter, currentParticipant, users]
+  );
+  const filterUserIds = useMemo(
+    () => filterUsers.map(user => Number(user.id)),
+    [filterUsers]
+  );
+  const filterUserIdsKey = filterUserIds.join(',');
+  const userFilterEnabled = (
+    Array.isArray(selectedUserIds)
+    && selectedUserIds.length > 0
+    && selectedUserIds.length < filterUserIds.length
+  );
   const personalMode = canUsePersonalFilter && personalModeEnabled;
   const activeScope = personalMode ? 'personal' : userFilterEnabled ? 'selected' : 'all';
   const filterStorageKey = `watchedStatsUsers:${currentUser?.id ?? (isGuest ? 'guest' : 'anonymous')}`;
   const personalStorageKey = currentUser?.id ? `watchedStatsScope:${currentUser.id}` : '';
   const groupSelectedUserIdSet = useMemo(
-    () => new Set(userFilterEnabled ? selectedUserIds : allUserIds),
-    [allUserIds, selectedUserIds, userFilterEnabled]
+    () => new Set(userFilterEnabled ? selectedUserIds : filterUserIds),
+    [filterUserIds, selectedUserIds, userFilterEnabled]
   );
   const groupVisibleUsers = useMemo(() => {
     if (!userFilterEnabled) return users;
-    return users.filter(user => groupSelectedUserIdSet.has(Number(user.id)));
-  }, [groupSelectedUserIdSet, userFilterEnabled, users]);
+    return users.filter(user => (
+      Number(user.id) === Number(currentParticipant?.id)
+      || groupSelectedUserIdSet.has(Number(user.id))
+    ));
+  }, [currentParticipant, groupSelectedUserIdSet, userFilterEnabled, users]);
   const visibleUsers = useMemo(
     () => personalMode ? [currentParticipant] : groupVisibleUsers,
     [currentParticipant, groupVisibleUsers, personalMode]
   );
-  const filterChipUserIdSet = useMemo(
-    () => personalMode
-      ? new Set([Number(currentParticipant.id)])
-      : groupSelectedUserIdSet,
-    [currentParticipant, groupSelectedUserIdSet, personalMode]
+  const selectedComparisonUserIds = useMemo(
+    () => filterUsers
+      .filter(user => groupSelectedUserIdSet.has(Number(user.id)))
+      .map(user => Number(user.id)),
+    [filterUsers, groupSelectedUserIdSet]
   );
   const selectedStatsUserIds = useMemo(
-    () => groupVisibleUsers.map(user => Number(user.id)),
-    [groupVisibleUsers]
+    () => personalMode
+      ? selectedComparisonUserIds
+      : groupVisibleUsers.map(user => Number(user.id)),
+    [groupVisibleUsers, personalMode, selectedComparisonUserIds]
   );
+  const personalComparisonScope = personalMode && userFilterEnabled ? 'selected' : 'all';
 
   useEffect(() => {
-    if (allUserIds.length === 0) {
+    if (filterUserIds.length === 0) {
       setSelectedUserIds(null);
       return;
     }
@@ -210,7 +225,7 @@ export default function WatchedPage() {
     try {
       const stored = JSON.parse(localStorage.getItem(filterStorageKey) || '[]');
       if (Array.isArray(stored)) {
-        const allowedIds = new Set(allUserIds);
+        const allowedIds = new Set(filterUserIds);
         storedIds = stored
           .map(Number)
           .filter((id, index, values) => (
@@ -221,11 +236,11 @@ export default function WatchedPage() {
       storedIds = [];
     }
     setSelectedUserIds(
-      storedIds.length > 0 && storedIds.length < allUserIds.length
+      storedIds.length > 0 && storedIds.length < filterUserIds.length
         ? storedIds
         : null
     );
-  }, [allUserIdsKey, filterStorageKey]);
+  }, [filterStorageKey, filterUserIdsKey]);
 
   useEffect(() => {
     if (!canUsePersonalFilter || !personalStorageKey) {
@@ -261,7 +276,7 @@ export default function WatchedPage() {
   }, [activeScope, currentParticipant, personalMode, visibleUsers, sortColumn]);
 
   const saveSelectedUsers = nextIds => {
-    const normalized = nextIds.length === allUserIds.length ? null : nextIds;
+    const normalized = nextIds.length === filterUserIds.length ? null : nextIds;
     setSelectedUserIds(normalized);
     if (normalized) {
       localStorage.setItem(filterStorageKey, JSON.stringify(normalized));
@@ -273,28 +288,30 @@ export default function WatchedPage() {
 
   const toggleUserFilter = userId => {
     const id = Number(userId);
-    const currentIds = userFilterEnabled ? selectedUserIds : allUserIds;
+    const currentIds = userFilterEnabled ? selectedUserIds : filterUserIds;
     if (currentIds.includes(id) && currentIds.length === 1) {
-      showToast('Оставьте хотя бы одного участника', 'info');
+      showToast('Оставьте хотя бы одного участника для сравнения', 'info');
       return;
     }
     const nextIds = currentIds.includes(id)
       ? currentIds.filter(item => item !== id)
-      : allUserIds.filter(item => currentIds.includes(item) || item === id);
+      : filterUserIds.filter(item => currentIds.includes(item) || item === id);
     saveSelectedUsers(nextIds);
-    setPersonalModeEnabled(false);
     if (personalStorageKey) {
       localStorage.setItem(
         personalStorageKey,
-        nextIds.length === allUserIds.length ? 'all' : 'selected'
+        personalMode
+          ? 'personal'
+          : nextIds.length === filterUserIds.length ? 'all' : 'selected'
       );
     }
   };
 
   const showAllUsers = () => {
-    saveSelectedUsers(allUserIds);
-    setPersonalModeEnabled(false);
-    if (personalStorageKey) localStorage.setItem(personalStorageKey, 'all');
+    saveSelectedUsers(filterUserIds);
+    if (personalStorageKey) {
+      localStorage.setItem(personalStorageKey, personalMode ? 'personal' : 'all');
+    }
   };
 
   const togglePersonalFilter = () => {
@@ -589,6 +606,7 @@ export default function WatchedPage() {
         key={`${activeScope}-${selectedStatsUserIds.join(',')}-stats`}
         refreshKey={statsKey}
         scope={activeScope}
+        comparisonScope={personalComparisonScope}
         selectedUserIds={selectedStatsUserIds}
       />
 
@@ -625,8 +643,8 @@ export default function WatchedPage() {
             role="group"
             aria-label="Выбор участников статистики"
           >
-            {users.map(user => {
-              const selected = filterChipUserIdSet.has(Number(user.id));
+            {filterUsers.map(user => {
+              const selected = groupSelectedUserIdSet.has(Number(user.id));
               return (
                 <button
                   key={user.id}
@@ -643,7 +661,7 @@ export default function WatchedPage() {
               className="scope-filter-toggle show-all"
               type="button"
               onClick={showAllUsers}
-              disabled={!userFilterEnabled && !personalMode}
+              disabled={!userFilterEnabled}
             >
               Показать всех
             </button>

@@ -3631,7 +3631,7 @@ function buildCoreStats(coreUsers) {
   return buildGroupStats(coreUsers, 'core');
 }
 
-function buildPersonalStats(currentUser, comparisonScope = 'all') {
+function buildPersonalStats(currentUser, comparisonScope = 'all', selectedComparisonUserIds = []) {
   const watchedMovies = stmts.getWatched.all();
   const ratingKey = `rating_${currentUser.id}`;
   const ratedMovies = watchedMovies.flatMap(movie => {
@@ -3663,11 +3663,13 @@ function buildPersonalStats(currentUser, comparisonScope = 'all') {
     ? ratedMovies.reduce((sum, movie) => sum + movie.raw_average, 0) / ratedMovies.length
     : null;
 
+  const selectedComparisonUserIdSet = new Set(selectedComparisonUserIds.map(Number));
   const comparisonUsers = stmts.getUsers.all()
     .filter(user => Number(user.id) !== Number(currentUser.id))
     .filter(user => (
-      comparisonScope !== 'core'
-      || CORE_STATS_USER_NAMES.includes(user.name)
+      comparisonScope === 'selected'
+        ? selectedComparisonUserIdSet.has(Number(user.id))
+        : comparisonScope !== 'core' || CORE_STATS_USER_NAMES.includes(user.name)
     ));
   const ratingPairs = comparisonUsers.flatMap((otherUser, order) => {
     const differences = watchedMovies.flatMap(movie => {
@@ -3705,6 +3707,7 @@ function buildPersonalStats(currentUser, comparisonScope = 'all') {
   return {
     scope: 'personal',
     comparison_scope: comparisonScope,
+    comparison_user_ids: comparisonUsers.map(user => Number(user.id)),
     subject_name: currentUser.name,
     total_watched: ratedMovies.length,
     personal_extremes_equal: personalExtremesAreEqual,
@@ -3765,7 +3768,7 @@ app.get('/api/stats', (req, res) => {
   }
   if (scope === 'personal') {
     const comparisonScope = req.query.comparison_scope || 'all';
-    if (!['all', 'core'].includes(comparisonScope)) {
+    if (!['all', 'core', 'selected'].includes(comparisonScope)) {
       return res.status(400).json({ error: 'Неизвестный круг сравнения' });
     }
     const currentUser = stmts.getUsers.all()
@@ -3773,9 +3776,36 @@ app.get('/api/stats', (req, res) => {
     if (!currentUser) {
       return res.status(403).json({ error: 'Требуется вход участника' });
     }
+    let selectedComparisonUserIds = [];
+    if (comparisonScope === 'selected') {
+      selectedComparisonUserIds = String(req.query.user_ids || '')
+        .split(',')
+        .filter(Boolean)
+        .map(parseIntStrict);
+      if (
+        selectedComparisonUserIds.length === 0
+        || selectedComparisonUserIds.some(id => isNaN(id))
+        || new Set(selectedComparisonUserIds).size !== selectedComparisonUserIds.length
+      ) {
+        return res.status(400).json({ error: 'Выберите хотя бы одного участника для сравнения' });
+      }
+      if (selectedComparisonUserIds.includes(Number(currentUser.id))) {
+        return res.status(400).json({ error: 'Для сравнения можно выбирать только других участников' });
+      }
+      const selectedComparisonUserIdSet = new Set(selectedComparisonUserIds);
+      const selectedComparisonUsers = stmts.getUsers.all()
+        .filter(user => selectedComparisonUserIdSet.has(Number(user.id)));
+      if (selectedComparisonUsers.length !== selectedComparisonUserIds.length) {
+        return res.status(400).json({ error: 'Неизвестный участник сравнения' });
+      }
+    }
     res.set('Cache-Control', 'private, no-store');
     res.vary('Authorization');
-    return res.json(buildPersonalStats(currentUser, comparisonScope));
+    return res.json(buildPersonalStats(
+      currentUser,
+      comparisonScope,
+      selectedComparisonUserIds
+    ));
   }
   if (scope === 'core') {
     const usersByName = new Map(stmts.getUsers.all().map(user => [user.name, user]));

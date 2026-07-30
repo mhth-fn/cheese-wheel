@@ -175,7 +175,13 @@ export default function StatsPanel({
       className={`stats-panel${scope === 'core' ? ' core-scope' : ''}${isPersonal ? ' personal-scope' : ''}${isSelected ? ' selected-scope' : ''}`}
       aria-label={
         isPersonal
-          ? `Личная статистика ${stats.subject_name || ''}${comparisonScope === 'core' ? ' по основной пятёрке' : ''}`.trim()
+          ? `Личная статистика ${stats.subject_name || ''}${
+            comparisonScope === 'core'
+              ? ' по основной пятёрке'
+              : comparisonScope === 'selected'
+                ? ' среди выбранных участников'
+                : ''
+          }`.trim()
           : isSelected
             ? 'Статистика выбранных участников'
           : scope === 'core'
