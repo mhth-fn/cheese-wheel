@@ -75,6 +75,55 @@ body.theme-samurai {
   pointer-events: none;
 }
 
+.samurai-petals {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.samurai-petal {
+  position: absolute;
+  top: -12vh;
+  left: var(--petal-left);
+  width: var(--petal-size);
+  aspect-ratio: 0.78;
+  border-radius: 78% 22% 68% 32% / 64% 32% 68% 36%;
+  background:
+    radial-gradient(circle at 68% 28%, rgba(255, 248, 241, 0.92) 0 14%, transparent 16%),
+    linear-gradient(145deg, #f5d9d5 0%, #d88f92 50%, #a63b3e 100%);
+  box-shadow:
+    inset -1px -1px 1px rgba(112, 35, 36, 0.22),
+    0 2px 4px rgba(45, 31, 27, 0.14);
+  opacity: var(--petal-opacity);
+  filter: blur(var(--petal-blur));
+  transform: rotate(var(--petal-rotation));
+  transform-origin: 68% 35%;
+  will-change: transform;
+}
+
+.samurai-petal::after {
+  position: absolute;
+  top: 8%;
+  right: 12%;
+  width: 28%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: rgba(250, 230, 221, 0.72);
+  content: '';
+}
+
+.samurai-petal:nth-child(3n) {
+  background:
+    radial-gradient(circle at 68% 28%, rgba(255, 251, 244, 0.96) 0 14%, transparent 16%),
+    linear-gradient(145deg, #f7e6df 0%, #e4b2ad 54%, #b85456 100%);
+}
+
+.samurai-petal:nth-child(5n) {
+  box-shadow:
+    inset -1px -1px 1px rgba(112, 35, 36, 0.18),
+    0 3px 7px rgba(45, 31, 27, 0.12);
+}
+
 .samurai-sun {
   position: absolute;
   top: clamp(52px, 8vw, 105px);
@@ -211,6 +260,10 @@ body.theme-samurai .wheel-pointer::before {
     opacity: 0.1;
   }
 
+  .samurai-petal:nth-child(n + 19) {
+    display: none;
+  }
+
   .samurai-seal {
     right: 20px;
     bottom: 100px;
@@ -221,12 +274,55 @@ body.theme-samurai .wheel-pointer::before {
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  .samurai-petal {
+    animation: samuraiPetalFall var(--petal-duration) linear var(--petal-delay) infinite;
+  }
+
   .samurai-katana {
     animation: katanaDrift 9s ease-in-out infinite alternate;
   }
 
   .samurai-katana:nth-of-type(even) {
     animation-delay: -4s;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .samurai-petals {
+    display: none;
+  }
+}
+
+@keyframes samuraiPetalFall {
+  0% {
+    transform:
+      translate3d(0, -12vh, 0)
+      rotate(var(--petal-rotation))
+      rotateY(0deg);
+  }
+  24% {
+    transform:
+      translate3d(var(--petal-sway), 24vh, 0)
+      rotate(calc(var(--petal-rotation) + 135deg))
+      rotateY(95deg);
+  }
+  52% {
+    transform:
+      translate3d(var(--petal-drift), 55vh, 0)
+      rotate(calc(var(--petal-rotation) + 315deg))
+      rotateY(210deg);
+  }
+  76% {
+    transform:
+      translate3d(var(--petal-return), 82vh, 0)
+      rotate(calc(var(--petal-rotation) + 470deg))
+      rotateY(285deg);
+  }
+  100% {
+    transform:
+      translate3d(var(--petal-drift), 116vh, 0)
+      rotate(calc(var(--petal-rotation) + 650deg))
+      rotateY(360deg);
   }
 }
 

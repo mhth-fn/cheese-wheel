@@ -585,6 +585,12 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   await auditTheme('Новогодняя тема', 'theme-newyear');
   await auditTheme('Весенняя тема', 'theme-spring');
   await auditTheme('Самурайская тема', 'theme-samurai');
+  const samuraiPetals = page.locator('.samurai-petal');
+  assert.equal(await samuraiPetals.count(), 32);
+  assert.equal(
+    await samuraiPetals.first().evaluate(element => getComputedStyle(element).animationName),
+    'samuraiPetalFall'
+  );
   await auditTheme('Сырная тема', 'theme-cheese');
 
   assert.deepEqual(browserErrors, []);

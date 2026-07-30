@@ -53,11 +53,31 @@ function generateSamuraiMarks() {
   }));
 }
 
+function generateSamuraiPetals() {
+  return Array.from({ length: 32 }, (_, id) => {
+    const direction = Math.random() > 0.5 ? 1 : -1;
+    return {
+      id,
+      left: `${Math.random() * 100}%`,
+      size: `${Math.random() * 7 + 7}px`,
+      duration: `${Math.random() * 9 + 10}s`,
+      delay: `-${Math.random() * 18}s`,
+      sway: `${direction * (Math.random() * 35 + 16)}px`,
+      drift: `${direction * (Math.random() * 48 + 22)}px`,
+      returnDrift: `${direction * -(Math.random() * 24 + 10)}px`,
+      rotation: `${Math.random() * 180 - 90}deg`,
+      opacity: Math.random() * 0.36 + 0.42,
+      blur: `${Math.random() > 0.78 ? 0.7 : 0}px`,
+    };
+  });
+}
+
 export default function ThemeDecorations({ theme }) {
   const snowflakes = useMemo(generateSnowflakes, []);
   const lights = useMemo(generateLights, []);
   const petals = useMemo(generatePetals, []);
   const samuraiMarks = useMemo(generateSamuraiMarks, []);
+  const samuraiPetals = useMemo(generateSamuraiPetals, []);
 
   return (
     <>
@@ -114,6 +134,26 @@ export default function ThemeDecorations({ theme }) {
       )}
       {theme === 'samurai' && (
         <div className="samurai-atmosphere" aria-hidden="true">
+          <div className="samurai-petals">
+            {samuraiPetals.map(petal => (
+              <i
+                key={petal.id}
+                className="samurai-petal"
+                style={{
+                  '--petal-left': petal.left,
+                  '--petal-size': petal.size,
+                  '--petal-duration': petal.duration,
+                  '--petal-delay': petal.delay,
+                  '--petal-sway': petal.sway,
+                  '--petal-drift': petal.drift,
+                  '--petal-return': petal.returnDrift,
+                  '--petal-rotation': petal.rotation,
+                  '--petal-opacity': petal.opacity,
+                  '--petal-blur': petal.blur,
+                }}
+              />
+            ))}
+          </div>
           <div className="samurai-sun" />
           <div className="samurai-brush-mark mark-one" />
           <div className="samurai-brush-mark mark-two" />
