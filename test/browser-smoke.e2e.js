@@ -372,6 +372,14 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   await page.waitForFunction(() => (
     !document.querySelector('.nav-pages')?.classList.contains('is-hidden')
   ));
+  await page.waitForFunction(() => (
+    document.querySelector('.nav-pages')?.classList.contains('is-hidden')
+    && Number.parseFloat(getComputedStyle(document.querySelector('.admin-btn')).opacity) < 0.05
+  ), null, { timeout: 3000 });
+  await page.evaluate(() => window.scrollBy(0, -80));
+  await page.waitForFunction(() => (
+    !document.querySelector('.nav-pages')?.classList.contains('is-hidden')
+  ));
 
   const assertReviewFormFits = async orientation => {
     const layout = await page.evaluate(() => {
@@ -456,6 +464,10 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   await assertReviewFormFits('portrait');
   await page.setViewportSize({ width: 844, height: 390 });
   await assertReviewFormFits('landscape');
+  await page.evaluate(() => window.scrollBy(0, -80));
+  await page.waitForFunction(() => (
+    !document.querySelector('.nav-pages')?.classList.contains('is-hidden')
+  ));
   await page.getByRole('button', { name: 'VPN', exact: true }).click();
   await page.waitForURL(`${instance.baseUrl}/vpn`);
   await page.getByRole(

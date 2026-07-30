@@ -45,6 +45,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
   const lastScrollYRef = useRef(0);
   const scrollTravelRef = useRef(0);
   const scrollFrameRef = useRef(null);
+  const navHideTimerRef = useRef(null);
 
   const pages = [
     { key: 'wheel', icon: '🎡', label: 'Колесо' },
@@ -73,10 +74,23 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
     setRecoveryCodes([]);
   }, []);
 
+  const cancelScheduledNavHide = useCallback(() => {
+    if (navHideTimerRef.current !== null) {
+      window.clearTimeout(navHideTimerRef.current);
+      navHideTimerRef.current = null;
+    }
+  }, []);
+
   const revealMobileNavigation = useCallback(() => {
+    cancelScheduledNavHide();
     scrollTravelRef.current = 0;
     setMobileNavHidden(false);
-  }, []);
+  }, [cancelScheduledNavHide]);
+
+  useEffect(() => {
+    document.body.classList.toggle('mobile-nav-hidden', mobileNavHidden);
+    return () => document.body.classList.remove('mobile-nav-hidden');
+  }, [mobileNavHidden]);
 
   useEffect(() => {
     const mobileLayout = window.matchMedia(
@@ -84,9 +98,33 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
     );
 
     const resetNavigation = () => {
+      cancelScheduledNavHide();
       lastScrollYRef.current = Math.max(0, window.scrollY);
       scrollTravelRef.current = 0;
       setMobileNavHidden(false);
+    };
+
+    const scheduleNavigationHide = () => {
+      cancelScheduledNavHide();
+      navHideTimerRef.current = window.setTimeout(() => {
+        navHideTimerRef.current = null;
+        const scrollY = Math.max(0, window.scrollY);
+        const scrollHeight = document.scrollingElement?.scrollHeight || document.body.scrollHeight;
+        const maxScrollY = Math.max(0, scrollHeight - window.innerHeight);
+        const focusedControl = document.activeElement?.closest?.(
+          '.nav-pages, .admin-btn, .drawer-toggle'
+        );
+
+        if (
+          mobileLayout.matches
+          && !dropdownOpen
+          && !focusedControl
+          && scrollY > 72
+          && maxScrollY - scrollY > 32
+        ) {
+          setMobileNavHidden(true);
+        }
+      }, 1600);
     };
 
     const updateNavigation = () => {
@@ -98,8 +136,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
       lastScrollYRef.current = scrollY;
 
       if (!mobileLayout.matches || dropdownOpen || scrollY <= 72 || maxScrollY - scrollY <= 32) {
-        scrollTravelRef.current = 0;
-        setMobileNavHidden(false);
+        resetNavigation();
         return;
       }
 
@@ -112,11 +149,13 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
       scrollTravelRef.current = changedDirection ? delta : scrollTravelRef.current + delta;
 
       if (scrollTravelRef.current > 28 && scrollY > 120) {
+        cancelScheduledNavHide();
         scrollTravelRef.current = 0;
         setMobileNavHidden(true);
       } else if (scrollTravelRef.current < -14) {
         scrollTravelRef.current = 0;
         setMobileNavHidden(false);
+        scheduleNavigationHide();
       }
     };
 
@@ -139,6 +178,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
     mobileLayout.addEventListener?.('change', handleLayoutChange);
 
     return () => {
+      cancelScheduledNavHide();
       window.removeEventListener('scroll', scheduleNavigationUpdate);
       window.removeEventListener('resize', handleLayoutChange);
       mobileLayout.removeEventListener?.('change', handleLayoutChange);
@@ -147,7 +187,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
         scrollFrameRef.current = null;
       }
     };
-  }, [activePage, dropdownOpen]);
+  }, [activePage, cancelScheduledNavHide, dropdownOpen]);
 
   const handleNavigate = (target) => {
     revealMobileNavigation();

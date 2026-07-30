@@ -307,7 +307,7 @@
   background: var(--theme-btn);
   box-shadow: var(--shadow-medium);
   cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.3s ease, box-shadow 0.15s ease, opacity 0.2s ease;
 }
 
 .admin-btn.visible {
@@ -637,6 +637,12 @@
 
   .admin-btn.with-drawer {
     left: 68px;
+  }
+
+  body.mobile-nav-hidden .admin-btn {
+    opacity: 0;
+    transform: translateY(74px) scale(0.92);
+    pointer-events: none;
   }
 }
 

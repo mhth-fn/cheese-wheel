@@ -370,7 +370,7 @@
     box-shadow: var(--shadow-modal);
     transform-origin: center bottom;
     will-change: transform, opacity;
-    animation: navDockEnter 0.42s cubic-bezier(0.2, 0.85, 0.25, 1) both;
+    animation: navDockEnter 0.42s cubic-bezier(0.2, 0.85, 0.25, 1);
     transition:
       transform 0.36s cubic-bezier(0.4, 0, 0.2, 1),
       opacity 0.24s ease;
