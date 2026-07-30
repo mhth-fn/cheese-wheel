@@ -375,6 +375,8 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   await page.waitForFunction(() => (
     document.querySelector('.nav-pages')?.classList.contains('is-hidden')
     && Number.parseFloat(getComputedStyle(document.querySelector('.admin-btn')).opacity) < 0.05
+    && getComputedStyle(document.querySelector('.nav-pages')).visibility === 'hidden'
+    && getComputedStyle(document.querySelector('.admin-btn')).visibility === 'hidden'
   ), null, { timeout: 3000 });
   await page.evaluate(() => window.scrollBy(0, -80));
   await page.waitForFunction(() => (
