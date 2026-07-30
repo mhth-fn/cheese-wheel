@@ -88,6 +88,7 @@ export default function WatchedPage() {
   const [editTitle, setEditTitle] = useState('');
   const [editWatchedAt, setEditWatchedAt] = useState('');
   const [selectedUserIds, setSelectedUserIds] = useState(null);
+  const [personalModeEnabled, setPersonalModeEnabled] = useState(false);
   const searchRef = useRef(null);
   const isCompactLayout = useMediaQuery(
     '(max-width: 600px), (max-width: 960px) and (max-height: 560px)'
@@ -168,19 +169,36 @@ export default function WatchedPage() {
     && selectedUserIds.length > 0
     && selectedUserIds.length < allUserIds.length
   );
-  const activeScope = userFilterEnabled ? 'selected' : 'all';
+  const currentParticipant = useMemo(
+    () => users.find(user => Number(user.id) === Number(currentUser?.id)) || null,
+    [users, currentUser?.id]
+  );
+  const canUsePersonalFilter = !isGuest && Boolean(currentParticipant);
+  const personalMode = canUsePersonalFilter && personalModeEnabled;
+  const activeScope = personalMode ? 'personal' : userFilterEnabled ? 'selected' : 'all';
   const filterStorageKey = `watchedStatsUsers:${currentUser?.id ?? (isGuest ? 'guest' : 'anonymous')}`;
-  const selectedUserIdSet = useMemo(
+  const personalStorageKey = currentUser?.id ? `watchedStatsScope:${currentUser.id}` : '';
+  const groupSelectedUserIdSet = useMemo(
     () => new Set(userFilterEnabled ? selectedUserIds : allUserIds),
     [allUserIds, selectedUserIds, userFilterEnabled]
   );
-  const visibleUsers = useMemo(() => {
+  const groupVisibleUsers = useMemo(() => {
     if (!userFilterEnabled) return users;
-    return users.filter(user => selectedUserIdSet.has(Number(user.id)));
-  }, [selectedUserIdSet, userFilterEnabled, users]);
+    return users.filter(user => groupSelectedUserIdSet.has(Number(user.id)));
+  }, [groupSelectedUserIdSet, userFilterEnabled, users]);
+  const visibleUsers = useMemo(
+    () => personalMode ? [currentParticipant] : groupVisibleUsers,
+    [currentParticipant, groupVisibleUsers, personalMode]
+  );
+  const filterChipUserIdSet = useMemo(
+    () => personalMode
+      ? new Set([Number(currentParticipant.id)])
+      : groupSelectedUserIdSet,
+    [currentParticipant, groupSelectedUserIdSet, personalMode]
+  );
   const selectedStatsUserIds = useMemo(
-    () => visibleUsers.map(user => Number(user.id)),
-    [visibleUsers]
+    () => groupVisibleUsers.map(user => Number(user.id)),
+    [groupVisibleUsers]
   );
 
   useEffect(() => {
@@ -209,22 +227,38 @@ export default function WatchedPage() {
     );
   }, [allUserIdsKey, filterStorageKey]);
 
+  useEffect(() => {
+    if (!canUsePersonalFilter || !personalStorageKey) {
+      setPersonalModeEnabled(false);
+      return;
+    }
+    setPersonalModeEnabled(localStorage.getItem(personalStorageKey) === 'personal');
+  }, [canUsePersonalFilter, personalStorageKey]);
+
   const scopedMovies = useMemo(() => {
-    if (!userFilterEnabled) return movies;
+    if (activeScope === 'all') return movies;
     return movies.flatMap(movie => {
       const scopedMovie = withScopedAverage(movie, visibleUsers);
       return scopedMovie ? [scopedMovie] : [];
     });
-  }, [movies, userFilterEnabled, visibleUsers]);
+  }, [activeScope, movies, visibleUsers]);
 
   useEffect(() => {
+    const personalRatingColumn = currentParticipant
+      ? `rating_${currentParticipant.id}`
+      : null;
+    if (personalMode && sortColumn === 'avg_rating' && personalRatingColumn) {
+      setSortColumn(personalRatingColumn);
+      setSortDirection('desc');
+      return;
+    }
     if (activeScope === 'all' || !sortColumn?.startsWith('rating_')) return;
     const visibleColumns = new Set(visibleUsers.map(user => `rating_${user.id}`));
     if (!visibleColumns.has(sortColumn)) {
-      setSortColumn('avg_rating');
+      setSortColumn(personalMode && personalRatingColumn ? personalRatingColumn : 'avg_rating');
       setSortDirection('desc');
     }
-  }, [activeScope, visibleUsers, sortColumn]);
+  }, [activeScope, currentParticipant, personalMode, visibleUsers, sortColumn]);
 
   const saveSelectedUsers = nextIds => {
     const normalized = nextIds.length === allUserIds.length ? null : nextIds;
@@ -248,9 +282,33 @@ export default function WatchedPage() {
       ? currentIds.filter(item => item !== id)
       : allUserIds.filter(item => currentIds.includes(item) || item === id);
     saveSelectedUsers(nextIds);
+    setPersonalModeEnabled(false);
+    if (personalStorageKey) {
+      localStorage.setItem(
+        personalStorageKey,
+        nextIds.length === allUserIds.length ? 'all' : 'selected'
+      );
+    }
   };
 
-  const showAllUsers = () => saveSelectedUsers(allUserIds);
+  const showAllUsers = () => {
+    saveSelectedUsers(allUserIds);
+    setPersonalModeEnabled(false);
+    if (personalStorageKey) localStorage.setItem(personalStorageKey, 'all');
+  };
+
+  const togglePersonalFilter = () => {
+    if (!canUsePersonalFilter) return;
+    const nextPersonalMode = !personalMode;
+    setPersonalModeEnabled(nextPersonalMode);
+    if (personalStorageKey) {
+      localStorage.setItem(
+        personalStorageKey,
+        nextPersonalMode ? 'personal' : userFilterEnabled ? 'selected' : 'all'
+      );
+    }
+    setDetailsMovie(null);
+  };
 
   const openMoviePanel = (movie, view = 'details') => {
     setDetailsView(view);
@@ -401,7 +459,7 @@ export default function WatchedPage() {
   const detailsMovieForDisplay = detailsMovie
     ? scopedMovies.find(movie => movie.id === detailsMovie.id) || null
     : null;
-  const showAverageColumn = true;
+  const showAverageColumn = !personalMode;
 
   const sortIcon = column => sortColumn === column
     ? <span className="sort-icon active" aria-hidden="true">{sortDirection === 'asc' ? '↑' : '↓'}</span>
@@ -516,7 +574,7 @@ export default function WatchedPage() {
               <span>Открыть карточку фильма</span>
             </button>
             <div className="watched-card-average">
-              <span>Средняя</span>
+              <span>{personalMode ? 'Моя оценка' : 'Средняя'}</span>
               {renderAvgRating(movie)}
             </div>
           </header>
@@ -527,49 +585,6 @@ export default function WatchedPage() {
 
   return (
     <>
-      {users.length > 0 && (
-        <div className="watched-scope-control">
-          <div className="watched-scope-copy">
-            <strong>Участники статистики</strong>
-            <span aria-live="polite">
-              {userFilterEnabled
-                ? `Выбрано: ${visibleUsers.length} из ${users.length}`
-                : 'Показаны все участники'}
-            </span>
-          </div>
-          <div
-            className="watched-user-filters"
-            role="group"
-            aria-label="Выбор участников статистики"
-          >
-            {users.map(user => {
-              const selected = selectedUserIdSet.has(Number(user.id));
-              return (
-                <button
-                  key={user.id}
-                  className={`scope-filter-toggle${selected ? ' active' : ''}`}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => toggleUserFilter(user.id)}
-                >
-                  {user.name}
-                </button>
-              );
-            })}
-          </div>
-          <div className="watched-scope-actions">
-            <button
-              className="scope-filter-toggle show-all"
-              type="button"
-              onClick={showAllUsers}
-              disabled={!userFilterEnabled}
-            >
-              Показать всех
-            </button>
-          </div>
-        </div>
-      )}
-
       <StatsPanel
         key={`${activeScope}-${selectedStatsUserIds.join(',')}-stats`}
         refreshKey={statsKey}
@@ -596,6 +611,56 @@ export default function WatchedPage() {
         <span className="search-shortcut" aria-hidden="true">/</span>
       </div>
 
+      {users.length > 0 && (
+        <div className="watched-scope-control">
+          <span className="sr-only" aria-live="polite">
+            {personalMode
+              ? `Показана личная статистика: ${scopedMovies.length} фильмов`
+              : userFilterEnabled
+                ? `Выбрано участников: ${groupVisibleUsers.length} из ${users.length}`
+                : 'Показаны все участники'}
+          </span>
+          <div
+            className="watched-user-filters"
+            role="group"
+            aria-label="Выбор участников статистики"
+          >
+            {users.map(user => {
+              const selected = filterChipUserIdSet.has(Number(user.id));
+              return (
+                <button
+                  key={user.id}
+                  className={`scope-filter-toggle${selected ? ' active' : ''}`}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => toggleUserFilter(user.id)}
+                >
+                  {user.name}
+                </button>
+              );
+            })}
+            <button
+              className="scope-filter-toggle show-all"
+              type="button"
+              onClick={showAllUsers}
+              disabled={!userFilterEnabled && !personalMode}
+            >
+              Показать всех
+            </button>
+            {canUsePersonalFilter && (
+              <button
+                className={`scope-filter-toggle personal${personalMode ? ' active' : ''}`}
+                type="button"
+                aria-pressed={personalMode}
+                onClick={togglePersonalFilter}
+              >
+                МОЯ СТАТИСТИКА
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {!isCompactLayout && (
         <p className="table-scroll-hint">На узком экране таблицу можно прокручивать по горизонтали.</p>
       )}
@@ -616,6 +681,15 @@ export default function WatchedPage() {
             <div className="empty-state-icon" aria-hidden="true">🎬</div>
             <div className="empty-state-title">Пока нет просмотренных фильмов</div>
             <p>Крутите колесо или добавьте фильм вручную.</p>
+          </div>
+        ) : personalMode && scopedMovies.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-icon" aria-hidden="true">🎟</div>
+            <div className="empty-state-title">Вы ещё ничего не оценили</div>
+            <p>Поставьте оценку фильму или вернитесь к общей статистике.</p>
+            <button className="button-ghost" type="button" onClick={togglePersonalFilter}>
+              Показать общую
+            </button>
           </div>
         ) : userFilterEnabled && scopedMovies.length === 0 ? (
           <div className="empty-state">
@@ -668,7 +742,9 @@ export default function WatchedPage() {
               className="watched-mobile-list"
               role="list"
               aria-label={
-                userFilterEnabled
+                personalMode
+                  ? 'Фильмы с моими оценками'
+                  : userFilterEnabled
                   ? 'Просмотренные фильмы выбранных участников'
                   : 'Все просмотренные фильмы'
               }
@@ -681,7 +757,9 @@ export default function WatchedPage() {
             className={`watched-table${isAdmin ? ' has-actions' : ''}`}
             style={{ minWidth: `${220 + (isAdmin ? 72 : 0) + visibleUsers.length * 88 + (showAverageColumn ? 108 : 0)}px` }}
             aria-label={
-              userFilterEnabled
+              personalMode
+                ? 'Фильмы с моими оценками'
+                : userFilterEnabled
                 ? 'Просмотренные фильмы выбранных участников'
                 : 'Все просмотренные фильмы'
             }

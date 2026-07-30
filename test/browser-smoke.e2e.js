@@ -210,9 +210,31 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   await page.getByRole('list', { name: 'Все просмотренные фильмы' }).waitFor();
   await page.locator('.watched-card-title strong', { hasText: 'Browser Smoke Film' }).waitFor();
   const userFilters = page.getByRole('group', { name: 'Выбор участников статистики' });
+  const searchBox = await page.locator('.watched-toolbar').boundingBox();
+  const filtersBox = await page.locator('.watched-scope-control').boundingBox();
+  assert.ok(
+    searchBox && filtersBox && filtersBox.y >= searchBox.y + searchBox.height,
+    'user filter chips must appear below movie search'
+  );
+  assert.equal(
+    await page.locator('.watched-scope-control').evaluate(element => (
+      getComputedStyle(element).backgroundColor
+    )),
+    'rgba(0, 0, 0, 0)',
+    'user filter chips must not have a shared background'
+  );
   await userFilters.getByRole('button', { name: 'Сергей', exact: true }).click();
   await page.getByText('У выбранных участников пока нет оценок', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Показать всех', exact: true }).click();
+  await page.getByRole('list', { name: 'Все просмотренные фильмы' }).waitFor();
+  const personalStatsButton = userFilters.getByRole(
+    'button',
+    { name: 'МОЯ СТАТИСТИКА', exact: true }
+  );
+  await personalStatsButton.click();
+  await page.getByRole('list', { name: 'Фильмы с моими оценками' }).waitFor();
+  assert.equal(await personalStatsButton.getAttribute('aria-pressed'), 'true');
+  await personalStatsButton.click();
   await page.getByRole('list', { name: 'Все просмотренные фильмы' }).waitFor();
   assert.equal(await page.locator('table.watched-table').count(), 0);
   assert.equal(
