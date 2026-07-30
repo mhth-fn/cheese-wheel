@@ -54,12 +54,6 @@ function useMediaQuery(query) {
   return matches;
 }
 
-const CORE_USER_NAMES = ['Антон', 'Митя', 'Пётр', 'Сергей', 'Егор'];
-
-function normalizeUserName(value) {
-  return String(value || '').trim().toLocaleLowerCase('ru').replaceAll('ё', 'е');
-}
-
 function withScopedAverage(movie, scopedUsers) {
   const ratings = scopedUsers
     .map(user => movie[`rating_${user.id}`])
@@ -93,8 +87,7 @@ export default function WatchedPage() {
   const [editingId, setEditingId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [editWatchedAt, setEditWatchedAt] = useState('');
-  const [baseScope, setBaseScope] = useState('all');
-  const [personalModeEnabled, setPersonalModeEnabled] = useState(false);
+  const [selectedUserIds, setSelectedUserIds] = useState(null);
   const searchRef = useRef(null);
   const isCompactLayout = useMediaQuery(
     '(max-width: 600px), (max-width: 960px) and (max-height: 560px)'
@@ -168,108 +161,96 @@ export default function WatchedPage() {
     };
   }, [socket, loadMovies]);
 
-  const coreUsers = useMemo(() => {
-    const usersByName = new Map(users.map(user => [normalizeUserName(user.name), user]));
-    return CORE_USER_NAMES
-      .map(name => usersByName.get(normalizeUserName(name)))
-      .filter(Boolean);
-  }, [users]);
-  const currentParticipant = useMemo(
-    () => users.find(user => Number(user.id) === Number(currentUser?.id)) || null,
-    [users, currentUser?.id]
+  const allUserIds = useMemo(() => users.map(user => Number(user.id)), [users]);
+  const allUserIdsKey = allUserIds.join(',');
+  const userFilterEnabled = (
+    Array.isArray(selectedUserIds)
+    && selectedUserIds.length > 0
+    && selectedUserIds.length < allUserIds.length
   );
-  const currentUserIsCore = CORE_USER_NAMES
-    .some(name => normalizeUserName(name) === normalizeUserName(currentUser?.name));
-  const canUseCoreFilter = currentUserIsCore && coreUsers.length === CORE_USER_NAMES.length;
-  const canUsePersonalFilter = !isGuest && Boolean(currentParticipant);
-  const coreFilterEnabled = canUseCoreFilter && baseScope === 'core';
-  const personalMode = canUsePersonalFilter && personalModeEnabled;
-  const coreMode = coreFilterEnabled && !personalMode;
-  const activeScope = personalMode ? 'personal' : coreMode ? 'core' : 'all';
-  const personalComparisonScope = personalMode && coreFilterEnabled ? 'core' : 'all';
+  const activeScope = userFilterEnabled ? 'selected' : 'all';
+  const filterStorageKey = `watchedStatsUsers:${currentUser?.id ?? (isGuest ? 'guest' : 'anonymous')}`;
+  const selectedUserIdSet = useMemo(
+    () => new Set(userFilterEnabled ? selectedUserIds : allUserIds),
+    [allUserIds, selectedUserIds, userFilterEnabled]
+  );
   const visibleUsers = useMemo(() => {
-    if (personalMode) return [currentParticipant];
-    if (coreMode) return coreUsers;
-    return users;
-  }, [personalMode, currentParticipant, coreMode, coreUsers, users]);
+    if (!userFilterEnabled) return users;
+    return users.filter(user => selectedUserIdSet.has(Number(user.id)));
+  }, [selectedUserIdSet, userFilterEnabled, users]);
+  const selectedStatsUserIds = useMemo(
+    () => visibleUsers.map(user => Number(user.id)),
+    [visibleUsers]
+  );
 
   useEffect(() => {
-    if (!currentUser?.id || isGuest) {
-      setBaseScope('all');
-      setPersonalModeEnabled(false);
+    if (allUserIds.length === 0) {
+      setSelectedUserIds(null);
       return;
     }
-
-    const storageKey = `watchedStatsScope:${currentUser.id}`;
-    const baseStorageKey = `watchedStatsBaseScope:${currentUser.id}`;
-    const storedScope = localStorage.getItem(storageKey);
-    const storedBaseScope = localStorage.getItem(baseStorageKey);
-    const legacyCoreEnabled = localStorage.getItem(`watchedCoreOnly:${currentUser.id}`) === '1';
-    const nextBaseScope = currentUserIsCore && (
-      storedBaseScope === 'core'
-      || (!storedBaseScope && storedScope === 'core')
-      || (!storedBaseScope && storedScope === 'personal' && legacyCoreEnabled)
-      || (!storedBaseScope && !storedScope && legacyCoreEnabled)
-    )
-      ? 'core'
-      : 'all';
-    const nextPersonalMode = storedScope === 'personal';
-
-    setBaseScope(nextBaseScope);
-    setPersonalModeEnabled(nextPersonalMode);
-    localStorage.setItem(baseStorageKey, nextBaseScope);
-    localStorage.setItem(storageKey, nextPersonalMode ? 'personal' : nextBaseScope);
-  }, [currentUser?.id, currentUserIsCore, isGuest]);
+    let storedIds = [];
+    try {
+      const stored = JSON.parse(localStorage.getItem(filterStorageKey) || '[]');
+      if (Array.isArray(stored)) {
+        const allowedIds = new Set(allUserIds);
+        storedIds = stored
+          .map(Number)
+          .filter((id, index, values) => (
+            allowedIds.has(id) && values.indexOf(id) === index
+          ));
+      }
+    } catch {
+      storedIds = [];
+    }
+    setSelectedUserIds(
+      storedIds.length > 0 && storedIds.length < allUserIds.length
+        ? storedIds
+        : null
+    );
+  }, [allUserIdsKey, filterStorageKey]);
 
   const scopedMovies = useMemo(() => {
-    if (activeScope === 'all') return movies;
+    if (!userFilterEnabled) return movies;
     return movies.flatMap(movie => {
       const scopedMovie = withScopedAverage(movie, visibleUsers);
       return scopedMovie ? [scopedMovie] : [];
     });
-  }, [movies, activeScope, visibleUsers]);
+  }, [movies, userFilterEnabled, visibleUsers]);
 
   useEffect(() => {
-    const personalRatingColumn = currentParticipant
-      ? `rating_${currentParticipant.id}`
-      : null;
-    if (personalMode && sortColumn === 'avg_rating' && personalRatingColumn) {
-      setSortColumn(personalRatingColumn);
-      setSortDirection('desc');
-      return;
-    }
     if (activeScope === 'all' || !sortColumn?.startsWith('rating_')) return;
     const visibleColumns = new Set(visibleUsers.map(user => `rating_${user.id}`));
     if (!visibleColumns.has(sortColumn)) {
-      setSortColumn(personalRatingColumn && personalMode ? personalRatingColumn : 'avg_rating');
+      setSortColumn('avg_rating');
       setSortDirection('desc');
     }
-  }, [activeScope, personalMode, currentParticipant, visibleUsers, sortColumn]);
+  }, [activeScope, visibleUsers, sortColumn]);
 
-  const toggleCoreFilter = () => {
-    if (!currentUser || !canUseCoreFilter) return;
-    const nextBaseScope = coreFilterEnabled ? 'all' : 'core';
-    setBaseScope(nextBaseScope);
-    localStorage.setItem(`watchedStatsBaseScope:${currentUser.id}`, nextBaseScope);
-    localStorage.setItem(`watchedCoreOnly:${currentUser.id}`, nextBaseScope === 'core' ? '1' : '0');
-    localStorage.setItem(
-      `watchedStatsScope:${currentUser.id}`,
-      personalMode ? 'personal' : nextBaseScope
-    );
+  const saveSelectedUsers = nextIds => {
+    const normalized = nextIds.length === allUserIds.length ? null : nextIds;
+    setSelectedUserIds(normalized);
+    if (normalized) {
+      localStorage.setItem(filterStorageKey, JSON.stringify(normalized));
+    } else {
+      localStorage.removeItem(filterStorageKey);
+    }
     setDetailsMovie(null);
   };
 
-  const togglePersonalFilter = () => {
-    if (!currentUser || !canUsePersonalFilter) return;
-    const nextPersonalMode = !personalMode;
-    const fallbackScope = coreFilterEnabled ? 'core' : 'all';
-    setPersonalModeEnabled(nextPersonalMode);
-    localStorage.setItem(
-      `watchedStatsScope:${currentUser.id}`,
-      nextPersonalMode ? 'personal' : fallbackScope
-    );
-    setDetailsMovie(null);
+  const toggleUserFilter = userId => {
+    const id = Number(userId);
+    const currentIds = userFilterEnabled ? selectedUserIds : allUserIds;
+    if (currentIds.includes(id) && currentIds.length === 1) {
+      showToast('Оставьте хотя бы одного участника', 'info');
+      return;
+    }
+    const nextIds = currentIds.includes(id)
+      ? currentIds.filter(item => item !== id)
+      : allUserIds.filter(item => currentIds.includes(item) || item === id);
+    saveSelectedUsers(nextIds);
   };
+
+  const showAllUsers = () => saveSelectedUsers(allUserIds);
 
   const openMoviePanel = (movie, view = 'details') => {
     setDetailsView(view);
@@ -420,7 +401,7 @@ export default function WatchedPage() {
   const detailsMovieForDisplay = detailsMovie
     ? scopedMovies.find(movie => movie.id === detailsMovie.id) || null
     : null;
-  const showAverageColumn = !personalMode;
+  const showAverageColumn = true;
 
   const sortIcon = column => sortColumn === column
     ? <span className="sort-icon active" aria-hidden="true">{sortDirection === 'asc' ? '↑' : '↓'}</span>
@@ -535,7 +516,7 @@ export default function WatchedPage() {
               <span>Открыть карточку фильма</span>
             </button>
             <div className="watched-card-average">
-              <span>{personalMode ? 'Моя оценка' : 'Средняя'}</span>
+              <span>Средняя</span>
               {renderAvgRating(movie)}
             </div>
           </header>
@@ -546,43 +527,54 @@ export default function WatchedPage() {
 
   return (
     <>
-      {canUsePersonalFilter && (
+      {users.length > 0 && (
         <div className="watched-scope-control">
-          <span aria-live="polite">
-            {personalMode
-              ? `Только мои оценки: ${scopedMovies.length} фильмов${coreFilterEnabled ? ' · сравнение только с основной пятёркой' : ''}`
-              : coreMode
-                ? 'Основной состав: 5 участников'
-                : 'Сейчас показаны все участники'}
-          </span>
-          <div className="watched-scope-actions" role="group" aria-label="Фильтры статистики">
-            {canUseCoreFilter && (
-              <button
-                className={`scope-filter-toggle${coreFilterEnabled ? ' active' : ''}`}
-                type="button"
-                aria-pressed={coreFilterEnabled}
-                onClick={toggleCoreFilter}
-              >
-                {coreFilterEnabled ? 'Показать лишних' : 'Убрать лишних'}
-              </button>
-            )}
+          <div className="watched-scope-copy">
+            <strong>Участники статистики</strong>
+            <span aria-live="polite">
+              {userFilterEnabled
+                ? `Выбрано: ${visibleUsers.length} из ${users.length}`
+                : 'Показаны все участники'}
+            </span>
+          </div>
+          <div
+            className="watched-user-filters"
+            role="group"
+            aria-label="Выбор участников статистики"
+          >
+            {users.map(user => {
+              const selected = selectedUserIdSet.has(Number(user.id));
+              return (
+                <button
+                  key={user.id}
+                  className={`scope-filter-toggle${selected ? ' active' : ''}`}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => toggleUserFilter(user.id)}
+                >
+                  {user.name}
+                </button>
+              );
+            })}
+          </div>
+          <div className="watched-scope-actions">
             <button
-              className={`scope-filter-toggle${personalMode ? ' active' : ''}`}
+              className="scope-filter-toggle show-all"
               type="button"
-              aria-pressed={personalMode}
-              onClick={togglePersonalFilter}
+              onClick={showAllUsers}
+              disabled={!userFilterEnabled}
             >
-              {personalMode ? 'Закрыть личную' : 'Личная статистика'}
+              Показать всех
             </button>
           </div>
         </div>
       )}
 
       <StatsPanel
-        key={`${activeScope}-${personalComparisonScope}-stats`}
+        key={`${activeScope}-${selectedStatsUserIds.join(',')}-stats`}
         refreshKey={statsKey}
         scope={activeScope}
-        comparisonScope={personalComparisonScope}
+        selectedUserIds={selectedStatsUserIds}
       />
 
       <div className="watched-toolbar">
@@ -625,20 +617,14 @@ export default function WatchedPage() {
             <div className="empty-state-title">Пока нет просмотренных фильмов</div>
             <p>Крутите колесо или добавьте фильм вручную.</p>
           </div>
-        ) : personalMode && scopedMovies.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state-icon" aria-hidden="true">🎟</div>
-            <div className="empty-state-title">Вы ещё ничего не оценили</div>
-            <p>Вернитесь к полному списку, чтобы поставить первую оценку.</p>
-            <button className="button-ghost" type="button" onClick={togglePersonalFilter}>
-              {coreFilterEnabled ? 'Вернуться к основной пятёрке' : 'Показать все фильмы'}
-            </button>
-          </div>
-        ) : coreMode && scopedMovies.length === 0 ? (
+        ) : userFilterEnabled && scopedMovies.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon" aria-hidden="true">👥</div>
-            <div className="empty-state-title">У основной пятёрки пока нет оценок</div>
-            <p>Вернитесь к полному списку, чтобы поставить первую оценку.</p>
+            <div className="empty-state-title">У выбранных участников пока нет оценок</div>
+            <p>Выберите других участников или вернитесь к полной таблице.</p>
+            <button className="button-ghost" type="button" onClick={showAllUsers}>
+              Показать всех
+            </button>
           </div>
         ) : filtered.length === 0 ? (
           <div className="empty-state">
@@ -656,7 +642,7 @@ export default function WatchedPage() {
                   <option value="title">По названию</option>
                   {visibleUsers.map(user => (
                     <option key={user.id} value={`rating_${user.id}`}>
-                      {personalMode ? 'По моей оценке' : `По оценке: ${user.name}`}
+                      По оценке: {user.name}
                     </option>
                   ))}
                   {showAverageColumn && <option value="avg_rating">По средней</option>}
@@ -682,11 +668,9 @@ export default function WatchedPage() {
               className="watched-mobile-list"
               role="list"
               aria-label={
-                personalMode
-                  ? 'Фильмы, которые я оценил'
-                  : coreMode
-                    ? 'Просмотренные фильмы основной пятёрки'
-                    : 'Все просмотренные фильмы'
+                userFilterEnabled
+                  ? 'Просмотренные фильмы выбранных участников'
+                  : 'Все просмотренные фильмы'
               }
             >
               {sorted.map(renderCompactMovieCard)}
@@ -697,11 +681,9 @@ export default function WatchedPage() {
             className={`watched-table${isAdmin ? ' has-actions' : ''}`}
             style={{ minWidth: `${220 + (isAdmin ? 72 : 0) + visibleUsers.length * 88 + (showAverageColumn ? 108 : 0)}px` }}
             aria-label={
-              personalMode
-                ? 'Фильмы, которые я оценил'
-                : coreMode
-                  ? 'Просмотренные фильмы основной пятёрки'
-                  : 'Все просмотренные фильмы'
+              userFilterEnabled
+                ? 'Просмотренные фильмы выбранных участников'
+                : 'Все просмотренные фильмы'
             }
           >
             <colgroup>
@@ -723,7 +705,7 @@ export default function WatchedPage() {
                   return (
                     <th key={user.id} aria-sort={getAriaSort(sortColumn, sortDirection, column)}>
                       <button className="table-sort-button" type="button" onClick={() => handleSort(column)}>
-                        {personalMode ? 'Моя оценка' : user.name} {sortIcon(column)}
+                        {user.name} {sortIcon(column)}
                       </button>
                     </th>
                   );

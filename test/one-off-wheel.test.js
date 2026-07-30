@@ -83,11 +83,11 @@ test('one-off wheel is admin-published and supports selection and elimination', 
   const published = await request(instance, '/api/one-off-wheel/settings', {
     method: 'PATCH',
     cookie: admin.cookie,
-    body: { enabled: true, mode: 'selection', spin_duration: 5 },
+    body: { enabled: true, mode: 'selection', spin_duration: 6 },
   });
   assert.equal(published.status, 200, JSON.stringify(published.payload));
   assert.equal(published.payload.enabled, true);
-  assert.equal(published.payload.spin_duration, 5);
+  assert.equal(published.payload.spin_duration, 6);
 
   const first = await request(instance, '/api/one-off-wheel', {
     method: 'POST',
@@ -128,6 +128,7 @@ test('one-off wheel is admin-published and supports selection and elimination', 
   adminSocket.emit('spin-one-off');
   const selectionSpin = await selectionSpinPromise;
   assert.equal(selectionSpin.mode, 'selection');
+  assert.equal(selectionSpin.spinDuration, 6);
   assert.equal(selectionSpin.movies.length, 2);
   assert.equal(selectionSpin.outcome.type, 'winner');
 
@@ -146,33 +147,52 @@ test('one-off wheel is admin-published and supports selection and elimination', 
   assert.equal(skipped.payload.state.result, null);
   assert.equal(skipped.payload.state.movies.length, 1);
 
-  await delay(5_600);
+  await delay(6_600);
   const eliminationSettings = await request(instance, '/api/one-off-wheel/settings', {
     method: 'PATCH',
     cookie: admin.cookie,
-    body: { enabled: true, mode: 'elimination' },
+    body: { enabled: true, mode: 'elimination', spin_duration: 5 },
   });
   assert.equal(eliminationSettings.status, 200);
-  const challenger = await request(instance, '/api/one-off-wheel', {
-    method: 'POST',
-    cookie: peter.cookie,
-    body: { title: 'Elimination challenger' },
-  });
-  assert.equal(challenger.status, 200);
+  for (const title of ['Elimination challenger A', 'Elimination challenger B']) {
+    const challenger = await request(instance, '/api/one-off-wheel', {
+      method: 'POST',
+      cookie: peter.cookie,
+      body: { title },
+    });
+    assert.equal(challenger.status, 200);
+  }
 
   const eliminationSpinPromise = waitForSocket(adminSocket, 'one-off-spinning');
   adminSocket.emit('spin-one-off');
   const eliminationSpin = await eliminationSpinPromise;
   assert.equal(eliminationSpin.mode, 'elimination');
-  assert.equal(eliminationSpin.outcome.type, 'eliminated-and-winner');
+  assert.equal(eliminationSpin.spinDuration, 5);
+  assert.equal(eliminationSpin.outcome.type, 'eliminated');
+  const eliminationInProgress = await request(instance, '/api/one-off-wheel', {
+    cookie: admin.cookie,
+  });
+  assert.equal(eliminationInProgress.payload.enabled, true);
+  assert.equal(eliminationInProgress.payload.elimination_active, true);
+  assert.equal(eliminationInProgress.payload.movies.length, 2);
+
+  const finalEliminationSpinPromise = waitForSocket(
+    adminSocket,
+    'one-off-spinning',
+    7_000
+  );
+  const finalEliminationSpin = await finalEliminationSpinPromise;
+  assert.equal(finalEliminationSpin.mode, 'elimination');
+  assert.equal(finalEliminationSpin.outcome.type, 'eliminated-and-winner');
   assert.notEqual(
-    eliminationSpin.outcome.movie.id,
-    eliminationSpin.outcome.winner.id
+    finalEliminationSpin.outcome.movie.id,
+    finalEliminationSpin.outcome.winner.id
   );
   const hiddenAfterElimination = await request(instance, '/api/one-off-wheel', {
     cookie: admin.cookie,
   });
   assert.equal(hiddenAfterElimination.payload.enabled, false);
+  assert.equal(hiddenAfterElimination.payload.elimination_active, false);
 
   const saved = await request(instance, '/api/one-off-wheel/result', {
     method: 'POST',
@@ -180,8 +200,10 @@ test('one-off wheel is admin-published and supports selection and elimination', 
     body: { add_to_watched: true },
   });
   assert.equal(saved.status, 200, JSON.stringify(saved.payload));
-  assert.equal(saved.payload.watched_movie.title, eliminationSpin.outcome.winner.title);
+  assert.equal(saved.payload.watched_movie.title, finalEliminationSpin.outcome.winner.title);
   assert.equal(saved.payload.state.movies.length, 0);
   const watched = await request(instance, '/api/watched', { cookie: admin.cookie });
-  assert.ok(watched.payload.some(movie => movie.title === eliminationSpin.outcome.winner.title));
+  assert.ok(watched.payload.some(
+    movie => movie.title === finalEliminationSpin.outcome.winner.title
+  ));
 });

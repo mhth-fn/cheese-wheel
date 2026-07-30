@@ -104,20 +104,25 @@ function RatingMatchCard({ label, pair, tone, personal = false }) {
   );
 }
 
-export default function StatsPanel({ refreshKey, scope = 'all', comparisonScope = 'all' }) {
+export default function StatsPanel({
+  refreshKey,
+  scope = 'all',
+  comparisonScope = 'all',
+  selectedUserIds = [],
+}) {
   const [stats, setStats] = useState(null);
   const [state, setState] = useState('loading');
 
   const load = useCallback(async () => {
     setState('loading');
     try {
-      const response = await fetchStats(scope, comparisonScope);
+      const response = await fetchStats(scope, comparisonScope, selectedUserIds);
       setStats(response);
       setState('ready');
     } catch {
       setState('error');
     }
-  }, [scope, comparisonScope]);
+  }, [scope, comparisonScope, selectedUserIds]);
 
   useEffect(() => {
     load();
@@ -144,6 +149,7 @@ export default function StatsPanel({ refreshKey, scope = 'all', comparisonScope 
   }
 
   const isPersonal = scope === 'personal';
+  const isSelected = scope === 'selected';
   const personalTopMovies = isPersonal
     ? Array.isArray(stats.top_rated_movies)
       ? stats.top_rated_movies
@@ -166,10 +172,12 @@ export default function StatsPanel({ refreshKey, scope = 'all', comparisonScope 
 
   return (
     <section
-      className={`stats-panel${scope === 'core' ? ' core-scope' : ''}${isPersonal ? ' personal-scope' : ''}`}
+      className={`stats-panel${scope === 'core' ? ' core-scope' : ''}${isPersonal ? ' personal-scope' : ''}${isSelected ? ' selected-scope' : ''}`}
       aria-label={
         isPersonal
           ? `Личная статистика ${stats.subject_name || ''}${comparisonScope === 'core' ? ' по основной пятёрке' : ''}`.trim()
+          : isSelected
+            ? 'Статистика выбранных участников'
           : scope === 'core'
             ? 'Статистика основной пятёрки'
             : 'Статистика просмотренных фильмов'
@@ -180,13 +188,21 @@ export default function StatsPanel({ refreshKey, scope = 'all', comparisonScope 
         title={
           isPersonal
             ? 'Количество просмотренных фильмов с вашей оценкой'
+            : isSelected
+              ? 'Фильмы с оценкой хотя бы одного выбранного участника'
             : scope === 'core'
               ? 'Фильмы с оценкой хотя бы одного участника основной пятёрки'
               : 'Количество фильмов в общей истории'
         }
       >
         <div className="stat-card-label">
-          {isPersonal ? 'Оценено мной' : scope === 'core' ? 'Оценено пятёркой' : 'Просмотрено вместе'}
+          {isPersonal
+            ? 'Оценено мной'
+            : isSelected
+              ? 'Фильмов с оценками'
+              : scope === 'core'
+                ? 'Оценено пятёркой'
+                : 'Просмотрено вместе'}
         </div>
         <div className="stat-card-value">{stats.total_watched}</div>
         <div className="stat-card-sub">{pluralFilms(stats.total_watched)}</div>

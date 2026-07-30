@@ -15,7 +15,7 @@ const {
 
 const fsp = fs.promises;
 
-test('published one-off wheel replaces the main wheel for exactly one spin', async t => {
+test('one-off selection uses one spin and elimination continues until a winner', async t => {
   const dataDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'cheese-one-off-browser-'));
   const instance = await startServer(dataDir, { frontend: 'built' });
   let browser = null;
@@ -36,7 +36,7 @@ test('published one-off wheel replaces the main wheel for exactly one spin', asy
     },
   });
   assert.equal(settings.status, 200, JSON.stringify(settings.payload));
-  for (const title of ['Разовый фильм A', 'Разовый фильм B', 'Разовый фильм C']) {
+  for (const title of ['Разовый фильм A', 'Разовый фильм B']) {
     const added = await request(instance, '/api/one-off-wheel', {
       method: 'POST',
       cookie: admin.cookie,
@@ -96,12 +96,11 @@ test('published one-off wheel replaces the main wheel for exactly one spin', asy
   assert.equal((await eliminationModeResponse).status(), 200);
 
   const duration = page.getByLabel('Время прокрутки разового колеса');
-  await duration.fill('6');
   const durationResponse = page.waitForResponse(response => (
     response.request().method() === 'PATCH'
     && new URL(response.url()).pathname === '/api/one-off-wheel/settings'
   ));
-  await page.getByRole('button', { name: 'Сохранить время' }).click();
+  await duration.fill('6');
   assert.equal((await durationResponse).status(), 200);
 
   await page.getByLabel('Добавить фильм').fill('Разовый фильм D');
@@ -109,7 +108,8 @@ test('published one-off wheel replaces the main wheel for exactly one spin', asy
   await page.getByText('Разовый фильм D', { exact: true }).waitFor();
 
   await page.getByRole('button', { name: 'Крутить разовое колесо' }).click();
-  await replacement.waitFor({ state: 'detached', timeout: 5_000 });
+  await page.getByText('Крутится до выбора одного фильма', { exact: true }).waitFor();
+  await replacement.waitFor({ state: 'detached', timeout: 16_000 });
   await page.locator('.wheel-page-layout').waitFor();
   assert.equal(await page.getByText('Разовое колесо', { exact: true }).count(), 0);
 
@@ -118,6 +118,8 @@ test('published one-off wheel replaces the main wheel for exactly one spin', asy
   });
   assert.equal(state.status, 200);
   assert.equal(state.payload.enabled, false);
-  assert.equal(state.payload.movies.length, 3);
+  assert.equal(state.payload.elimination_active, false);
+  assert.equal(state.payload.movies.length, 1);
+  assert.ok(state.payload.result?.movie);
   assert.deepEqual(browserErrors, []);
 });

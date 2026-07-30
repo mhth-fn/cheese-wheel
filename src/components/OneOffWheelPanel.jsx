@@ -51,6 +51,7 @@ export default function OneOffWheelPanel() {
   const spinSnapshot = activeSpin || remoteOneOffSpin;
   const displayMovies = spinSnapshot?.movies?.length ? spinSnapshot.movies : movies;
   const result = oneOffState.result;
+  const eliminationActive = Boolean(oneOffState.elimination_active);
   const modeLabel = oneOffState.mode === 'elimination'
     ? 'На выбывание'
     : 'На выпадение';
@@ -118,19 +119,36 @@ export default function OneOffWheelPanel() {
       setOneOffState(nextState);
     } catch (error) {
       setOneOffState(previous);
+      if (busyKey === 'duration') {
+        setDurationDraft(Number(previous.spin_duration) || 5);
+      }
       showToast(error.message || 'Не удалось изменить настройки', 'error');
     } finally {
       setSettingBusy('');
     }
   };
 
-  const saveDuration = () => {
+  useEffect(() => {
     const duration = Math.max(5, Math.min(30, Math.round(Number(durationDraft))));
-    setDurationDraft(duration);
-    if (duration !== Number(oneOffState.spin_duration)) {
-      void updateSettings({ spin_duration: duration }, 'duration');
+    if (
+      !isAdmin
+      || oneOffIsSpinning
+      || eliminationActive
+      || duration === Number(oneOffState.spin_duration)
+    ) {
+      return undefined;
     }
-  };
+    const timer = window.setTimeout(() => {
+      void updateSettings({ spin_duration: duration }, 'duration');
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [
+    durationDraft,
+    eliminationActive,
+    isAdmin,
+    oneOffIsSpinning,
+    oneOffState.spin_duration,
+  ]);
 
   const handleAdd = async event => {
     event.preventDefault();
@@ -208,7 +226,13 @@ export default function OneOffWheelPanel() {
       showToast('Нет соединения с сервером', 'error');
       return;
     }
-    if (movies.length === 0 || result || oneOffIsSpinning || spinPending) return;
+    if (
+      movies.length === 0
+      || result
+      || oneOffIsSpinning
+      || eliminationActive
+      || spinPending
+    ) return;
     setSpinPending(true);
     socket.emit('spin-one-off');
   };
@@ -219,10 +243,22 @@ export default function OneOffWheelPanel() {
     || movies.length === 0
     || Boolean(result)
     || oneOffIsSpinning
+    || eliminationActive
     || spinPending
   );
-  const canMutate = connected && !isGuest && !oneOffIsSpinning && !result;
-  const settingsDisabled = !isAdmin || oneOffIsSpinning || Boolean(settingBusy);
+  const canMutate = (
+    connected
+    && !isGuest
+    && !oneOffIsSpinning
+    && !eliminationActive
+    && !result
+  );
+  const settingsDisabled = (
+    !isAdmin
+    || oneOffIsSpinning
+    || eliminationActive
+    || Boolean(settingBusy)
+  );
 
   return (
     <section className="one-off-replacement" aria-labelledby="one-off-title">
@@ -236,6 +272,7 @@ export default function OneOffWheelPanel() {
                 movies={displayMovies}
                 onSpinComplete={handleSpinComplete}
                 theme={theme}
+                respectReducedMotion={false}
               />
               <button
                 type="button"
@@ -264,7 +301,11 @@ export default function OneOffWheelPanel() {
       <aside className="one-off-panel" aria-label="Меню разового колеса">
         <header className="one-off-header">
           <div>
-            <p>Одна публикация — одна прокрутка</p>
+            <p>
+              {oneOffState.mode === 'elimination'
+                ? 'Крутится до выбора одного фильма'
+                : 'Одна публикация — одна прокрутка'}
+            </p>
             <h2>Меню колеса</h2>
           </div>
           <span className={`one-off-mode is-${oneOffState.mode}`}>{modeLabel}</span>
@@ -298,15 +339,10 @@ export default function OneOffWheelPanel() {
               onChange={event => setDurationDraft(Number(event.target.value))}
               aria-label="Время прокрутки разового колеса"
             />
-            {isAdmin && Number(durationDraft) !== Number(oneOffState.spin_duration) && (
-              <button
-                className="button-secondary one-off-duration-save"
-                type="button"
-                onClick={saveDuration}
-                disabled={settingsDisabled}
-              >
-                Сохранить время
-              </button>
+            {settingBusy === 'duration' && (
+              <small className="one-off-setting-status" aria-live="polite">
+                Сохраняем время…
+              </small>
             )}
           </label>
           <div className="one-off-center-setting">

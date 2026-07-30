@@ -625,6 +625,8 @@ const MAX_TITLE_LENGTH = 200;
 const MAX_SIGAME_PACK_BYTES = 200 * 1024 * 1024;
 let activeSpinUntil = 0;
 let activeOneOffSpinUntil = 0;
+let oneOffEliminationActive = false;
+let oneOffEliminationTimer = null;
 
 function rejectWheelMutationDuringSpin(req, res, next) {
   if (Date.now() < activeSpinUntil || readPendingSpin()) {
@@ -2331,6 +2333,7 @@ function getOneOffState() {
     movies: stmts.getOneOffMovies.all().map(serializeOneOffMovie),
     result: readOneOffResult(),
     spinning_until: activeOneOffSpinUntil > Date.now() ? activeOneOffSpinUntil : null,
+    elimination_active: oneOffEliminationActive,
   };
 }
 
@@ -2345,6 +2348,9 @@ function rejectOneOffMutation(req, res, next) {
   }
   if (activeOneOffSpinUntil > Date.now()) {
     return res.status(409).json({ error: 'Дождитесь окончания прокрутки разового колеса' });
+  }
+  if (oneOffEliminationActive) {
+    return res.status(409).json({ error: 'Дождитесь окончания режима на выбывание' });
   }
   if (state.result) {
     return res.status(409).json({ error: 'Сначала завершите выбор выпавшего фильма' });
@@ -3219,6 +3225,9 @@ app.patch('/api/one-off-wheel/settings', requireAdmin, (req, res) => {
   if (activeOneOffSpinUntil > Date.now()) {
     return res.status(409).json({ error: 'Дождитесь окончания прокрутки разового колеса' });
   }
+  if (oneOffEliminationActive) {
+    return res.status(409).json({ error: 'Дождитесь окончания режима на выбывание' });
+  }
   if (hasMode && readOneOffResult()) {
     return res.status(409).json({ error: 'Сначала завершите текущий выбор' });
   }
@@ -3226,7 +3235,10 @@ app.patch('/api/one-off-wheel/settings', requireAdmin, (req, res) => {
     return res.status(409).json({ error: 'Сначала завершите текущий выбор' });
   }
 
-  if (hasEnabled) setOneOffSetting('one_off_enabled', req.body.enabled ? '1' : '0');
+  if (hasEnabled) {
+    setOneOffSetting('one_off_enabled', req.body.enabled ? '1' : '0');
+    if (!req.body.enabled) stopOneOffElimination();
+  }
   if (hasMode) setOneOffSetting('one_off_mode', req.body.mode);
   if (hasSpinDuration) setOneOffSetting('one_off_spin_duration', spinDuration);
   const state = getOneOffState();
@@ -3521,10 +3533,10 @@ function serializeRatingPair(pair) {
   };
 }
 
-function buildCoreStats(coreUsers) {
+function buildGroupStats(groupUsers, scope = 'selected') {
   const watchedMovies = stmts.getWatched.all();
   const ratedMovies = watchedMovies.flatMap(movie => {
-    const ratings = coreUsers
+    const ratings = groupUsers
       .map(user => movie[`rating_${user.id}`])
       .filter(rating => rating !== null && rating !== undefined);
     if (ratings.length === 0) return [];
@@ -3547,7 +3559,7 @@ function buildCoreStats(coreUsers) {
     || first.id - second.id
   ))[0] || null;
 
-  const perUserAvg = coreUsers.map(user => {
+  const perUserAvg = groupUsers.map(user => {
     const ratings = watchedMovies
       .map(movie => movie[`rating_${user.id}`])
       .filter(rating => rating !== null && rating !== undefined);
@@ -3560,10 +3572,10 @@ function buildCoreStats(coreUsers) {
   });
 
   const ratingPairs = [];
-  for (let firstIndex = 0; firstIndex < coreUsers.length; firstIndex++) {
-    for (let secondIndex = firstIndex + 1; secondIndex < coreUsers.length; secondIndex++) {
-      const firstUser = coreUsers[firstIndex];
-      const secondUser = coreUsers[secondIndex];
+  for (let firstIndex = 0; firstIndex < groupUsers.length; firstIndex++) {
+    for (let secondIndex = firstIndex + 1; secondIndex < groupUsers.length; secondIndex++) {
+      const firstUser = groupUsers[firstIndex];
+      const secondUser = groupUsers[secondIndex];
       const differences = watchedMovies.flatMap(movie => {
         const firstRating = movie[`rating_${firstUser.id}`];
         const secondRating = movie[`rating_${secondUser.id}`];
@@ -3598,7 +3610,8 @@ function buildCoreStats(coreUsers) {
   ))[0] || null;
 
   return {
-    scope: 'core',
+    scope,
+    selected_user_ids: groupUsers.map(user => Number(user.id)),
     total_watched: ratedMovies.length,
     top_rated: topRated ? {
       title: topRated.title,
@@ -3612,6 +3625,10 @@ function buildCoreStats(coreUsers) {
     closest_rating_pair: serializeRatingPair(closestRatingPair),
     furthest_rating_pair: serializeRatingPair(furthestRatingPair),
   };
+}
+
+function buildCoreStats(coreUsers) {
+  return buildGroupStats(coreUsers, 'core');
 }
 
 function buildPersonalStats(currentUser, comparisonScope = 'all') {
@@ -3722,8 +3739,29 @@ function buildPersonalStats(currentUser, comparisonScope = 'all') {
 
 app.get('/api/stats', (req, res) => {
   const scope = req.query.scope || 'all';
-  if (!['all', 'core', 'personal'].includes(scope)) {
+  if (!['all', 'core', 'personal', 'selected'].includes(scope)) {
     return res.status(400).json({ error: 'Неизвестный режим статистики' });
+  }
+  if (scope === 'selected') {
+    const rawIds = String(req.query.user_ids || '');
+    const selectedIds = rawIds
+      .split(',')
+      .filter(Boolean)
+      .map(parseIntStrict);
+    if (
+      selectedIds.length === 0
+      || selectedIds.some(id => isNaN(id))
+      || new Set(selectedIds).size !== selectedIds.length
+    ) {
+      return res.status(400).json({ error: 'Выберите хотя бы одного участника' });
+    }
+    const selectedIdSet = new Set(selectedIds);
+    const selectedUsers = stmts.getUsers.all()
+      .filter(user => selectedIdSet.has(Number(user.id)));
+    if (selectedUsers.length !== selectedIds.length) {
+      return res.status(400).json({ error: 'Неизвестный участник статистики' });
+    }
+    return res.json(buildGroupStats(selectedUsers, 'selected'));
   }
   if (scope === 'personal') {
     const comparisonScope = req.query.comparison_scope || 'all';
@@ -4633,6 +4671,122 @@ io.use((socket, next) => {
   next();
 });
 
+function stopOneOffElimination() {
+  oneOffEliminationActive = false;
+  if (oneOffEliminationTimer) {
+    clearTimeout(oneOffEliminationTimer);
+    oneOffEliminationTimer = null;
+  }
+}
+
+function performOneOffSpin(initiatorSocketId, continuation = false) {
+  const now = Date.now();
+  if (activeOneOffSpinUntil > now) {
+    return { ok: false, error: 'Разовое колесо уже вращается' };
+  }
+  if (oneOffEliminationActive && !continuation) {
+    return { ok: false, error: 'Режим на выбывание уже запущен' };
+  }
+
+  const state = getOneOffState();
+  if (!state.enabled) {
+    stopOneOffElimination();
+    return { ok: false, error: 'Разовое колесо не опубликовано' };
+  }
+  if (state.result) {
+    stopOneOffElimination();
+    return { ok: false, error: 'Сначала завершите текущий выбор' };
+  }
+  if (state.movies.length === 0) {
+    stopOneOffElimination();
+    return { ok: false, error: 'Добавьте хотя бы один фильм' };
+  }
+  if (continuation && state.mode !== 'elimination') {
+    stopOneOffElimination();
+    return { ok: false, error: 'Режим на выбывание остановлен' };
+  }
+
+  const spinDuration = state.spin_duration;
+  const selectedIndex = crypto.randomInt(state.movies.length);
+  const selectedMovie = state.movies[selectedIndex];
+  const randomOffset = 0.08 + (crypto.randomInt(8401) / 10000);
+  const turns = 12 + crypto.randomInt(7);
+  const spinId = crypto.randomUUID();
+  let outcome;
+
+  try {
+    outcome = db.transaction(() => {
+      if (state.mode === 'selection' || state.movies.length === 1) {
+        setOneOffSetting('one_off_enabled', '0');
+        const winnerResult = {
+          movie: selectedMovie,
+          mode: state.mode,
+          created_at: Date.now(),
+        };
+        setOneOffResult(winnerResult);
+        return { type: 'winner', movie: selectedMovie, winner: selectedMovie };
+      }
+
+      stmts.deleteOneOffMovie.run(selectedMovie.id);
+      const remaining = stmts.getOneOffMovies.all().map(serializeOneOffMovie);
+      if (remaining.length === 1) {
+        setOneOffSetting('one_off_enabled', '0');
+        const winnerResult = {
+          movie: remaining[0],
+          eliminated_movie: selectedMovie,
+          mode: state.mode,
+          created_at: Date.now(),
+        };
+        setOneOffResult(winnerResult);
+        return {
+          type: 'eliminated-and-winner',
+          movie: selectedMovie,
+          winner: remaining[0],
+        };
+      }
+      return { type: 'eliminated', movie: selectedMovie, winner: null };
+    })();
+  } catch (error) {
+    stopOneOffElimination();
+    console.error('[cheese-wheel] Could not spin one-off wheel:', error.message);
+    return { ok: false, error: 'Не удалось сохранить результат' };
+  }
+
+  activeOneOffSpinUntil = Date.now() + spinDuration * 1000 + 500;
+  const shouldContinue = outcome.type === 'eliminated';
+  oneOffEliminationActive = shouldContinue;
+
+  io.emit('one-off-spinning', {
+    spinId,
+    movies: state.movies,
+    winnerIndex: selectedIndex,
+    winnerMovieId: selectedMovie.id,
+    spinDuration,
+    randomOffset,
+    turns,
+    mode: state.mode,
+    outcome,
+    initiatorSocketId,
+  });
+  broadcastOneOffState();
+
+  if (shouldContinue) {
+    oneOffEliminationTimer = setTimeout(() => {
+      oneOffEliminationTimer = null;
+      const next = performOneOffSpin(initiatorSocketId, true);
+      if (!next.ok) {
+        stopOneOffElimination();
+        broadcastOneOffState();
+      }
+    }, spinDuration * 1000 + 650);
+    oneOffEliminationTimer.unref?.();
+  } else {
+    stopOneOffElimination();
+  }
+
+  return { ok: true, outcome };
+}
+
 io.on('connection', (socket) => {
   const memberData = getTokenData(socket.data.authToken);
   if (isMemberToken(memberData)) {
@@ -4758,7 +4912,7 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on('spin-one-off', (data) => {
+  socket.on('spin-one-off', () => {
     const tokenData = getTokenData(socket.data.authToken);
     if (!isMemberToken(tokenData) || tokenData.role !== 'admin') {
       socket.emit('one-off-spin-rejected', {
@@ -4783,88 +4937,10 @@ io.on('connection', (socket) => {
       socket.emit('one-off-spin-rejected', { error: 'Слишком много прокруток' });
       return;
     }
-    if (activeOneOffSpinUntil > now) {
-      socket.emit('one-off-spin-rejected', { error: 'Разовое колесо уже вращается' });
-      return;
+    const result = performOneOffSpin(socket.id);
+    if (!result.ok) {
+      socket.emit('one-off-spin-rejected', { error: result.error });
     }
-
-    const state = getOneOffState();
-    if (!state.enabled) {
-      socket.emit('one-off-spin-rejected', { error: 'Разовое колесо не опубликовано' });
-      return;
-    }
-    if (state.result) {
-      socket.emit('one-off-spin-rejected', { error: 'Сначала завершите текущий выбор' });
-      return;
-    }
-    if (state.movies.length === 0) {
-      socket.emit('one-off-spin-rejected', { error: 'Добавьте хотя бы один фильм' });
-      return;
-    }
-
-    const spinDuration = state.spin_duration;
-
-    const selectedIndex = crypto.randomInt(state.movies.length);
-    const selectedMovie = state.movies[selectedIndex];
-    const randomOffset = 0.08 + (crypto.randomInt(8401) / 10000);
-    const turns = 12 + crypto.randomInt(7);
-    const spinId = crypto.randomUUID();
-    let outcome;
-
-    try {
-      outcome = db.transaction(() => {
-        // A published one-off wheel is intentionally good for exactly one spin.
-        // Clients keep rendering the spin snapshot until the animation ends,
-        // while everyone else already receives the restored main-wheel state.
-        setOneOffSetting('one_off_enabled', '0');
-        if (state.mode === 'selection' || state.movies.length === 1) {
-          const winnerResult = {
-            movie: selectedMovie,
-            mode: state.mode,
-            created_at: Date.now(),
-          };
-          setOneOffResult(winnerResult);
-          return { type: 'winner', movie: selectedMovie, winner: selectedMovie };
-        }
-
-        stmts.deleteOneOffMovie.run(selectedMovie.id);
-        const remaining = stmts.getOneOffMovies.all().map(serializeOneOffMovie);
-        if (remaining.length === 1) {
-          const winnerResult = {
-            movie: remaining[0],
-            eliminated_movie: selectedMovie,
-            mode: state.mode,
-            created_at: Date.now(),
-          };
-          setOneOffResult(winnerResult);
-          return {
-            type: 'eliminated-and-winner',
-            movie: selectedMovie,
-            winner: remaining[0],
-          };
-        }
-        return { type: 'eliminated', movie: selectedMovie, winner: null };
-      })();
-    } catch (error) {
-      console.error('[cheese-wheel] Could not spin one-off wheel:', error.message);
-      socket.emit('one-off-spin-rejected', { error: 'Не удалось сохранить результат' });
-      return;
-    }
-
-    activeOneOffSpinUntil = Date.now() + spinDuration * 1000 + 500;
-    io.emit('one-off-spinning', {
-      spinId,
-      movies: state.movies,
-      winnerIndex: selectedIndex,
-      winnerMovieId: selectedMovie.id,
-      spinDuration,
-      randomOffset,
-      turns,
-      mode: state.mode,
-      outcome,
-      initiatorSocketId: socket.id,
-    });
-    broadcastOneOffState();
   });
 
   socket.on('disconnect', () => {

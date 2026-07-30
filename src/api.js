@@ -153,8 +153,14 @@ export async function deleteRating(movieId, userId = null) {
   return apiFetch(`/api/ratings/${movieId}${query}`, { method: 'DELETE' });
 }
 
-export async function fetchStats(scope = 'all', comparisonScope = 'all') {
-  const query = scope === 'personal'
+export async function fetchStats(
+  scope = 'all',
+  comparisonScope = 'all',
+  selectedUserIds = []
+) {
+  const query = scope === 'selected'
+    ? `?scope=selected&user_ids=${selectedUserIds.map(id => encodeURIComponent(id)).join(',')}`
+    : scope === 'personal'
     ? `?scope=personal${comparisonScope === 'core' ? '&comparison_scope=core' : ''}`
     : scope === 'core'
       ? '?scope=core'

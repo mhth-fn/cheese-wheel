@@ -209,6 +209,11 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   await page.waitForURL(`${instance.baseUrl}/watched`);
   await page.getByRole('list', { name: 'Все просмотренные фильмы' }).waitFor();
   await page.locator('.watched-card-title strong', { hasText: 'Browser Smoke Film' }).waitFor();
+  const userFilters = page.getByRole('group', { name: 'Выбор участников статистики' });
+  await userFilters.getByRole('button', { name: 'Сергей', exact: true }).click();
+  await page.getByText('У выбранных участников пока нет оценок', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Показать всех', exact: true }).click();
+  await page.getByRole('list', { name: 'Все просмотренные фильмы' }).waitFor();
   assert.equal(await page.locator('table.watched-table').count(), 0);
   assert.equal(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),

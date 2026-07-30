@@ -25,7 +25,12 @@ const RIND_THEMES = {
   },
 };
 
-const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete, theme = 'cheese' }, ref) {
+const CheeseWheel = forwardRef(function CheeseWheel({
+  movies,
+  onSpinComplete,
+  theme = 'cheese',
+  respectReducedMotion = true,
+}, ref) {
   const canvasRef = useRef(null);
   const [spinning, setSpinning] = useState(false);
   const [pointerTick, setPointerTick] = useState(0);
@@ -241,7 +246,10 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete, th
     const alignment = ((desiredRotation - (startRot % (2 * Math.PI))) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
     const totalRotation = startRot + Math.PI * 2 * extraSpins + alignment;
     const startTime = performance.now();
-    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const reducedMotion = (
+      respectReducedMotion
+      && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    );
     const dur = reducedMotion ? Math.min(duration * 1000, 900) : duration * 1000;
 
     const pegCount = Math.max(n * 2, 24);
@@ -292,7 +300,7 @@ const CheeseWheel = forwardRef(function CheeseWheel({ movies, onSpinComplete, th
       }
     };
     requestAnimationFrame(animate);
-  }, [movies, draw, onSpinComplete]);
+  }, [movies, draw, onSpinComplete, respectReducedMotion]);
 
   const updateHoveredSector = (event) => {
     if (spinningRef.current || movies.length === 0) return;

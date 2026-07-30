@@ -198,6 +198,21 @@ test('real server enforces authentication, dynamic roles and content ownership',
     coreStats.payload.per_user_avg.map(user => user.name),
     ['Антон', 'Митя', 'Пётр', 'Сергей', 'Егор']
   );
+  const selectedStats = await request(instance, '/api/stats?scope=selected&user_ids=1,3', {
+    cookie: sergey.cookie,
+  });
+  assert.equal(selectedStats.status, 200, JSON.stringify(selectedStats.payload));
+  assert.equal(selectedStats.payload.scope, 'selected');
+  assert.deepEqual(selectedStats.payload.selected_user_ids, [1, 3]);
+  assert.deepEqual(
+    selectedStats.payload.per_user_avg.map(user => user.name),
+    ['Антон', 'Пётр']
+  );
+  assert.equal(selectedStats.payload.total_watched, 1);
+  assert.equal(selectedStats.payload.top_rated.avg_rating, 8.5);
+  assert.equal((await request(instance, '/api/stats?scope=selected&user_ids=999', {
+    cookie: sergey.cookie,
+  })).status, 400);
 
   const lastAdmin = await request(instance, '/api/admin/users/2/role', {
     method: 'PATCH',

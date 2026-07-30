@@ -149,6 +149,12 @@
   font-size: 0.72rem;
 }
 
+.one-off-setting-status {
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
 .one-off-center-setting {
   display: grid;
   gap: 7px;

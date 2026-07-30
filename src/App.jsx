@@ -159,6 +159,7 @@ export default function App() {
     movies: [],
     result: null,
     spinning_until: null,
+    elimination_active: false,
   });
   const socketRef = useRef(null);
   const processedSpinIdsRef = useRef(new Set());
