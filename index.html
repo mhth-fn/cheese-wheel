@@ -2,8 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#f8dc78">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Сырное Колесо</title>
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -22,7 +21,6 @@
     };
     var browserThemeColor = browserThemeColors[t] || browserThemeColors.cheese;
     document.documentElement.style.backgroundColor = browserThemeColor;
-    document.querySelector('meta[name="theme-color"]').setAttribute('content', browserThemeColor);
     if (t === 'newyear') document.body.classList.add('theme-newyear');
     else if (t === 'spring') document.body.classList.add('theme-spring');
   </script>

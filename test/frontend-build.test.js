@@ -9,6 +9,13 @@ const { resolveFrontendBuild } = require('../lib/frontend-build');
 
 const fsp = fs.promises;
 
+test('mobile viewport extends behind Safari controls without forcing a solid toolbar color', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+
+  assert.match(html, /viewport-fit=cover/);
+  assert.doesNotMatch(html, /<meta\s+name=["']theme-color["']/i);
+});
+
 test('production refuses to start without the current frontend build', async t => {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'cheese-wheel-frontend-'));
   t.after(() => fsp.rm(root, { recursive: true, force: true }));

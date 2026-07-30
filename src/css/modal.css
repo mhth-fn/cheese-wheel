@@ -631,7 +631,7 @@
   }
 
   .admin-btn {
-    bottom: 82px;
+    bottom: calc(82px + env(safe-area-inset-bottom));
     left: 12px;
   }
 

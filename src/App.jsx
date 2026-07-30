@@ -458,7 +458,6 @@ export default function App() {
     else if (theme === 'spring') document.body.classList.add('theme-spring');
     const browserThemeColor = BROWSER_THEME_COLORS[theme] || BROWSER_THEME_COLORS.cheese;
     document.documentElement.style.backgroundColor = browserThemeColor;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', browserThemeColor);
     localStorage.setItem('theme', theme);
   }, [theme]);
 
