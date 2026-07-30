@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useApp } from '../App';
+import { useApp } from '../app/AppContext';
 import CheeseWheel from './CheeseWheel';
 import OneOffWheelPanel from './OneOffWheelPanel';
 import OneOffResultModal from './OneOffResultModal';
@@ -35,6 +35,7 @@ export default function WheelPage() {
   const wheelReady = wheelStatus.formed;
   const serverSpinPending = Number(wheelStatus.pending_spin?.complete_at) > Date.now();
   const spinIsDisabled = spinEnabled === false;
+  const wheelFallbackIcon = theme === 'samurai' ? '⚔️' : '🧀';
 
   useEffect(() => {
     if (!socket) return undefined;
@@ -194,13 +195,13 @@ export default function WheelPage() {
               >
                 {centerImage
                   ? <img src={centerImage} alt="" className="wheel-center-img" />
-                  : <span className="wheel-center-fallback" aria-hidden="true">🧀</span>}
+                  : <span className="wheel-center-fallback" aria-hidden="true">{wheelFallbackIcon}</span>}
               </button>
             </div>
           </div>
         ) : (
           <div className="wheel-not-ready" aria-live="polite">
-            <span className="wheel-not-ready-icon" aria-hidden="true">🧀</span>
+            <span className="wheel-not-ready-icon" aria-hidden="true">{wheelFallbackIcon}</span>
             <strong>
               {wheelStatusLoadState === 'loading'
                 ? 'Загружаем колесо'

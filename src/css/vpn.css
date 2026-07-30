@@ -42,10 +42,10 @@
   gap: var(--space-2);
   min-height: 36px;
   padding: 0 var(--space-3);
-  border: 1px solid rgba(30, 122, 114, 0.28);
+  border: 1px solid var(--color-info-border);
   border-radius: var(--radius-pill);
-  background: #e9f6f2;
-  color: #175f59;
+  background: var(--color-info-surface);
+  color: var(--color-info-text);
   font-size: 0.85rem;
   font-weight: 800;
   white-space: nowrap;
@@ -55,8 +55,8 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #25846f;
-  box-shadow: 0 0 0 4px rgba(37, 132, 111, 0.13);
+  background: var(--color-info);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-info) 14%, transparent);
 }
 
 .vpn-create {
@@ -80,8 +80,8 @@
   height: 38px;
   place-items: center;
   border-radius: var(--radius-medium);
-  background: #e9f6f2;
-  color: #175f59;
+  background: var(--color-info-surface);
+  color: var(--color-info-text);
   font-size: 1.25rem;
   font-weight: 900;
 }
@@ -125,15 +125,15 @@
 }
 
 .vpn-server-option.selected {
-  border-color: #25846f;
-  background: #edf9f5;
-  box-shadow: inset 0 0 0 1px rgba(37, 132, 111, 0.14);
+  border-color: var(--color-info);
+  background: var(--color-info-surface);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-info) 18%, transparent);
 }
 
 .vpn-server-option input {
   width: 18px;
   height: 18px;
-  accent-color: #25846f;
+  accent-color: var(--color-info);
 }
 
 .vpn-server-meta {
@@ -159,7 +159,7 @@
 }
 
 .vpn-server-counts b {
-  color: #175f59;
+  color: var(--color-info-text);
   font-size: 0.8rem;
 }
 
@@ -183,16 +183,16 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #8b7b5b;
+  background: var(--color-text-muted);
 }
 
 .vpn-health.online {
-  color: #1b735f;
+  color: var(--color-success);
 }
 
 .vpn-health.online i {
-  background: #25846f;
-  box-shadow: 0 0 0 3px rgba(37, 132, 111, 0.13);
+  background: var(--color-success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 14%, transparent);
 }
 
 .vpn-health.offline {
@@ -218,12 +218,12 @@
   padding: 0 var(--space-4);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-medium);
-  background: #fff;
+  background: var(--color-surface-elevated);
   color: var(--color-text);
 }
 
 .vpn-device-field input::placeholder {
-  color: #9b8963;
+  color: var(--color-text-muted);
 }
 
 .vpn-create-button {
@@ -274,7 +274,7 @@
   height: 48px;
   place-items: center;
   border-radius: var(--radius-medium);
-  background: #e9f6f2;
+  background: var(--color-info-surface);
   font-size: 1.35rem;
 }
 
@@ -300,8 +300,8 @@
   flex: 0 0 auto;
   padding: 2px 7px;
   border-radius: var(--radius-pill);
-  background: #eef2fb;
-  color: #365d9d;
+  background: var(--color-info-surface);
+  color: var(--color-info-text);
   font-size: 0.76rem;
   font-weight: 800;
 }

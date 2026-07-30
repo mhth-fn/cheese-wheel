@@ -86,7 +86,7 @@
   overflow: hidden;
   border: 3px solid var(--color-primary-border);
   border-radius: 50%;
-  background: #fff;
+  background: var(--color-surface-elevated);
   box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.62), var(--shadow-medium);
   cursor: pointer;
   opacity: 1;
@@ -154,7 +154,7 @@
   padding: 0 var(--space-3);
   border: 1px solid rgba(184, 109, 21, 0.28);
   border-radius: var(--radius-pill);
-  background: rgba(255, 253, 243, 0.88);
+  background: var(--color-surface-translucent);
   color: var(--color-warning);
   box-shadow: var(--shadow-small);
   font-size: 0.78rem;
@@ -197,9 +197,9 @@
   place-items: center;
   align-content: center;
   gap: var(--space-3);
-  border: 3px dashed rgba(156, 103, 17, 0.42);
+  border: 3px dashed var(--color-border);
   border-radius: 50%;
-  background: rgba(255, 229, 106, 0.48);
+  background: color-mix(in srgb, var(--color-surface) 66%, transparent);
   color: var(--color-text-muted);
   text-align: center;
 }
@@ -228,7 +228,7 @@
   border: 1px solid var(--color-primary-border);
   border-radius: var(--radius-medium);
   background: var(--theme-btn);
-  color: #fff;
+  color: var(--color-on-primary);
   box-shadow: var(--shadow-button);
   font-weight: 800;
   cursor: pointer;
@@ -283,7 +283,7 @@
 .button-danger {
   border: 1px solid #963129;
   background: var(--color-danger);
-  color: #fff;
+  color: var(--color-on-primary);
 }
 
 @keyframes pointerBounce {

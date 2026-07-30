@@ -119,7 +119,8 @@ test('one-off elimination waits for a manual click before each round', async t =
   await spinButton.click();
   await replacement.waitFor({ state: 'detached', timeout: 16_000 });
   await page.locator('.wheel-page-layout').waitFor();
-  assert.equal(await page.getByText('Разовое колесо', { exact: true }).count(), 0);
+  assert.equal(await page.locator('.one-off-replacement').count(), 0);
+  await page.locator('.one-off-result-card').waitFor();
 
   const state = await request(instance, '/api/one-off-wheel', {
     cookie: admin.cookie,

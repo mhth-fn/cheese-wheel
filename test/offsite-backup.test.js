@@ -10,6 +10,7 @@ const { EXPECTED_TABLES, runBackup } = require('../scripts/backup');
 const { findLatestSnapshot, runOffsiteBackup } = require('../scripts/offsite-backup');
 
 const fsp = fs.promises;
+const tarPath = fs.realpathSync('/usr/bin/tar');
 
 async function createVerifiedSnapshot(root, currentDate) {
   const dataRoot = path.join(root, 'data');
@@ -35,7 +36,7 @@ async function createVerifiedSnapshot(root, currentDate) {
     uploadsPath,
     sigamePacksPath,
     backupRoot,
-    tarPath: '/usr/bin/tar',
+    tarPath,
     retentionDays: 30,
     currentDate,
   });
@@ -61,7 +62,7 @@ test('encrypted off-site flow re-verifies and uploads only the latest snapshot',
   const result = await runOffsiteBackup({
     backupRoot: first.backupRoot,
     resticBin: '/usr/bin/true',
-    tarBin: '/usr/bin/tar',
+    tarBin: tarPath,
     execute,
     env: {
       RESTIC_REPOSITORY: 's3:https://storage.example.test/cheese-wheel',
@@ -94,7 +95,7 @@ test('off-site flow rejects a snapshot changed after local verification', async 
     runOffsiteBackup({
       backupRoot: fixture.backupRoot,
       resticBin: '/usr/bin/true',
-      tarBin: '/usr/bin/tar',
+      tarBin: tarPath,
       execute: async () => ({ stdout: '' }),
       env: {
         RESTIC_REPOSITORY: 's3:https://storage.example.test/cheese-wheel',
@@ -109,7 +110,7 @@ test('off-site flow refuses a repository on the same local filesystem', async ()
   await assert.rejects(
     runOffsiteBackup({
       resticBin: '/usr/bin/true',
-      tarBin: '/usr/bin/tar',
+      tarBin: tarPath,
       env: {
         RESTIC_REPOSITORY: '/var/backups/not-off-site',
         RESTIC_PASSWORD: 'test-only-password',

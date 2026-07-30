@@ -1,0 +1,240 @@
+/* ========== САМУРАЙСКАЯ ТЕМА ========== */
+body.theme-samurai {
+  --color-background: #cfc1a4;
+  --color-background-accent: #a99372;
+  --color-surface: #f2ead8;
+  --color-surface-elevated: #fffaf0;
+  --color-surface-muted: #e4dac5;
+  --color-surface-hover: #d9cdb6;
+  --color-surface-translucent: rgba(242, 234, 216, 0.9);
+  --color-surface-translucent-strong: rgba(249, 242, 227, 0.97);
+  --color-overlay: rgba(20, 18, 15, 0.68);
+  --color-primary: #9e281c;
+  --color-primary-hover: #7e1d15;
+  --color-primary-active: #292722;
+  --color-primary-border: #641811;
+  --color-on-primary: #fff9eb;
+  --color-text: #1c1b18;
+  --color-text-muted: #5e584d;
+  --color-border: #5f574a;
+  --color-border-soft: rgba(44, 40, 34, 0.24);
+  --color-success: #416342;
+  --color-success-surface: #e4ecdf;
+  --color-success-border: #aabda1;
+  --color-success-text: #304f32;
+  --color-warning: #875c16;
+  --color-warning-surface: #f3e4bd;
+  --color-warning-border: #c9ad6a;
+  --color-warning-text: #65430e;
+  --color-danger: #a12c22;
+  --color-danger-surface: #f2deda;
+  --color-danger-border: #cfa29a;
+  --color-danger-text: #722018;
+  --color-info: #49616f;
+  --color-info-surface: #e1e8e8;
+  --color-info-border: #abbabc;
+  --color-info-text: #354d59;
+  --color-focus: #145ca0;
+  --cheese-hole: rgba(38, 34, 29, 0.1);
+  --feature-accent: #a12c22;
+  --feature-accent-surface: #eed8d1;
+  --feature-accent-text: #6e1f18;
+  --feature-played-accent: #536d4e;
+  --feature-hero-background:
+    linear-gradient(115deg, rgba(20, 19, 17, 0.96), rgba(55, 50, 43, 0.94)),
+    repeating-linear-gradient(8deg, transparent 0 7px, rgba(255, 255, 255, 0.035) 7px 8px);
+  --feature-hero-border: rgba(158, 40, 28, 0.72);
+  --feature-hero-text: #fff8e8;
+  --feature-hero-muted: #d8cfbd;
+  --feature-hero-action: #a42b20;
+  --feature-hero-action-hover: #c13b2e;
+  --feature-hero-action-text: #fff9eb;
+  --shadow-small: 0 2px 8px rgba(28, 25, 21, 0.14);
+  --shadow-medium: 0 9px 26px rgba(28, 25, 21, 0.22);
+  --shadow-modal: 0 24px 68px rgba(17, 15, 13, 0.42);
+  --shadow-button: 0 3px 0 #641811, 0 7px 16px rgba(28, 25, 21, 0.24);
+  --theme-btn: linear-gradient(180deg, #b43629 0%, #8f2118 100%);
+  --theme-btn-hover: linear-gradient(180deg, #c54738 0%, #a42b20 100%);
+  --theme-btn-active: linear-gradient(180deg, #3b3933 0%, #211f1b 100%);
+  --theme-btn-border: #641811;
+  --theme-btn-shadow: #641811;
+  background:
+    radial-gradient(circle at 84% 16%, rgba(157, 37, 26, 0.76) 0 6.8vw, transparent 7vw),
+    radial-gradient(ellipse 58% 24% at 18% 8%, rgba(31, 29, 25, 0.13), transparent 70%),
+    radial-gradient(ellipse 40% 17% at 87% 78%, rgba(31, 29, 25, 0.1), transparent 72%),
+    repeating-linear-gradient(7deg, rgba(48, 43, 36, 0.025) 0 1px, transparent 1px 7px),
+    linear-gradient(180deg, #e0d4bd 0%, #cfc1a4 55%, #baa987 100%);
+  background-color: #cfc1a4;
+}
+
+.samurai-atmosphere {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.samurai-sun {
+  position: absolute;
+  top: clamp(52px, 8vw, 105px);
+  right: clamp(30px, 7vw, 110px);
+  width: clamp(82px, 13vw, 170px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: rgba(151, 33, 23, 0.28);
+  filter: blur(1px);
+}
+
+.samurai-brush-mark {
+  position: absolute;
+  width: min(38vw, 480px);
+  height: 38px;
+  opacity: 0.08;
+  background:
+    linear-gradient(
+      90deg,
+      transparent,
+      #171612 7%,
+      #171612 78%,
+      transparent
+    );
+  filter: blur(0.5px);
+}
+
+.samurai-brush-mark::after {
+  position: absolute;
+  inset: 9px 3% auto 8%;
+  height: 22px;
+  background: repeating-linear-gradient(90deg, #171612 0 22px, transparent 22px 27px);
+  content: '';
+  transform: skewX(-18deg);
+}
+
+.samurai-brush-mark.mark-one {
+  top: 31%;
+  left: -6%;
+  transform: rotate(-12deg);
+}
+
+.samurai-brush-mark.mark-two {
+  right: -8%;
+  bottom: 20%;
+  transform: rotate(9deg);
+}
+
+.samurai-katana {
+  --katana-width: clamp(120px, 17vw, 230px);
+  position: absolute;
+  top: var(--katana-top);
+  left: var(--katana-left);
+  width: var(--katana-width);
+  height: 16px;
+  opacity: 0.13;
+  transform: rotate(var(--katana-rotation)) scale(var(--katana-scale));
+  transform-origin: center;
+}
+
+.samurai-katana::before {
+  position: absolute;
+  top: 6px;
+  left: 30px;
+  width: calc(100% - 30px);
+  height: 3px;
+  border-radius: 100% 0 0 100%;
+  background: linear-gradient(90deg, #34312b, #171612 75%, transparent);
+  box-shadow: 0 2px 0 rgba(255, 250, 240, 0.55);
+  content: '';
+  transform: skewY(-1.5deg);
+}
+
+.samurai-katana::after {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  width: 34px;
+  height: 7px;
+  border-radius: 4px 1px 1px 4px;
+  background: repeating-linear-gradient(135deg, #1d1b18 0 4px, #8f2118 4px 7px);
+  content: '';
+}
+
+.samurai-katana-guard {
+  position: absolute;
+  top: 1px;
+  left: 32px;
+  width: 3px;
+  height: 13px;
+  border-radius: 50%;
+  background: #8f2118;
+}
+
+.samurai-seal {
+  position: absolute;
+  right: clamp(24px, 4vw, 64px);
+  bottom: clamp(96px, 11vw, 150px);
+  display: grid;
+  width: 50px;
+  height: 50px;
+  place-items: center;
+  border: 3px double rgba(128, 28, 20, 0.48);
+  color: rgba(128, 28, 20, 0.44);
+  font-family: serif;
+  font-size: 1.7rem;
+  font-weight: 800;
+  transform: rotate(-5deg);
+}
+
+body.theme-samurai .cheese-wheel-stage {
+  filter: drop-shadow(0 15px 26px rgba(24, 22, 18, 0.32));
+}
+
+body.theme-samurai .wheel-pointer {
+  border-top-color: #9e281c;
+  filter: drop-shadow(0 2px 2px rgba(26, 20, 17, 0.42));
+}
+
+body.theme-samurai .wheel-pointer::before {
+  background: #24211d;
+}
+
+@media (max-width: 720px) {
+  body.theme-samurai {
+    background:
+      radial-gradient(circle at 84% 13%, rgba(157, 37, 26, 0.55) 0 54px, transparent 56px),
+      radial-gradient(ellipse 64% 22% at 12% 10%, rgba(31, 29, 25, 0.11), transparent 70%),
+      repeating-linear-gradient(7deg, rgba(48, 43, 36, 0.022) 0 1px, transparent 1px 7px),
+      linear-gradient(180deg, #e0d4bd 0%, #cfc1a4 58%, #baa987 100%);
+  }
+
+  .samurai-katana {
+    opacity: 0.1;
+  }
+
+  .samurai-seal {
+    right: 20px;
+    bottom: 100px;
+    width: 42px;
+    height: 42px;
+    font-size: 1.4rem;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .samurai-katana {
+    animation: katanaDrift 9s ease-in-out infinite alternate;
+  }
+
+  .samurai-katana:nth-of-type(even) {
+    animation-delay: -4s;
+  }
+}
+
+@keyframes katanaDrift {
+  from {
+    translate: 0 -2px;
+  }
+  to {
+    translate: 5px 3px;
+  }
+}

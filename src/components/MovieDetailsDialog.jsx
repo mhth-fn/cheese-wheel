@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useApp } from '../App';
+import { useApp } from '../app/AppContext';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import MovieReviewsSection from './MovieReviewsSection';
 

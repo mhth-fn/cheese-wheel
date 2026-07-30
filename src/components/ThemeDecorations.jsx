@@ -36,10 +36,28 @@ function generatePetals() {
   }));
 }
 
+function generateSamuraiMarks() {
+  const positions = [
+    ['5%', '18%', '-28deg', 0.82],
+    ['76%', '8%', '17deg', 1.08],
+    ['84%', '68%', '-18deg', 0.9],
+    ['8%', '76%', '24deg', 1],
+    ['43%', '88%', '-9deg', 0.74],
+  ];
+  return positions.map(([left, top, rotation, scale], id) => ({
+    id,
+    left,
+    top,
+    rotation,
+    scale,
+  }));
+}
+
 export default function ThemeDecorations({ theme }) {
   const snowflakes = useMemo(generateSnowflakes, []);
   const lights = useMemo(generateLights, []);
   const petals = useMemo(generatePetals, []);
+  const samuraiMarks = useMemo(generateSamuraiMarks, []);
 
   return (
     <>
@@ -92,6 +110,28 @@ export default function ThemeDecorations({ theme }) {
               {p.char}
             </div>
           ))}
+        </div>
+      )}
+      {theme === 'samurai' && (
+        <div className="samurai-atmosphere" aria-hidden="true">
+          <div className="samurai-sun" />
+          <div className="samurai-brush-mark mark-one" />
+          <div className="samurai-brush-mark mark-two" />
+          {samuraiMarks.map(mark => (
+            <div
+              key={mark.id}
+              className="samurai-katana"
+              style={{
+                '--katana-left': mark.left,
+                '--katana-top': mark.top,
+                '--katana-rotation': mark.rotation,
+                '--katana-scale': mark.scale,
+              }}
+            >
+              <span className="samurai-katana-guard" />
+            </div>
+          ))}
+          <div className="samurai-seal">侍</div>
         </div>
       )}
     </>

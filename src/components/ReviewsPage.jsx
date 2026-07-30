@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useApp } from '../App';
+import { useApp } from '../app/AppContext';
 
 export default function ReviewsPage({ title, icon, fetchReviews, postReview, deleteReview, addEvent, deleteEvent }) {
   const { currentUser, isGuest, isAdmin, showToast, socket } = useApp();

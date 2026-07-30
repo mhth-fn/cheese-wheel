@@ -2,21 +2,50 @@
   --color-background: #f4cd54;
   --color-background-accent: #efbc39;
   --color-surface: #fffdf3;
+  --color-surface-elevated: #fff;
   --color-surface-muted: #fff7d8;
   --color-surface-hover: #fff4c5;
+  --color-surface-translucent: rgba(255, 253, 243, 0.88);
+  --color-surface-translucent-strong: rgba(255, 253, 243, 0.96);
+  --color-overlay: rgba(54, 37, 4, 0.54);
   --color-primary: #b45309;
   --color-primary-hover: #a95012;
   --color-primary-active: #8f3d08;
   --color-primary-border: #793306;
+  --color-on-primary: #fff;
   --color-text: #4f3b0d;
   --color-text-muted: #7c6841;
   --color-border: #d7b243;
   --color-border-soft: rgba(133, 96, 18, 0.2);
   --color-success: #2f8a4b;
+  --color-success-surface: #edf7ee;
+  --color-success-border: #b9d9b9;
+  --color-success-text: #315f39;
   --color-warning: #b86d15;
+  --color-warning-surface: #fff4d7;
+  --color-warning-border: rgba(184, 109, 21, 0.28);
+  --color-warning-text: #74420c;
   --color-danger: #bc3f35;
+  --color-danger-surface: #fbe8e6;
+  --color-danger-border: #e5b1ac;
+  --color-danger-text: #7b2520;
   --color-info: #28729d;
+  --color-info-surface: #eaf3fa;
+  --color-info-border: #bad5e6;
+  --color-info-text: #235d7e;
   --color-focus: #1b6fb1;
+
+  --feature-accent: #e9ba3f;
+  --feature-accent-surface: #fff1b9;
+  --feature-accent-text: #60420d;
+  --feature-played-accent: #63a66f;
+  --feature-hero-background: linear-gradient(135deg, #fff4bc, #f4c951);
+  --feature-hero-border: rgba(117, 74, 14, 0.16);
+  --feature-hero-text: #352309;
+  --feature-hero-muted: #6c4a12;
+  --feature-hero-action: #382507;
+  --feature-hero-action-hover: #563a0e;
+  --feature-hero-action-text: #fff8df;
 
   --radius-small: 6px;
   --radius-medium: 8px;
@@ -49,7 +78,7 @@
   --crust: var(--color-primary);
   --text: var(--color-text);
   --text-light: var(--color-text-muted);
-  --white: #fff;
+  --white: var(--color-on-primary);
   --shadow: rgba(79, 59, 13, 0.18);
 
   --theme-bg: linear-gradient(180deg, #f8dc78 0%, var(--color-background) 100%);
@@ -247,14 +276,14 @@ textarea:disabled {
 .skeleton {
   overflow: hidden;
   border-radius: var(--radius-small);
-  background: #eadfbf;
+  background: var(--color-surface-muted);
 }
 
 .skeleton::after {
   display: block;
   width: 42%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+  background: linear-gradient(90deg, transparent, var(--color-surface-translucent-strong), transparent);
   content: '';
   animation: skeletonMove 1.2s infinite;
 }

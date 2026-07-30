@@ -1,5 +1,56 @@
 /* ========== НОВОГОДНЯЯ ТЕМА ========== */
 body.theme-newyear {
+  --color-background: #1f4931;
+  --color-background-accent: #10291c;
+  --color-surface: #fbf8ed;
+  --color-surface-elevated: #fffdf6;
+  --color-surface-muted: #f1ecdc;
+  --color-surface-hover: #e7dfca;
+  --color-surface-translucent: rgba(251, 248, 237, 0.9);
+  --color-surface-translucent-strong: rgba(251, 248, 237, 0.97);
+  --color-overlay: rgba(9, 25, 16, 0.7);
+  --color-primary: #9f1f39;
+  --color-primary-hover: #b52543;
+  --color-primary-active: #17642f;
+  --color-primary-border: #7f172d;
+  --color-on-primary: #fffdf6;
+  --color-text: #2c271d;
+  --color-text-muted: #6b624f;
+  --color-border: #c3a437;
+  --color-border-soft: rgba(166, 133, 27, 0.3);
+  --color-success: #27783f;
+  --color-success-surface: #e8f3e9;
+  --color-success-border: #a8caae;
+  --color-success-text: #225d33;
+  --color-warning: #8b620d;
+  --color-warning-surface: #fbf0c9;
+  --color-warning-border: #d5bc65;
+  --color-warning-text: #6b4907;
+  --color-danger: #ad2941;
+  --color-danger-surface: #f9e5e9;
+  --color-danger-border: #dda6b0;
+  --color-danger-text: #7e1e31;
+  --color-info: #2d6592;
+  --color-info-surface: #e8f0f7;
+  --color-info-border: #b4cadc;
+  --color-info-text: #245274;
+  --color-focus: #075fb6;
+  --cheese-hole: rgba(222, 190, 72, 0.14);
+  --feature-accent: #c7a631;
+  --feature-accent-surface: #f7edc3;
+  --feature-accent-text: #664d08;
+  --feature-played-accent: #37804b;
+  --feature-hero-background: linear-gradient(135deg, #173d28, #245d3b);
+  --feature-hero-border: rgba(232, 199, 78, 0.62);
+  --feature-hero-text: #fffdf4;
+  --feature-hero-muted: #d8e8dc;
+  --feature-hero-action: #a51f3a;
+  --feature-hero-action-hover: #bd2948;
+  --feature-hero-action-text: #fff;
+  --shadow-small: 0 2px 8px rgba(8, 28, 17, 0.16);
+  --shadow-medium: 0 8px 24px rgba(8, 28, 17, 0.24);
+  --shadow-modal: 0 22px 64px rgba(5, 20, 12, 0.42);
+  --shadow-button: 0 3px 0 #701326, 0 7px 14px rgba(8, 28, 17, 0.28);
   --theme-btn: linear-gradient(135deg, #c41e3a 0%, #8b0000 100%);
   --theme-btn-hover: linear-gradient(135deg, #d42a4c 0%, #a00000 100%);
   --theme-btn-active: linear-gradient(135deg, #228b22 0%, #145214 100%);
@@ -78,98 +129,4 @@ body.theme-newyear .garland { display: block; }
 @keyframes glow {
   0% { opacity: 0.3; transform: scale(0.8); }
   100% { opacity: 1; transform: scale(1.2); }
-}
-
-body.theme-newyear .nav-btn,
-body.theme-newyear .auth-btn,
-body.theme-newyear .add-movie-btn,
-body.theme-newyear .auth-password-btn {
-  background: linear-gradient(135deg, #c41e3a 0%, #8b0000 100%);
-  border-color: #ffd700;
-}
-
-body.theme-newyear .nav-btn:hover,
-body.theme-newyear .auth-btn:hover,
-body.theme-newyear .add-movie-btn:hover,
-body.theme-newyear .auth-password-btn:hover {
-  background: linear-gradient(135deg, #d42a4c 0%, #a00000 100%);
-}
-
-body.theme-newyear .nav-btn.active,
-body.theme-newyear .auth-btn.selected {
-  background: linear-gradient(135deg, #228b22 0%, #145214 100%);
-}
-
-body.theme-newyear .watched-table th {
-  background: linear-gradient(135deg, #c41e3a 0%, #8b0000 100%);
-  border-bottom-color: #ffd700;
-}
-
-body.theme-newyear .watched-table th:hover {
-  background: linear-gradient(135deg, #d42a4c 0%, #a00000 100%);
-}
-
-body.theme-newyear .wheel-center {
-  background: linear-gradient(135deg, #c41e3a 0%, #8b0000 100%);
-  border-color: #ffd700;
-}
-
-body.theme-newyear .wheel-outer {
-  background: conic-gradient(
-    from 0deg,
-    #c41e3a 0deg, #8b0000 10deg, #c41e3a 20deg, #8b0000 30deg,
-    #c41e3a 40deg, #8b0000 50deg, #c41e3a 60deg, #8b0000 70deg,
-    #c41e3a 80deg, #8b0000 90deg, #c41e3a 100deg, #8b0000 110deg,
-    #c41e3a 120deg, #8b0000 130deg, #c41e3a 140deg, #8b0000 150deg,
-    #c41e3a 160deg, #8b0000 170deg, #c41e3a 180deg, #8b0000 190deg,
-    #c41e3a 200deg, #8b0000 210deg, #c41e3a 220deg, #8b0000 230deg,
-    #c41e3a 240deg, #8b0000 250deg, #c41e3a 260deg, #8b0000 270deg,
-    #c41e3a 280deg, #8b0000 290deg, #c41e3a 300deg, #8b0000 310deg,
-    #c41e3a 320deg, #8b0000 330deg, #c41e3a 340deg, #8b0000 350deg, #c41e3a 360deg
-  );
-  box-shadow: 0 0 0 4px #ffd700, 0 0 25px rgba(196,30,58,0.4), 0 15px 40px rgba(0,0,0,0.35);
-}
-
-body.theme-newyear .nav-user-btn,
-body.theme-newyear .nav-dropdown,
-body.theme-newyear .nav-user,
-body.theme-newyear .spin-duration,
-body.theme-newyear .auth-password-input,
-body.theme-newyear .add-movie,
-body.theme-newyear .add-movie-input,
-body.theme-newyear .watched-table-wrapper,
-body.theme-newyear .watched-add-movie,
-body.theme-newyear .stat-card,
-body.theme-newyear .search-bar,
-body.theme-newyear .rating-select,
-body.theme-newyear .movie-tag,
-body.theme-newyear .drawer,
-body.theme-newyear .drawer-add-input,
-body.theme-newyear .drawer-header,
-body.theme-newyear .drawer-add-form,
-body.theme-newyear .drawer-movie-item,
-body.theme-newyear .drawer-footer,
-body.theme-newyear .drawer-center-section {
-  border-color: #ffd700;
-}
-
-body.theme-newyear .stat-card-value {
-  color: #c41e3a;
-}
-
-body.theme-newyear .stats-user-avg {
-  color: #c41e3a;
-}
-
-body.theme-newyear .connection-status {
-  border-color: #ffd700;
-}
-
-body.theme-newyear .modal-content {
-  box-shadow: 0 0 50px rgba(196,30,58,0.4), 0 20px 60px rgba(0,0,0,0.3);
-}
-
-body.theme-newyear .admin-btn {
-  background: linear-gradient(135deg, #c41e3a 0%, #8b0000 100%);
-  border-color: #ffd700;
 }

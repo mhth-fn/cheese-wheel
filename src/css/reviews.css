@@ -85,7 +85,7 @@
   margin: 0 auto var(--space-3);
   border: 1px solid var(--color-border-soft);
   border-radius: var(--radius-large);
-  background: rgba(255, 253, 243, 0.88);
+  background: var(--color-surface-translucent);
   box-shadow: var(--shadow-small);
 }
 
@@ -113,7 +113,7 @@
 .reviews-journal-tab.active {
   border-color: var(--color-primary-border);
   background: var(--theme-btn);
-  color: #fff;
+  color: var(--color-on-primary);
   box-shadow: inset 0 -3px 0 rgba(83, 43, 3, 0.24);
 }
 
@@ -137,7 +137,7 @@
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  background: rgba(255,255,255,0.7);
+  background: var(--color-surface-translucent);
   border: 2px solid var(--cheese-dark);
   border-radius: 12px;
   padding: 16px;
@@ -270,31 +270,31 @@
 .review-recommend-toggle {
   padding: 6px 14px;
   border-radius: 20px;
-  border: 2px solid #9c895c;
+  border: 2px solid var(--color-border);
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
-  background: rgba(240,240,240,0.6);
-  color: #665b45;
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
   transition: opacity 0.15s, background 0.15s, color 0.15s, border-color 0.15s;
 }
 
 .review-recommend-toggle.yes.active {
-  background: #d4edda;
-  color: #155724;
-  border-color: #c3e6cb;
+  background: var(--color-success-surface);
+  color: var(--color-success-text);
+  border-color: var(--color-success-border);
 }
 
 .review-recommend-toggle.meh.active {
-  background: #fff3cd;
-  color: #856404;
-  border-color: #ffeeba;
+  background: var(--color-warning-surface);
+  color: var(--color-warning-text);
+  border-color: var(--color-warning-border);
 }
 
 .review-recommend-toggle.no.active {
-  background: #f8d7da;
-  color: #721c24;
-  border-color: #f5c6cb;
+  background: var(--color-danger-surface);
+  color: var(--color-danger-text);
+  border-color: var(--color-danger-border);
 }
 
 .review-recommend-toggle:hover {
@@ -408,7 +408,7 @@
 }
 
 .review-card {
-  background: rgba(255,255,255,0.75);
+  background: var(--color-surface-translucent);
   border: 1.5px solid var(--cheese-dark);
   border-radius: 12px;
   padding: 14px 16px;
@@ -450,18 +450,18 @@
 }
 
 .review-badge.yes {
-  background: #d4edda;
-  color: #155724;
+  background: var(--color-success-surface);
+  color: var(--color-success-text);
 }
 
 .review-badge.meh {
-  background: #fff3cd;
-  color: #856404;
+  background: var(--color-warning-surface);
+  color: var(--color-warning-text);
 }
 
 .review-badge.no {
-  background: #f8d7da;
-  color: #721c24;
+  background: var(--color-danger-surface);
+  color: var(--color-danger-text);
 }
 
 .review-delete-btn {
@@ -600,7 +600,7 @@
   border-radius: 12px;
   font-size: 0.8rem;
   font-weight: 600;
-  background: rgba(212, 160, 23, 0.15);
+  background: color-mix(in srgb, var(--feature-accent) 18%, transparent);
   color: var(--text);
   white-space: nowrap;
 }
@@ -637,19 +637,19 @@
 }
 
 .reaction-btn:hover {
-  background: rgba(212, 160, 23, 0.15);
+  background: color-mix(in srgb, var(--feature-accent) 18%, transparent);
 }
 
 .reaction-btn.like.active {
-  background: #d4edda;
-  border-color: #c3e6cb;
-  color: #155724;
+  background: var(--color-success-surface);
+  border-color: var(--color-success-border);
+  color: var(--color-success-text);
 }
 
 .reaction-btn.dislike.active {
-  background: #f8d7da;
-  border-color: #f5c6cb;
-  color: #721c24;
+  background: var(--color-danger-surface);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-text);
 }
 
 .movie-reviews-section.is-contextual {

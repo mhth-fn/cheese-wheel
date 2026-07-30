@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useApp } from '../App';
+import { useApp } from '../app/AppContext';
 import {
   deleteCenterImage,
   deleteOneOffMovie,
@@ -60,6 +60,7 @@ export default function OneOffWheelPanel() {
     : eliminationActive
       ? 'Нажмите на центр колеса для следующего раунда'
       : 'Каждый раунд запускается вручную';
+  const wheelFallbackIcon = theme === 'samurai' ? '⚔️' : '🧀';
 
   useEffect(() => {
     setDurationDraft(Number(oneOffState.spin_duration) || 5);
@@ -291,13 +292,13 @@ export default function OneOffWheelPanel() {
               >
                 {centerImage
                   ? <img src={centerImage} alt="" className="wheel-center-img" />
-                  : <span className="wheel-center-fallback" aria-hidden="true">🧀</span>}
+                  : <span className="wheel-center-fallback" aria-hidden="true">{wheelFallbackIcon}</span>}
               </button>
             </div>
           </div>
         ) : (
           <div className="wheel-not-ready one-off-not-ready" aria-live="polite">
-            <span className="wheel-not-ready-icon" aria-hidden="true">🧀</span>
+            <span className="wheel-not-ready-icon" aria-hidden="true">{wheelFallbackIcon}</span>
             <strong>Добавьте фильмы</strong>
             <span>Список для разовой прокрутки находится в меню справа.</span>
           </div>

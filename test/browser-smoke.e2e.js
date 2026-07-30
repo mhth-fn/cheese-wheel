@@ -166,7 +166,7 @@ test('mobile browser can log in and use watched and reviews navigation', async t
     buffer: browserSiqFile,
   });
   await sigameDialog.getByLabel('Название *').fill('Browser Smoke Pack');
-  await sigameDialog.getByLabel('Теги через запятую, до 8').fill('кино, сложный, КИНО');
+  await sigameDialog.getByLabel('Теги через запятую, до 9').fill('кино, сложный, КИНО');
   assert.equal(await addPackButton.isEnabled(), true);
   await addPackButton.click();
 
@@ -360,6 +360,7 @@ test('mobile browser can log in and use watched and reviews navigation', async t
     'landscape phone must keep compact movie summaries'
   );
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.scrollTo(0, 0));
 
   await page.getByRole('button', { name: 'Обзоры', exact: true }).click();
   await page.waitForURL(`${instance.baseUrl}/reviews`);
@@ -369,7 +370,14 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   await titleInput.waitFor();
   await titleInput.fill('Очень длинное название фильма, которое должно оставаться внутри формы');
 
-  await page.evaluate(() => window.scrollTo(0, 520));
+  await page.evaluate(() => {
+    const maxScroll = Math.max(
+      0,
+      (document.scrollingElement?.scrollHeight || document.body.scrollHeight)
+        - window.innerHeight
+    );
+    window.scrollTo(0, Math.min(520, Math.max(0, maxScroll - 80)));
+  });
   await page.waitForFunction(() => (
     document.querySelector('.nav-pages')?.classList.contains('is-hidden')
   ));
@@ -514,6 +522,70 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   await wineTab.click();
   await page.waitForURL(`${instance.baseUrl}/reviews/wine`);
   assert.equal(await wineTab.getAttribute('aria-selected'), 'true');
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const auditTheme = async (optionName, className) => {
+    await page.getByRole('button', { name: 'Открыть админ-панель' }).click();
+    const adminDialog = page.getByRole('dialog', { name: '⚙️ Админ-панель' });
+    await adminDialog.waitFor();
+    await adminDialog.getByRole('button', { name: new RegExp(optionName) }).click();
+    await page.waitForFunction(
+      expectedClass => document.body.classList.contains(expectedClass),
+      className
+    );
+    const themeAudit = await page.evaluate(() => {
+      const parseRgb = value => {
+        const channels = value.match(/[\d.]+/g)?.slice(0, 3).map(Number);
+        return channels?.length === 3 ? channels : null;
+      };
+      const luminance = channels => {
+        const linear = channels.map(channel => {
+          const normalized = channel / 255;
+          return normalized <= 0.04045
+            ? normalized / 12.92
+            : ((normalized + 0.055) / 1.055) ** 2.4;
+        });
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+      };
+      const ratio = (foreground, background) => {
+        const foregroundLuminance = luminance(parseRgb(foreground));
+        const backgroundLuminance = luminance(parseRgb(background));
+        return (Math.max(foregroundLuminance, backgroundLuminance) + 0.05)
+          / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
+      };
+      const probePair = (foregroundToken, backgroundToken) => {
+        const probe = document.createElement('span');
+        probe.style.color = `var(${foregroundToken})`;
+        probe.style.backgroundColor = `var(${backgroundToken})`;
+        document.body.append(probe);
+        const styles = getComputedStyle(probe);
+        const result = ratio(styles.color, styles.backgroundColor);
+        probe.remove();
+        return result;
+      };
+      const dialog = document.querySelector('.admin-modal-content');
+      return {
+        textOnSurface: probePair('--color-text', '--color-surface'),
+        mutedOnSurface: probePair('--color-text-muted', '--color-surface'),
+        textOnPrimary: probePair('--color-on-primary', '--color-primary'),
+        dialogFits: Boolean(
+          dialog
+          && dialog.scrollWidth <= dialog.clientWidth
+          && document.documentElement.scrollWidth <= window.innerWidth
+        ),
+      };
+    });
+    assert.ok(themeAudit.textOnSurface >= 7, `${optionName}: main text contrast is too low`);
+    assert.ok(themeAudit.mutedOnSurface >= 4.5, `${optionName}: muted text contrast is too low`);
+    assert.ok(themeAudit.textOnPrimary >= 4.5, `${optionName}: button text contrast is too low`);
+    assert.equal(themeAudit.dialogFits, true, `${optionName}: admin dialog must fit mobile viewport`);
+    await adminDialog.getByRole('button', { name: 'Закрыть админ-панель' }).click();
+  };
+
+  await auditTheme('Новогодняя тема', 'theme-newyear');
+  await auditTheme('Весенняя тема', 'theme-spring');
+  await auditTheme('Самурайская тема', 'theme-samurai');
+  await auditTheme('Сырная тема', 'theme-cheese');
 
   assert.deepEqual(browserErrors, []);
 });

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useApp } from '../App';
+import { useApp } from '../app/AppContext';
 import {
   fetchWatched,
   postWatchedMovie,
@@ -11,94 +11,17 @@ import {
 import StatsPanel from './StatsPanel';
 import ConfirmDialog from './ConfirmDialog';
 import MovieDetailsDialog from './MovieDetailsDialog';
-
-const EMPTY_MOVIE_DRAFT = {
-  title: '',
-  alternative_title: '',
-  director: '',
-  year: '',
-};
-
-function movieToDraft(movie = {}) {
-  return {
-    title: movie.title || '',
-    alternative_title: movie.alternative_title || '',
-    director: movie.director || '',
-    year: movie.year == null ? '' : String(movie.year),
-  };
-}
-
-function movieDraftPayload(draft) {
-  return {
-    title: draft.title.trim(),
-    alternative_title: draft.alternative_title.trim() || null,
-    director: draft.director.trim() || null,
-    year: draft.year === '' ? null : Number(draft.year),
-  };
-}
-
-function movieMetaText(movie) {
-  return [
-    movie.alternative_title,
-    movie.year,
-    movie.director,
-  ].filter(Boolean).join(' · ');
-}
-
-function formatDate(dateStr) {
-  if (!dateStr) return '';
-  const date = new Date(dateStr);
-  if (Number.isNaN(date.getTime())) return '';
-  return new Intl.DateTimeFormat('ru-RU').format(date);
-}
-
-function getAriaSort(sortColumn, sortDirection, column) {
-  if (sortColumn !== column) return 'none';
-  return sortDirection === 'asc' ? 'ascending' : 'descending';
-}
-
-function useMediaQuery(query) {
-  const getMatches = () => (
-    typeof window !== 'undefined'
-    && typeof window.matchMedia === 'function'
-    && window.matchMedia(query).matches
-  );
-  const [matches, setMatches] = useState(getMatches);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
-    const mediaQuery = window.matchMedia(query);
-    const onChange = event => setMatches(event.matches);
-    setMatches(mediaQuery.matches);
-    if (mediaQuery.addEventListener) {
-      mediaQuery.addEventListener('change', onChange);
-    } else {
-      mediaQuery.addListener?.(onChange);
-    }
-    return () => {
-      if (mediaQuery.removeEventListener) {
-        mediaQuery.removeEventListener('change', onChange);
-      } else {
-        mediaQuery.removeListener?.(onChange);
-      }
-    };
-  }, [query]);
-
-  return matches;
-}
-
-function withScopedAverage(movie, scopedUsers) {
-  const ratings = scopedUsers
-    .map(user => movie[`rating_${user.id}`])
-    .filter(rating => rating !== null && rating !== undefined && rating !== '');
-  if (ratings.length === 0) return null;
-  const average = ratings.reduce((sum, rating) => sum + Number(rating), 0) / ratings.length;
-  return {
-    ...movie,
-    avg_rating: Math.round(average * 10) / 10,
-    ratings_count: ratings.length,
-  };
-}
+import {
+  EMPTY_MOVIE_DRAFT,
+  movieDraftPayload,
+  movieMetaText,
+  movieToDraft,
+} from '../features/movies/movieDraft';
+import WatchedAddForm from '../features/watched/WatchedAddForm';
+import WatchedHistory from '../features/watched/WatchedHistory';
+import WatchedScopeControls from '../features/watched/WatchedScopeControls';
+import { useWatchedScope } from '../features/watched/useWatchedScope';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 
 export default function WatchedPage() {
   const { currentUser, isGuest, isAdmin, users, socket, showToast, page, connected } = useApp();
@@ -120,8 +43,6 @@ export default function WatchedPage() {
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState(EMPTY_MOVIE_DRAFT);
   const [editWatchedAt, setEditWatchedAt] = useState('');
-  const [selectedUserIds, setSelectedUserIds] = useState(null);
-  const [personalModeEnabled, setPersonalModeEnabled] = useState(false);
   const searchRef = useRef(null);
   const isCompactLayout = useMediaQuery(
     '(max-width: 600px), (max-width: 960px) and (max-height: 560px)'
@@ -195,104 +116,32 @@ export default function WatchedPage() {
     };
   }, [socket, loadMovies]);
 
-  const currentParticipant = useMemo(
-    () => users.find(user => Number(user.id) === Number(currentUser?.id)) || null,
-    [users, currentUser?.id]
-  );
-  const canUsePersonalFilter = !isGuest && Boolean(currentParticipant);
-  const filterUsers = useMemo(
-    () => canUsePersonalFilter
-      ? users.filter(user => Number(user.id) !== Number(currentParticipant.id))
-      : users,
-    [canUsePersonalFilter, currentParticipant, users]
-  );
-  const filterUserIds = useMemo(
-    () => filterUsers.map(user => Number(user.id)),
-    [filterUsers]
-  );
-  const filterUserIdsKey = filterUserIds.join(',');
-  const personalMode = canUsePersonalFilter && personalModeEnabled;
-  const userFilterEnabled = (
-    Array.isArray(selectedUserIds)
-    && selectedUserIds.length < filterUserIds.length
-    && (personalMode || selectedUserIds.length > 0)
-  );
-  const activeScope = personalMode ? 'personal' : userFilterEnabled ? 'selected' : 'all';
-  const filterStorageKey = `watchedStatsUsers:${currentUser?.id ?? (isGuest ? 'guest' : 'anonymous')}`;
-  const personalStorageKey = currentUser?.id ? `watchedStatsScope:${currentUser.id}` : '';
-  const groupSelectedUserIdSet = useMemo(
-    () => new Set(userFilterEnabled ? selectedUserIds : filterUserIds),
-    [filterUserIds, selectedUserIds, userFilterEnabled]
-  );
-  const groupVisibleUsers = useMemo(() => {
-    if (!userFilterEnabled) return users;
-    return users.filter(user => (
-      Number(user.id) === Number(currentParticipant?.id)
-      || groupSelectedUserIdSet.has(Number(user.id))
-    ));
-  }, [currentParticipant, groupSelectedUserIdSet, userFilterEnabled, users]);
-  const visibleUsers = useMemo(
-    () => personalMode ? [currentParticipant] : groupVisibleUsers,
-    [currentParticipant, groupVisibleUsers, personalMode]
-  );
-  const selectedComparisonUserIds = useMemo(
-    () => filterUsers
-      .filter(user => groupSelectedUserIdSet.has(Number(user.id)))
-      .map(user => Number(user.id)),
-    [filterUsers, groupSelectedUserIdSet]
-  );
-  const selectedStatsUserIds = useMemo(
-    () => personalMode
-      ? selectedComparisonUserIds
-      : groupVisibleUsers.map(user => Number(user.id)),
-    [groupVisibleUsers, personalMode, selectedComparisonUserIds]
-  );
-  const personalComparisonScope = personalMode && userFilterEnabled ? 'selected' : 'all';
-
-  useEffect(() => {
-    if (filterUserIds.length === 0) {
-      setSelectedUserIds(null);
-      return;
-    }
-    let storedIds = null;
-    const storedValue = localStorage.getItem(filterStorageKey);
-    if (storedValue !== null) {
-      try {
-        const stored = JSON.parse(storedValue);
-        if (Array.isArray(stored)) {
-          const allowedIds = new Set(filterUserIds);
-          storedIds = stored
-            .map(Number)
-            .filter((id, index, values) => (
-              allowedIds.has(id) && values.indexOf(id) === index
-            ));
-        }
-      } catch {
-        storedIds = null;
-      }
-    }
-    setSelectedUserIds(
-      Array.isArray(storedIds) && storedIds.length < filterUserIds.length
-        ? storedIds
-        : null
-    );
-  }, [filterStorageKey, filterUserIdsKey]);
-
-  useEffect(() => {
-    if (!canUsePersonalFilter || !personalStorageKey) {
-      setPersonalModeEnabled(false);
-      return;
-    }
-    setPersonalModeEnabled(localStorage.getItem(personalStorageKey) === 'personal');
-  }, [canUsePersonalFilter, personalStorageKey]);
-
-  const scopedMovies = useMemo(() => {
-    if (activeScope === 'all') return movies;
-    return movies.flatMap(movie => {
-      const scopedMovie = withScopedAverage(movie, visibleUsers);
-      return scopedMovie ? [scopedMovie] : [];
-    });
-  }, [activeScope, movies, visibleUsers]);
+  const watchedScope = useWatchedScope({
+    currentUser,
+    isGuest,
+    movies,
+    onScopeChange: () => setDetailsMovie(null),
+    showToast,
+    users,
+  });
+  const {
+    activeScope,
+    canUsePersonalFilter,
+    currentParticipant,
+    filterUsers,
+    groupVisibleUsers,
+    personalComparisonScope,
+    personalMode,
+    scopedMovies,
+    selectedComparisonUserIds,
+    selectedStatsUserIds,
+    selectedUserIdSet,
+    showAllUsers,
+    togglePersonalFilter,
+    toggleUserFilter,
+    userFilterEnabled,
+    visibleUsers,
+  } = watchedScope;
 
   useEffect(() => {
     const personalRatingColumn = currentParticipant
@@ -310,70 +159,6 @@ export default function WatchedPage() {
       setSortDirection('desc');
     }
   }, [activeScope, currentParticipant, personalMode, visibleUsers, sortColumn]);
-
-  const saveSelectedUsers = nextIds => {
-    const normalized = nextIds.length === filterUserIds.length ? null : nextIds;
-    setSelectedUserIds(normalized);
-    if (normalized) {
-      localStorage.setItem(filterStorageKey, JSON.stringify(normalized));
-    } else {
-      localStorage.removeItem(filterStorageKey);
-    }
-    setDetailsMovie(null);
-  };
-
-  const toggleUserFilter = userId => {
-    const id = Number(userId);
-    const currentIds = userFilterEnabled ? selectedUserIds : filterUserIds;
-    if (!personalMode && currentIds.includes(id) && currentIds.length === 1) {
-      showToast('Оставьте хотя бы одного участника для сравнения', 'info');
-      return;
-    }
-    const nextIds = currentIds.includes(id)
-      ? currentIds.filter(item => item !== id)
-      : filterUserIds.filter(item => currentIds.includes(item) || item === id);
-    saveSelectedUsers(nextIds);
-    if (personalStorageKey) {
-      localStorage.setItem(
-        personalStorageKey,
-        personalMode
-          ? 'personal'
-          : nextIds.length === filterUserIds.length ? 'all' : 'selected'
-      );
-    }
-  };
-
-  const showAllUsers = () => {
-    saveSelectedUsers(filterUserIds);
-    if (personalStorageKey) {
-      localStorage.setItem(personalStorageKey, personalMode ? 'personal' : 'all');
-    }
-  };
-
-  const togglePersonalFilter = () => {
-    if (!canUsePersonalFilter) return;
-    const nextPersonalMode = !personalMode;
-    const resetEmptySelection = (
-      !nextPersonalMode
-      && Array.isArray(selectedUserIds)
-      && selectedUserIds.length === 0
-    );
-    setPersonalModeEnabled(nextPersonalMode);
-    if (resetEmptySelection) {
-      saveSelectedUsers(filterUserIds);
-    }
-    if (personalStorageKey) {
-      localStorage.setItem(
-        personalStorageKey,
-        nextPersonalMode
-          ? 'personal'
-          : resetEmptySelection
-            ? 'all'
-            : userFilterEnabled ? 'selected' : 'all'
-      );
-    }
-    setDetailsMovie(null);
-  };
 
   const openMoviePanel = (movie, view = 'details') => {
     setDetailsView(view);
@@ -720,255 +505,57 @@ export default function WatchedPage() {
         <span className="search-shortcut" aria-hidden="true">/</span>
       </div>
 
-      {users.length > 0 && (
-        <div className="watched-scope-control">
-          <span className="sr-only" aria-live="polite">
-            {personalMode
-              ? `Показана личная статистика: ${scopedMovies.length} фильмов`
-              : userFilterEnabled
-                ? `Выбрано участников: ${groupVisibleUsers.length} из ${users.length}`
-                : 'Показаны все участники'}
-          </span>
-          <div
-            className="watched-user-filters"
-            role="group"
-            aria-label="Выбор участников статистики"
-          >
-            {filterUsers.map(user => {
-              const selected = groupSelectedUserIdSet.has(Number(user.id));
-              return (
-                <button
-                  key={user.id}
-                  className={`scope-filter-toggle${selected ? ' active' : ''}`}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => toggleUserFilter(user.id)}
-                >
-                  {user.name}
-                </button>
-              );
-            })}
-            <button
-              className="scope-filter-toggle show-all"
-              type="button"
-              onClick={showAllUsers}
-              disabled={!userFilterEnabled}
-            >
-              Показать всех
-            </button>
-            {canUsePersonalFilter && (
-              <button
-                className={`scope-filter-toggle personal${personalMode ? ' active' : ''}`}
-                type="button"
-                aria-pressed={personalMode}
-                onClick={togglePersonalFilter}
-              >
-                МОЯ СТАТИСТИКА
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      <WatchedScopeControls
+        canUsePersonalFilter={canUsePersonalFilter}
+        filterUsers={filterUsers}
+        groupVisibleUsers={groupVisibleUsers}
+        movieCount={scopedMovies.length}
+        personalMode={personalMode}
+        selectedUserIdSet={selectedUserIdSet}
+        userFilterEnabled={userFilterEnabled}
+        users={users}
+        onShowAll={showAllUsers}
+        onTogglePersonal={togglePersonalFilter}
+        onToggleUser={toggleUserFilter}
+      />
 
       {!isCompactLayout && (
         <p className="table-scroll-hint">На узком экране таблицу можно прокручивать по горизонтали.</p>
       )}
 
-      <div className="watched-table-wrapper">
-        {loadState === 'loading' && movies.length === 0 ? (
-          <div className="watched-loading" aria-live="polite">
-            <div className="skeleton" /><div className="skeleton" /><div className="skeleton" />
-          </div>
-        ) : loadState === 'error' && movies.length === 0 ? (
-          <div className="empty-state" role="alert">
-            <div className="empty-state-icon" aria-hidden="true">📡</div>
-            <div className="empty-state-title">{loadError}</div>
-            <button className="button-primary" type="button" onClick={loadMovies}>Повторить</button>
-          </div>
-        ) : movies.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state-icon" aria-hidden="true">🎬</div>
-            <div className="empty-state-title">Пока нет просмотренных фильмов</div>
-            <p>Крутите колесо или добавьте фильм вручную.</p>
-          </div>
-        ) : personalMode && scopedMovies.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state-icon" aria-hidden="true">🎟</div>
-            <div className="empty-state-title">Вы ещё ничего не оценили</div>
-            <p>Поставьте оценку фильму или вернитесь к общей статистике.</p>
-            <button className="button-ghost" type="button" onClick={togglePersonalFilter}>
-              Показать общую
-            </button>
-          </div>
-        ) : userFilterEnabled && scopedMovies.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state-icon" aria-hidden="true">👥</div>
-            <div className="empty-state-title">У выбранных участников пока нет оценок</div>
-            <p>Выберите других участников или вернитесь к полной таблице.</p>
-            <button className="button-ghost" type="button" onClick={showAllUsers}>
-              Показать всех
-            </button>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state-icon" aria-hidden="true">⌕</div>
-            <div className="empty-state-title">Ничего не найдено</div>
-            <p>По запросу «{debouncedQuery}» фильмов нет.</p>
-          </div>
-        ) : isCompactLayout ? (
-          <>
-            <div className="watched-card-sort" role="group" aria-label="Сортировка просмотренных фильмов">
-              <label>
-                <span>Сортировка</span>
-                <select value={sortColumn || ''} onChange={handleCompactSortChange}>
-                  <option value="">Сначала новые</option>
-                  <option value="title">По названию</option>
-                  {visibleUsers.map(user => (
-                    <option key={user.id} value={`rating_${user.id}`}>
-                      По оценке: {user.name}
-                    </option>
-                  ))}
-                  {showAverageColumn && <option value="avg_rating">По средней</option>}
-                </select>
-              </label>
-              <button
-                className="button-ghost"
-                type="button"
-                onClick={toggleCompactSortDirection}
-                disabled={!sortColumn}
-                aria-label={
-                  sortColumn === 'title'
-                    ? `Сейчас ${sortDirection === 'asc' ? 'от А до Я' : 'от Я до А'}. Изменить направление`
-                    : `Сейчас сначала ${sortDirection === 'asc' ? 'низкие' : 'высокие'} оценки. Изменить направление`
-                }
-              >
-                {sortColumn === 'title'
-                  ? (sortDirection === 'asc' ? 'А → Я' : 'Я → А')
-                  : (sortDirection === 'asc' ? 'Сначала ниже' : 'Сначала выше')}
-              </button>
-            </div>
-            <div
-              className="watched-mobile-list"
-              role="list"
-              aria-label={
-                personalMode
-                  ? 'Фильмы с моими оценками'
-                  : userFilterEnabled
-                  ? 'Просмотренные фильмы выбранных участников'
-                  : 'Все просмотренные фильмы'
-              }
-            >
-              {sorted.map(renderCompactMovieCard)}
-            </div>
-          </>
-        ) : (
-          <table
-            className={`watched-table${isAdmin ? ' has-actions' : ''}`}
-            style={{ minWidth: `${220 + (isAdmin ? 72 : 0) + visibleUsers.length * 88 + (showAverageColumn ? 108 : 0)}px` }}
-            aria-label={
-              personalMode
-                ? 'Фильмы с моими оценками'
-                : userFilterEnabled
-                ? 'Просмотренные фильмы выбранных участников'
-                : 'Все просмотренные фильмы'
-            }
-          >
-            <colgroup>
-              {isAdmin && <col className="watched-action-col" />}
-              <col className="watched-title-col" />
-              {visibleUsers.map(user => <col key={user.id} className="watched-user-col" />)}
-              {showAverageColumn && <col className="watched-avg-col" />}
-            </colgroup>
-            <thead>
-              <tr>
-                {isAdmin && <th className="watched-actions-sticky" aria-label="Действия" />}
-                <th className="watched-title-sticky" aria-sort={getAriaSort(sortColumn, sortDirection, 'title')}>
-                  <button className="table-sort-button" type="button" onClick={() => handleSort('title')}>
-                    Фильм {sortIcon('title')}
-                  </button>
-                </th>
-                {visibleUsers.map(user => {
-                  const column = `rating_${user.id}`;
-                  return (
-                    <th key={user.id} aria-sort={getAriaSort(sortColumn, sortDirection, column)}>
-                      <button className="table-sort-button" type="button" onClick={() => handleSort(column)}>
-                        {user.name} {sortIcon(column)}
-                      </button>
-                    </th>
-                  );
-                })}
-                {showAverageColumn && (
-                  <th aria-sort={getAriaSort(sortColumn, sortDirection, 'avg_rating')}>
-                    <button className="table-sort-button" type="button" onClick={() => handleSort('avg_rating')}>
-                      Средняя {sortIcon('avg_rating')}
-                    </button>
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map(movie => (
-                <tr key={movie.id}>
-                  {isAdmin && (
-                    <td className="watched-actions-sticky">
-                      <div className="row-actions">
-                        <button className="row-action-button" type="button" onClick={() => startEditing(movie)} title="Редактировать" aria-label={`Редактировать ${movie.title}`}>✎</button>
-                        <button className="row-action-button danger" type="button" onClick={() => setPendingDelete(movie)} title="Удалить" aria-label={`Удалить ${movie.title}`}>🗑</button>
-                      </div>
-                    </td>
-                  )}
-                  <td className="watched-title-sticky">
-                    {editingId === movie.id ? (
-                      renderEditMovieForm(movie, 'table')
-                    ) : (
-                      <div className="movie-title-stack">
-                        <button
-                          className="movie-title-cell"
-                          type="button"
-                          onClick={() => openMoviePanel(movie, 'details')}
-                          aria-haspopup="dialog"
-                        >
-                          <strong>{movie.title}</strong>
-                          {movieMetaText(movie) && (
-                            <span className="movie-title-meta">{movieMetaText(movie)}</span>
-                          )}
-                          <span>
-                            {movie.watched_at ? `просмотрен ${formatDate(movie.watched_at)}` : movie.added_at ? `добавлен ${formatDate(movie.added_at)}` : 'дата не указана'}
-                          </span>
-                        </button>
-                        <div className="movie-review-actions">
-                          <button
-                            className="movie-review-trigger"
-                            type="button"
-                            onClick={() => openMoviePanel(movie, 'reviews')}
-                            aria-haspopup="dialog"
-                            aria-label={`Открыть рецензии на ${movie.title}, ${Number(movie.review_count) || 0}`}
-                          >
-                            Рецензии · {Number(movie.review_count) || 0}
-                          </button>
-                          {!isGuest && (
-                            <button
-                              className="movie-review-write"
-                              type="button"
-                              onClick={() => openMoviePanel(movie, 'compose')}
-                              aria-haspopup="dialog"
-                              aria-label={`Написать рецензию на ${movie.title}`}
-                            >
-                              Написать
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </td>
-                  {visibleUsers.map(user => <td key={user.id}>{renderRatingCell(movie, user.id)}</td>)}
-                  {showAverageColumn && <td>{renderAvgRating(movie)}</td>}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      <WatchedHistory
+        debouncedQuery={debouncedQuery}
+        editingId={editingId}
+        filtered={filtered}
+        isAdmin={isAdmin}
+        isCompactLayout={isCompactLayout}
+        isGuest={isGuest}
+        loadError={loadError}
+        loadMovies={loadMovies}
+        loadState={loadState}
+        movies={movies}
+        personalMode={personalMode}
+        scopedMovies={scopedMovies}
+        showAverageColumn={showAverageColumn}
+        sortColumn={sortColumn}
+        sortDirection={sortDirection}
+        sorted={sorted}
+        userFilterEnabled={userFilterEnabled}
+        visibleUsers={visibleUsers}
+        onCompactSortChange={handleCompactSortChange}
+        onOpenMovie={openMoviePanel}
+        onSetPendingDelete={setPendingDelete}
+        onShowAllUsers={showAllUsers}
+        onSort={handleSort}
+        onStartEditing={startEditing}
+        onToggleCompactSortDirection={toggleCompactSortDirection}
+        onTogglePersonalFilter={togglePersonalFilter}
+        renderAverage={renderAvgRating}
+        renderCompactCard={renderCompactMovieCard}
+        renderEditForm={renderEditMovieForm}
+        renderRating={renderRatingCell}
+        sortIcon={sortIcon}
+      />
 
       {!isGuest && !isAdmin && (
         <p className="watched-history-permission" role="note">
@@ -977,65 +564,13 @@ export default function WatchedPage() {
       )}
 
       {isAdmin && (
-        <section className="watched-add-movie surface">
-          <div>
-            <p className="watched-add-kicker">Без прокрутки</p>
-            <h2>Добавить фильм в просмотренные</h2>
-          </div>
-          <form className="add-movie-form" onSubmit={handleAddWatched}>
-            <div className="add-movie-fields">
-              <label className="sr-only" htmlFor="watched-movie-title">Название фильма</label>
-              <input
-                id="watched-movie-title"
-                type="text"
-                className="add-movie-input"
-                placeholder="Название на русском…"
-                maxLength={200}
-                value={addDraft.title}
-                onChange={event => setAddDraft(current => ({ ...current, title: event.target.value }))}
-                disabled={adding || !connected}
-              />
-              <label className="sr-only" htmlFor="watched-movie-alternative">Альтернативное название</label>
-              <input
-                id="watched-movie-alternative"
-                type="text"
-                className="add-movie-input"
-                placeholder="Альтернативное название…"
-                maxLength={200}
-                value={addDraft.alternative_title}
-                onChange={event => setAddDraft(current => ({ ...current, alternative_title: event.target.value }))}
-                disabled={adding || !connected}
-              />
-              <label className="sr-only" htmlFor="watched-movie-director">Режиссёр</label>
-              <input
-                id="watched-movie-director"
-                type="text"
-                className="add-movie-input"
-                placeholder="Режиссёр…"
-                maxLength={200}
-                value={addDraft.director}
-                onChange={event => setAddDraft(current => ({ ...current, director: event.target.value }))}
-                disabled={adding || !connected}
-              />
-              <label className="sr-only" htmlFor="watched-movie-year">Год</label>
-              <input
-                id="watched-movie-year"
-                type="number"
-                className="add-movie-input add-movie-year"
-                min="1888"
-                max="2100"
-                inputMode="numeric"
-                placeholder="Год"
-                value={addDraft.year}
-                onChange={event => setAddDraft(current => ({ ...current, year: event.target.value }))}
-                disabled={adding || !connected}
-              />
-            </div>
-            <button type="submit" className="add-movie-btn button-primary" disabled={!addDraft.title.trim() || adding || !connected}>
-              {adding ? 'Добавляем…' : 'Добавить'}
-            </button>
-          </form>
-        </section>
+        <WatchedAddForm
+          adding={adding}
+          connected={connected}
+          draft={addDraft}
+          onChange={setAddDraft}
+          onSubmit={handleAddWatched}
+        />
       )}
 
       <ConfirmDialog

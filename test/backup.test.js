@@ -13,6 +13,7 @@ const {
 } = require('../scripts/backup');
 
 const fsp = fs.promises;
+const tarPath = fs.realpathSync('/usr/bin/tar');
 
 test('backup creates and verifies an atomic database and file-storage snapshot', async t => {
   const fixtureRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'cheese-wheel-backup-test-'));
@@ -45,7 +46,7 @@ test('backup creates and verifies an atomic database and file-storage snapshot',
     uploadsPath,
     sigamePacksPath,
     backupRoot,
-    tarPath: '/usr/bin/tar',
+    tarPath,
     retentionDays: 30,
     currentDate: new Date('2026-07-25T00:00:00Z'),
     expectedTables: ['users', 'movies'],
@@ -73,7 +74,7 @@ test('backup creates and verifies an atomic database and file-storage snapshot',
       uploadsPath,
       sigamePacksPath,
       backupRoot,
-      tarPath: '/usr/bin/tar',
+      tarPath,
       retentionDays: 30,
       currentDate: new Date('2026-07-25T00:00:01Z'),
     }),

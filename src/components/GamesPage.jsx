@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { TOTAL_ENEMIES, BOSS } from '../game/constants.js';
 import { initTopDownMode, updateTopDown, renderTopDown } from '../game/topdown.js';
 import { initScene, createPlayerHand, spawnHorses, initPlayer3D, setupInputHandlers, createDuckMesh, createSpearHand } from '../game/scene.js';
@@ -7,6 +7,9 @@ import { updateHorseAI, updateRagdolls, triggerHorseDeath } from '../game/horseA
 import { updateBossAI, triggerBossDamage, updateBossRagdoll, updateDucklings, triggerDucklingDeath } from '../game/bossAI.js';
 import { spawnParticles, updateParticles } from '../game/particles.js';
 import { createMinigunHand, removeMinigunHand, updateMinigun, cleanupMinigun } from '../game/minigun.js';
+import GameMenu from '../features/game/GameMenu';
+import GameOver from '../features/game/GameOver';
+import GameScreen from '../features/game/GameScreen';
 
 export default function GamesPage() {
   const [mode, setMode] = useState('topdown');
@@ -28,6 +31,8 @@ export default function GamesPage() {
   const pointerLockMsgRef = useRef(null);
   const bossBarRef = useRef(null);
   const THREERef = useRef(null);
+  const startTimeoutRef = useRef(null);
+  const threeScriptRef = useRef(null);
 
   const gs = useRef({
     mode: 'topdown',
@@ -156,6 +161,16 @@ export default function GamesPage() {
 
   function cleanupGame() {
     const g = gs.current;
+    if (startTimeoutRef.current !== null) {
+      window.clearTimeout(startTimeoutRef.current);
+      startTimeoutRef.current = null;
+    }
+    if (threeScriptRef.current) {
+      threeScriptRef.current.onload = null;
+      threeScriptRef.current.onerror = null;
+      threeScriptRef.current.remove();
+      threeScriptRef.current = null;
+    }
     g.running = false;
     g.bossPhase = false;
     g.boss = null;
@@ -475,15 +490,24 @@ export default function GamesPage() {
       script.referrerPolicy = 'no-referrer';
       script.onload = () => {
         THREERef.current = window.THREE;
-        setTimeout(() => initGame(mode), 100);
+        threeScriptRef.current = null;
+        startTimeoutRef.current = window.setTimeout(() => {
+          startTimeoutRef.current = null;
+          initGame(mode);
+        }, 100);
       };
       script.onerror = () => {
+        threeScriptRef.current = null;
         alert('Не удалось загрузить Three.js');
         setPlaying(false);
       };
+      threeScriptRef.current = script;
       document.head.appendChild(script);
     } else {
-      setTimeout(() => initGame(mode), 100);
+      startTimeoutRef.current = window.setTimeout(() => {
+        startTimeoutRef.current = null;
+        initGame(mode);
+      }, 100);
     }
   }
 
@@ -502,40 +526,7 @@ export default function GamesPage() {
   // === RENDER ===
   if (!playing) {
     return (
-      <div className="games-container">
-        <div className="game-card">
-          <div className="game-card-icon">🐴</div>
-          <div className="game-card-info">
-            <h3>100 мини-лошадей</h3>
-            <p>Сразись с армией из 100 лошадей размером с утку!</p>
-            <div className="game-mode-select">
-              <label className="game-mode-option">
-                <input
-                  type="radio"
-                  name="game-mode"
-                  value="topdown"
-                  checked={mode === 'topdown'}
-                  onChange={() => setMode('topdown')}
-                />
-                <span className="mode-btn">🎯 Вид сверху</span>
-              </label>
-              <label className="game-mode-option">
-                <input
-                  type="radio"
-                  name="game-mode"
-                  value="thirdperson"
-                  checked={mode === 'thirdperson'}
-                  onChange={() => setMode('thirdperson')}
-                />
-                <span className="mode-btn">🎮 3D от 1-го лица</span>
-              </label>
-            </div>
-          </div>
-          <button className="game-btn" onClick={handlePlay}>
-            ▶️ Играть
-          </button>
-        </div>
-      </div>
+      <GameMenu mode={mode} onModeChange={setMode} onPlay={handlePlay} />
     );
   }
 
@@ -543,128 +534,29 @@ export default function GamesPage() {
 
   return (
     <>
-      <div className="game-screen" ref={gameScreenRef} style={{ display: 'flex' }}>
-        <div className="game-header">
-          <div className="game-stats">
-            <div className="stat-item">
-              ❤️ <div className="hp-bar">
-                <div className="hp-fill" style={{ width: `${hpPercent}%` }} />
-              </div>
-              <span>{hp}</span>
-            </div>
-            <div className="stat-item">
-              🗡️ Убито: <span>{kills}</span>/100
-            </div>
-            <div className="stat-item">
-              ⏱️ <span>{time}</span>
-            </div>
-            {gs.current.mode === 'thirdperson' && !gs.current.bossPhase && (
-              <div className="stat-item">
-                🐴 Рядом: <span style={{
-                  color: nearbyEnemies > 10 ? '#ff4444' : nearbyEnemies > 5 ? '#ffaa00' : '#ffffff'
-                }}>{nearbyEnemies}</span>
-              </div>
-            )}
-          </div>
-          <button className="game-close-btn" onClick={closeGame}>✕</button>
-        </div>
-
-        {/* Boss HP bar */}
-        {bossHp !== null && (
-          <div style={{
-            position: 'absolute',
-            top: '60px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            width: '60%',
-            maxWidth: '400px',
-            zIndex: 20,
-            textAlign: 'center'
-          }}>
-            <div style={{
-              fontFamily: "'Caveat', cursive",
-              fontSize: '1.4rem',
-              color: '#fff',
-              textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-              marginBottom: '4px'
-            }}>
-              🦆 УТКА-БОСС
-            </div>
-            <div style={{
-              background: 'rgba(0,0,0,0.6)',
-              borderRadius: '8px',
-              height: '16px',
-              border: '2px solid #FF6600',
-              overflow: 'hidden'
-            }}>
-              <div ref={bossBarRef} style={{
-                width: '100%',
-                height: '100%',
-                background: 'linear-gradient(90deg, #FF4444, #FF6600)',
-                borderRadius: 'inherit',
-                transition: 'width 0.15s'
-              }} />
-            </div>
-          </div>
-        )}
-
-        <canvas
-          ref={canvas2dRef}
-          className="game-canvas-2d"
-          style={{ display: gs.current.mode === 'topdown' ? 'block' : 'none' }}
+      <GameScreen
+        bossBarRef={bossBarRef}
+        bossHp={bossHp}
+        bossPhase={gs.current.bossPhase}
+        canvas2dRef={canvas2dRef}
+        canvas3dRef={canvas3dRef}
+        gameScreenRef={gameScreenRef}
+        hp={hp}
+        hpPercent={hpPercent}
+        kills={kills}
+        mode={gs.current.mode}
+        musicBoxRef={musicBoxRef}
+        nearbyEnemies={nearbyEnemies}
+        pointerLockMsgRef={pointerLockMsgRef}
+        time={time}
+        onClose={closeGame}
+      />
+      {gameOver && (
+        <GameOver
+          data={gameOverData}
+          onClose={closeGame}
+          onRestart={handleRestart}
         />
-        <canvas
-          ref={canvas3dRef}
-          className="game-canvas-3d"
-          style={{ display: gs.current.mode === 'thirdperson' ? 'block' : 'none' }}
-        />
-
-        {gs.current.mode === 'thirdperson' && (
-          <div className="pointer-lock-msg" ref={pointerLockMsgRef} style={{ display: 'block' }}>
-            🖱️ Нажмите на экран для захвата мыши
-          </div>
-        )}
-
-        <div className="game-controls-info">
-          {gs.current.mode === 'topdown' ? (
-            <>
-              <span>⬆️⬇️⬅️➡️ движение</span>
-              <span>ПРОБЕЛ удар</span>
-              <span>SHIFT рывок</span>
-            </>
-          ) : (
-            <>
-              <span>WASD движение</span>
-              <span>🖱️ камера</span>
-              <span>ЛКМ{gs.current.bossPhase ? '/SHIFT копьё' : ' удар'}</span>
-              <span>ПРОБЕЛ прыжок</span>
-              {!gs.current.bossPhase && <span>З пулемёт</span>}
-            </>
-          )}
-        </div>
-
-        <div ref={musicBoxRef} style={{ position: 'absolute', overflow: 'hidden', width: 0, height: 0 }} />
-      </div>
-
-      {gameOver && gameOverData && (
-        <div className="game-over-screen" style={{ display: 'flex' }}>
-          <div className="game-over-content">
-            <div className="game-over-icon">{gameOverData.victory ? (gameOverData.bossKilled ? '🦆' : '🏆') : '💀'}</div>
-            <div className="game-over-title">
-              {gameOverData.victory
-                ? (gameOverData.bossKilled ? 'УТКА-БОСС ПОВЕРЖЕНА!' : 'Победа!')
-                : 'Поражение'}
-            </div>
-            <div className="game-over-stats">
-              Убито лошадей: {gameOverData.kills}/100
-              {gameOverData.bossKilled && ' + БОСС'} | Время: {gameOverData.time}
-            </div>
-            <div className="game-over-buttons">
-              <button className="game-btn" onClick={handleRestart}>🔄 Заново</button>
-              <button className="game-btn" onClick={closeGame}>🚪 Выход</button>
-            </div>
-          </div>
-        </div>
       )}
     </>
   );

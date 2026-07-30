@@ -5,6 +5,7 @@ import App from './App';
 import './css/base.css';
 import './css/theme-newyear.css';
 import './css/theme-spring.css';
+import './css/theme-samurai.css';
 import './css/toast.css';
 import './css/nav.css';
 import './css/auth.css';

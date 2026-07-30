@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useApp } from '../App';
+import { useApp } from '../app/AppContext';
 import { resolveOneOffResult } from '../api';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 

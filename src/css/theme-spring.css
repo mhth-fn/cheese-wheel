@@ -1,5 +1,56 @@
 /* ========== ВЕСЕННЯЯ ТЕМА ========== */
 body.theme-spring {
+  --color-background: #cfe8d2;
+  --color-background-accent: #f3cfdf;
+  --color-surface: #fffdf9;
+  --color-surface-elevated: #fff;
+  --color-surface-muted: #f0f7ed;
+  --color-surface-hover: #e3f1e0;
+  --color-surface-translucent: rgba(255, 253, 249, 0.9);
+  --color-surface-translucent-strong: rgba(255, 253, 249, 0.97);
+  --color-overlay: rgba(26, 56, 34, 0.54);
+  --color-primary: #2f7844;
+  --color-primary-hover: #27683b;
+  --color-primary-active: #b51f5a;
+  --color-primary-border: #286a3c;
+  --color-on-primary: #fff;
+  --color-text: #26392c;
+  --color-text-muted: #597060;
+  --color-border: #75a97c;
+  --color-border-soft: rgba(63, 126, 75, 0.24);
+  --color-success: #2f7b43;
+  --color-success-surface: #e8f5e8;
+  --color-success-border: #acd0ae;
+  --color-success-text: #285f35;
+  --color-warning: #966118;
+  --color-warning-surface: #fff2d9;
+  --color-warning-border: #e3c28b;
+  --color-warning-text: #71450c;
+  --color-danger: #ad345d;
+  --color-danger-surface: #fbe8ef;
+  --color-danger-border: #e5b0c2;
+  --color-danger-text: #7d2343;
+  --color-info: #316b83;
+  --color-info-surface: #eaf3f5;
+  --color-info-border: #b8d2d9;
+  --color-info-text: #28576a;
+  --color-focus: #075fb6;
+  --cheese-hole: rgba(82, 151, 93, 0.12);
+  --feature-accent: #e886ad;
+  --feature-accent-surface: #f9e2ec;
+  --feature-accent-text: #7b2e4d;
+  --feature-played-accent: #4d9860;
+  --feature-hero-background: linear-gradient(135deg, #eff9ec, #f7d9e6);
+  --feature-hero-border: rgba(62, 125, 74, 0.28);
+  --feature-hero-text: #24432d;
+  --feature-hero-muted: #526e59;
+  --feature-hero-action: #2f7844;
+  --feature-hero-action-hover: #27683b;
+  --feature-hero-action-text: #fff;
+  --shadow-small: 0 2px 8px rgba(35, 80, 45, 0.1);
+  --shadow-medium: 0 8px 24px rgba(35, 80, 45, 0.16);
+  --shadow-modal: 0 22px 64px rgba(28, 67, 37, 0.26);
+  --shadow-button: 0 3px 0 #286a3c, 0 7px 14px rgba(35, 80, 45, 0.2);
   --theme-btn: linear-gradient(135deg, #66bb6a 0%, #43a047 100%);
   --theme-btn-hover: linear-gradient(135deg, #81c784 0%, #66bb6a 100%);
   --theme-btn-active: linear-gradient(135deg, #ec407a 0%, #d81b60 100%);
@@ -46,98 +97,4 @@ body.theme-spring .petals { display: block; }
   50% { transform: translateY(50vh) translateX(-15px) rotate(180deg); }
   75% { transform: translateY(75vh) translateX(25px) rotate(270deg); }
   100% { transform: translateY(100vh) translateX(-10px) rotate(360deg); }
-}
-
-body.theme-spring .nav-btn,
-body.theme-spring .auth-btn,
-body.theme-spring .add-movie-btn,
-body.theme-spring .auth-password-btn {
-  background: linear-gradient(135deg, #66bb6a 0%, #43a047 100%);
-  border-color: #2e7d32;
-}
-
-body.theme-spring .nav-btn:hover,
-body.theme-spring .auth-btn:hover,
-body.theme-spring .add-movie-btn:hover,
-body.theme-spring .auth-password-btn:hover {
-  background: linear-gradient(135deg, #81c784 0%, #66bb6a 100%);
-}
-
-body.theme-spring .nav-btn.active,
-body.theme-spring .auth-btn.selected {
-  background: linear-gradient(135deg, #ec407a 0%, #d81b60 100%);
-}
-
-body.theme-spring .watched-table th {
-  background: linear-gradient(135deg, #66bb6a 0%, #43a047 100%);
-  border-bottom-color: #2e7d32;
-}
-
-body.theme-spring .watched-table th:hover {
-  background: linear-gradient(135deg, #81c784 0%, #66bb6a 100%);
-}
-
-body.theme-spring .wheel-center {
-  background: linear-gradient(135deg, #ec407a 0%, #d81b60 100%);
-  border-color: #fff;
-}
-
-body.theme-spring .wheel-outer {
-  background: conic-gradient(
-    from 0deg,
-    #66bb6a 0deg, #43a047 10deg, #66bb6a 20deg, #43a047 30deg,
-    #66bb6a 40deg, #43a047 50deg, #66bb6a 60deg, #43a047 70deg,
-    #66bb6a 80deg, #43a047 90deg, #66bb6a 100deg, #43a047 110deg,
-    #66bb6a 120deg, #43a047 130deg, #66bb6a 140deg, #43a047 150deg,
-    #66bb6a 160deg, #43a047 170deg, #66bb6a 180deg, #43a047 190deg,
-    #66bb6a 200deg, #43a047 210deg, #66bb6a 220deg, #43a047 230deg,
-    #66bb6a 240deg, #43a047 250deg, #66bb6a 260deg, #43a047 270deg,
-    #66bb6a 280deg, #43a047 290deg, #66bb6a 300deg, #43a047 310deg,
-    #66bb6a 320deg, #43a047 330deg, #66bb6a 340deg, #43a047 350deg, #66bb6a 360deg
-  );
-  box-shadow: 0 0 0 4px #fff, 0 0 25px rgba(102,187,106,0.4), 0 15px 40px rgba(0,0,0,0.2);
-}
-
-body.theme-spring .nav-user-btn,
-body.theme-spring .nav-dropdown,
-body.theme-spring .nav-user,
-body.theme-spring .spin-duration,
-body.theme-spring .auth-password-input,
-body.theme-spring .add-movie,
-body.theme-spring .add-movie-input,
-body.theme-spring .watched-table-wrapper,
-body.theme-spring .watched-add-movie,
-body.theme-spring .stat-card,
-body.theme-spring .search-bar,
-body.theme-spring .rating-select,
-body.theme-spring .movie-tag,
-body.theme-spring .drawer,
-body.theme-spring .drawer-add-input,
-body.theme-spring .drawer-header,
-body.theme-spring .drawer-add-form,
-body.theme-spring .drawer-movie-item,
-body.theme-spring .drawer-footer,
-body.theme-spring .drawer-center-section {
-  border-color: #66bb6a;
-}
-
-body.theme-spring .stat-card-value {
-  color: #2e7d32;
-}
-
-body.theme-spring .stats-user-avg {
-  color: #2e7d32;
-}
-
-body.theme-spring .connection-status {
-  border-color: #66bb6a;
-}
-
-body.theme-spring .modal-content {
-  box-shadow: 0 0 50px rgba(102,187,106,0.4), 0 20px 60px rgba(0,0,0,0.2);
-}
-
-body.theme-spring .admin-btn {
-  background: linear-gradient(135deg, #66bb6a 0%, #43a047 100%);
-  border-color: #2e7d32;
 }

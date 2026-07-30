@@ -9,13 +9,14 @@ import {
   patchOneOffWheelSettings,
   updateAdminUserRole,
 } from '../api';
-import { useApp } from '../App';
+import { useApp } from '../app/AppContext';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 
 const themes = [
   { key: 'cheese', icon: '🧀', name: 'Сырная тема', desc: 'Жёлто-оранжевый дизайн' },
   { key: 'newyear', icon: '🎄', name: 'Новогодняя тема', desc: 'Снег, гирлянды, красно-зелёный' },
   { key: 'spring', icon: '🌸', name: 'Весенняя тема', desc: 'Лепестки, зелёно-розовый дизайн' },
+  { key: 'samurai', icon: '⚔️', name: 'Самурайская тема', desc: 'Тушь, киноварь, рисовая бумага и катаны' },
 ];
 
 const actionLabels = {
@@ -338,7 +339,7 @@ export default function AdminModal({ theme, onClose }) {
                   onChange={() => updateToggle('decorations', decorationsEnabled, setDecorationsEnabled, postDecorationsEnabled)}
                 />
                 <span className="admin-toggle-slider"></span>
-                <span className="admin-toggle-label">Декорации (снег / лепестки)</span>
+                <span className="admin-toggle-label">Декорации темы</span>
               </label>
               <label className="admin-toggle">
                 <input

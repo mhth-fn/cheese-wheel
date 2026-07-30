@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useApp } from '../App';
+import { useApp } from '../app/AppContext';
 import { fetchWineReviews, postWineReview, patchWineReview, deleteWineReview, postReviewReaction } from '../api';
 
 const WINE_TYPES = [

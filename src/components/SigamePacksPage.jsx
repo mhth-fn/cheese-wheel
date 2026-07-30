@@ -1,138 +1,30 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   createSigamePack,
   deleteSigamePack,
   deleteSigamePackRating,
   fetchSigamePacks,
-  getSigamePackDownloadUrl,
   rateSigamePack,
   setSigamePackStatus,
   updateSigamePack,
   updateSigamePackPlayedDate,
 } from '../api';
-import { useApp } from '../App';
-
-const EMPTY_FORM = { title: '', tags: '' };
-const MAX_FILE_SIZE = 200 * 1024 * 1024;
-const MAX_TAGS = 9;
-
-const SORT_OPTIONS = {
-  unplayed: [
-    { value: 'created-desc', label: 'Сначала новые' },
-    { value: 'created-asc', label: 'Сначала старые' },
-    { value: 'title-asc', label: 'По названию А–Я' },
-    { value: 'title-desc', label: 'По названию Я–А' },
-  ],
-  played: [
-    { value: 'played-desc', label: 'Недавно сыгранные' },
-    { value: 'played-asc', label: 'Давно сыгранные' },
-    { value: 'rating-desc', label: 'С высокой оценкой' },
-    { value: 'rating-asc', label: 'С низкой оценкой' },
-    { value: 'title-asc', label: 'По названию А–Я' },
-    { value: 'title-desc', label: 'По названию Я–А' },
-  ],
-};
-
-const DEFAULT_SORT = {
-  unplayed: 'created-desc',
-  played: 'played-desc',
-};
-
-const dateFormatter = new Intl.DateTimeFormat('ru-RU', {
-  day: 'numeric',
-  month: 'long',
-  year: 'numeric',
-});
-
-async function readResponse(response) {
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || 'Сервер отклонил запрос');
-  return data;
-}
-
-function formatDate(timestamp) {
-  return timestamp ? dateFormatter.format(new Date(timestamp)) : '';
-}
-
-function formatDateInput(timestamp) {
-  if (!timestamp) return '';
-  const date = new Date(timestamp);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function formatFileSize(bytes) {
-  if (bytes == null || !Number.isFinite(Number(bytes))) return 'Размер неизвестен';
-  const value = Number(bytes);
-  if (value < 1024) return `${value} Б`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(value < 10 * 1024 ? 1 : 0)} КБ`;
-  return `${(value / (1024 * 1024)).toFixed(value < 10 * 1024 * 1024 ? 1 : 0)} МБ`;
-}
-
-function normalizeTags(rawTags) {
-  const tags = [];
-  const seen = new Set();
-  String(rawTags || '')
-    .split(',')
-    .map(tag => tag.trim())
-    .filter(Boolean)
-    .forEach(tag => {
-      const key = tag.toLocaleLowerCase('ru-RU');
-      if (seen.has(key)) return;
-      seen.add(key);
-      tags.push(tag);
-    });
-  return tags;
-}
-
-function validateSiqFile(file) {
-  if (!file || !file.name.toLocaleLowerCase('ru-RU').endsWith('.siq')) {
-    return 'Выберите файл пакета SIGame в формате .siq';
-  }
-  if (file.size < 1) return 'Выбранный файл пуст';
-  if (file.size > MAX_FILE_SIZE) return 'Размер файла не должен превышать 200 МБ';
-  return '';
-}
-
-function sortPacks(packs, sort) {
-  return packs
-    .map((pack, index) => ({ pack, index }))
-    .sort((firstEntry, secondEntry) => {
-      const first = firstEntry.pack;
-      const second = secondEntry.pack;
-      let result = 0;
-
-      if (sort === 'created-desc') result = second.added_at - first.added_at;
-      if (sort === 'created-asc') result = first.added_at - second.added_at;
-      if (sort === 'played-desc' || sort === 'played-asc') {
-        const firstMissing = first.played_at == null;
-        const secondMissing = second.played_at == null;
-        if (firstMissing !== secondMissing) result = firstMissing ? 1 : -1;
-        else if (!firstMissing) {
-          result = sort === 'played-desc'
-            ? second.played_at - first.played_at
-            : first.played_at - second.played_at;
-        }
-      }
-      if (sort === 'title-asc') result = first.title.localeCompare(second.title, 'ru');
-      if (sort === 'title-desc') result = second.title.localeCompare(first.title, 'ru');
-      if (sort === 'rating-desc' || sort === 'rating-asc') {
-        const firstMissing = first.average_rating == null;
-        const secondMissing = second.average_rating == null;
-        if (firstMissing !== secondMissing) result = firstMissing ? 1 : -1;
-        else if (!firstMissing) {
-          result = sort === 'rating-desc'
-            ? second.average_rating - first.average_rating
-            : first.average_rating - second.average_rating;
-        }
-      }
-
-      return result || firstEntry.index - secondEntry.index;
-    })
-    .map(entry => entry.pack);
-}
+import { useApp } from '../app/AppContext';
+import SigameDateDialog from '../features/sigame/SigameDateDialog';
+import SigameFilters from '../features/sigame/SigameFilters';
+import SigamePackCard from '../features/sigame/SigamePackCard';
+import SigamePackForm from '../features/sigame/SigamePackForm';
+import {
+  DEFAULT_SIGAME_SORT,
+  EMPTY_SIGAME_FORM,
+  formatSigameDateInput,
+  MAX_SIGAME_TAGS,
+  normalizeSigameTags,
+  SIGAME_SORT_OPTIONS,
+  sortSigamePacks,
+  validateSiqFile,
+} from '../features/sigame/sigameUtils';
+import { readResponse } from '../utils/readResponse';
 
 export default function SigamePacksPage() {
   const { currentUser, isGuest, isAdmin, socket, showToast } = useApp();
@@ -141,23 +33,21 @@ export default function SigamePacksPage() {
   const [activeTab, setActiveTab] = useState('unplayed');
   const [search, setSearch] = useState('');
   const [activeTag, setActiveTag] = useState('');
-  const [sort, setSort] = useState(DEFAULT_SORT.unplayed);
+  const [sort, setSort] = useState(DEFAULT_SIGAME_SORT.unplayed);
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState(EMPTY_SIGAME_FORM);
   const [selectedFile, setSelectedFile] = useState(null);
   const [fileError, setFileError] = useState('');
-  const [isDragging, setIsDragging] = useState(false);
   const [formBusy, setFormBusy] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [menuPackId, setMenuPackId] = useState(null);
   const [datePack, setDatePack] = useState(null);
   const [playedDate, setPlayedDate] = useState('');
   const [dateBusy, setDateBusy] = useState(false);
-  const fileInputRef = useRef(null);
-  const formTags = normalizeTags(form.tags);
-  const tagError = formTags.length > MAX_TAGS
-    ? `Можно указать не более ${MAX_TAGS} тегов`
+  const formTags = normalizeSigameTags(form.tags);
+  const tagError = formTags.length > MAX_SIGAME_TAGS
+    ? `Можно указать не более ${MAX_SIGAME_TAGS} тегов`
     : formTags.some(tag => tag.length > 24)
       ? 'Каждый тег должен быть не длиннее 24 символов'
       : '';
@@ -187,8 +77,10 @@ export default function SigamePacksPage() {
   }, [loadPacks, socket]);
 
   useEffect(() => {
-    const available = SORT_OPTIONS[activeTab].some(option => option.value === sort);
-    if (!available) setSort(DEFAULT_SORT[activeTab]);
+    const available = SIGAME_SORT_OPTIONS[activeTab].some(
+      option => option.value === sort
+    );
+    if (!available) setSort(DEFAULT_SIGAME_SORT[activeTab]);
   }, [activeTab, sort]);
 
   useEffect(() => {
@@ -256,7 +148,7 @@ export default function SigamePacksPage() {
         value.toLocaleLowerCase('ru-RU').includes(query)
       ));
     });
-    return sortPacks(filtered, sort);
+    return sortSigamePacks(filtered, sort);
   }, [activeTab, activeTag, packs, search, sort]);
 
   const upsertPack = pack => {
@@ -269,22 +161,20 @@ export default function SigamePacksPage() {
   const selectTab = tab => {
     setActiveTab(tab);
     setActiveTag('');
-    setSort(DEFAULT_SORT[tab]);
+    setSort(DEFAULT_SIGAME_SORT[tab]);
   };
 
   const closeForm = () => {
     setFormOpen(false);
     setEditingId(null);
-    setForm(EMPTY_FORM);
+    setForm(EMPTY_SIGAME_FORM);
     setSelectedFile(null);
     setFileError('');
-    setIsDragging(false);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const openCreateForm = () => {
     setEditingId(null);
-    setForm(EMPTY_FORM);
+    setForm(EMPTY_SIGAME_FORM);
     setSelectedFile(null);
     setFileError('');
     setFormOpen(true);
@@ -302,7 +192,7 @@ export default function SigamePacksPage() {
   const openDateForm = pack => {
     setMenuPackId(null);
     setDatePack(pack);
-    setPlayedDate(formatDateInput(pack.played_at));
+    setPlayedDate(formatSigameDateInput(pack.played_at));
   };
 
   const savePlayedDate = async nextDate => {
@@ -325,17 +215,11 @@ export default function SigamePacksPage() {
     }
   };
 
-  const submitPlayedDate = event => {
-    event.preventDefault();
-    if (playedDate) savePlayedDate(playedDate);
-  };
-
   const chooseFile = file => {
     const error = validateSiqFile(file);
     if (error) {
       setSelectedFile(null);
       setFileError(error);
-      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
     setSelectedFile(file);
@@ -345,7 +229,6 @@ export default function SigamePacksPage() {
   const removeSelectedFile = () => {
     setSelectedFile(null);
     setFileError('');
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const submitPack = async event => {
@@ -456,77 +339,18 @@ export default function SigamePacksPage() {
         )}
       </section>
 
-      <section className="sigame-controls" aria-label="Фильтры библиотеки">
-        <div className="sigame-tabs" role="tablist" aria-label="Статус паков">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'unplayed'}
-            className={activeTab === 'unplayed' ? 'active' : ''}
-            onClick={() => selectTab('unplayed')}
-          >
-            Не сыграны <span>{counts.unplayed}</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'played'}
-            className={activeTab === 'played' ? 'active' : ''}
-            onClick={() => selectTab('played')}
-          >
-            Сыгранные <span>{counts.played}</span>
-          </button>
-        </div>
-
-        <div className="sigame-search-row">
-          <label className="sigame-search">
-            <span aria-hidden="true">⌕</span>
-            <span className="sr-only">Поиск паков</span>
-            <input
-              type="search"
-              value={search}
-              onChange={event => setSearch(event.target.value)}
-              placeholder="Название или тег…"
-            />
-            {search && (
-              <button type="button" onClick={() => setSearch('')} aria-label="Очистить поиск">×</button>
-            )}
-          </label>
-          <label className="sigame-sort">
-            <span className="sr-only">Сортировка</span>
-            <select value={sort} onChange={event => setSort(event.target.value)}>
-              {SORT_OPTIONS[activeTab].map(option => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        {tags.length > 0 && (
-          <div className="sigame-tags-filter" aria-label="Фильтр по тегам">
-            <button
-              type="button"
-              className={!activeTag ? 'active' : ''}
-              onClick={() => setActiveTag('')}
-            >
-              Все
-            </button>
-            {tags.map(tag => {
-              const key = tag.label.toLocaleLowerCase('ru-RU');
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  className={activeTag === key ? 'active' : ''}
-                  onClick={() => setActiveTag(activeTag === key ? '' : key)}
-                >
-                  {tag.label} <span>{tag.count}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </section>
+      <SigameFilters
+        activeTab={activeTab}
+        activeTag={activeTag}
+        counts={counts}
+        search={search}
+        sort={sort}
+        tags={tags}
+        onSearchChange={setSearch}
+        onSelectTab={selectTab}
+        onSelectTag={setActiveTag}
+        onSortChange={setSort}
+      />
 
       {loadState === 'loading' && (
         <div className="sigame-loading" role="status">
@@ -553,7 +377,9 @@ export default function SigamePacksPage() {
               : 'Отмечайте сыгранные паки — здесь появятся оценки и история'}
           </p>
           {activeTab === 'unplayed' && !isGuest && (
-            <button className="button-primary" type="button" onClick={openCreateForm}>Добавить пак</button>
+            <button className="button-primary" type="button" onClick={openCreateForm}>
+              Загрузить первый пак
+            </button>
           )}
         </div>
       )}
@@ -583,145 +409,23 @@ export default function SigamePacksPage() {
             );
             const isBusy = busyId === pack.id;
             return (
-              <article className={`sigame-card ${pack.status}`} key={pack.id}>
-                <div className="sigame-card-topline">
-                  <div className="sigame-card-tags">
-                    {pack.tags.map(tag => (
-                      <button
-                        type="button"
-                        key={tag}
-                        onClick={() => setActiveTag(tag.toLocaleLowerCase('ru-RU'))}
-                      >
-                        {tag}
-                      </button>
-                    ))}
-                  </div>
-                  {canManage && (
-                    <div className="sigame-more">
-                      <button
-                        type="button"
-                        className="sigame-more-trigger"
-                        aria-label={`Действия с паком ${pack.title}`}
-                        aria-expanded={menuPackId === pack.id}
-                        onClick={() => setMenuPackId(
-                          menuPackId === pack.id ? null : pack.id
-                        )}
-                      >
-                        •••
-                      </button>
-                      {menuPackId === pack.id && (
-                        <div className="sigame-more-menu" role="menu">
-                          <button type="button" role="menuitem" onClick={() => openEditForm(pack)}>
-                            Переименовать и изменить теги
-                          </button>
-                          {pack.status === 'played' && (
-                            <button type="button" role="menuitem" onClick={() => openDateForm(pack)}>
-                              Изменить дату игры
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            role="menuitem"
-                            className="danger"
-                            onClick={() => removePack(pack)}
-                            disabled={isBusy}
-                          >
-                            Удалить
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className="sigame-card-heading">
-                  <h2>{pack.title}</h2>
-                  {pack.status === 'played' && pack.average_rating != null && (
-                    <div className="sigame-rating-summary" title={`${pack.ratings_count} оценок`}>
-                      <strong>{pack.average_rating.toFixed(1)}</strong>
-                      <span>★ · {pack.ratings_count}</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="sigame-file-info">
-                  <span aria-hidden="true">📄</span>
-                  <div>
-                    <strong>{pack.original_file_name || 'Файл не прикреплён'}</strong>
-                    <small>{formatFileSize(pack.file_size)}</small>
-                  </div>
-                </div>
-
-                <div className="sigame-card-meta">
-                  <span>Добавлен {formatDate(pack.added_at)}</span>
-                  {pack.status === 'played' && (
-                    <span>
-                      {pack.played_at
-                        ? `Сыгран ${formatDate(pack.played_at)}`
-                        : 'Сыгран — дата неизвестна'}
-                    </span>
-                  )}
-                </div>
-
-                <div className="sigame-card-footer">
-                  <div className="sigame-primary-actions">
-                    {pack.has_file ? (
-                      <a
-                        className="sigame-download-button"
-                        href={getSigamePackDownloadUrl(pack.id)}
-                        download={pack.original_file_name || undefined}
-                      >
-                        Скачать
-                      </a>
-                    ) : (
-                      <button className="sigame-download-button" type="button" disabled>
-                        Файл недоступен
-                      </button>
-                    )}
-
-                    {pack.status === 'unplayed' && !isGuest && (
-                      <button
-                        className="sigame-status-button"
-                        type="button"
-                        onClick={() => changeStatus(pack, 'played')}
-                        disabled={isBusy}
-                      >
-                        {isBusy ? 'Сохраняем…' : 'Отметить сыгранным'}
-                      </button>
-                    )}
-                  </div>
-
-                  {pack.status === 'played' && (
-                    <div className="sigame-played-actions">
-                      {!isGuest && (
-                        <label className="sigame-rating-control">
-                          <span>{pack.my_rating == null ? 'Оценить' : 'Ваша оценка'}</span>
-                          <select
-                            value={pack.my_rating ?? ''}
-                            onChange={event => changeRating(pack, event.target.value)}
-                            disabled={isBusy}
-                          >
-                            <option value="">Без оценки</option>
-                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(rating => (
-                              <option key={rating} value={rating}>{rating} / 10</option>
-                            ))}
-                          </select>
-                        </label>
-                      )}
-                      {canManage && (
-                        <button
-                          type="button"
-                          className="sigame-restore-button"
-                          onClick={() => changeStatus(pack, 'unplayed')}
-                          disabled={isBusy}
-                        >
-                          Вернуть в несыгранные
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </article>
+              <SigamePackCard
+                key={pack.id}
+                pack={pack}
+                busy={isBusy}
+                canManage={canManage}
+                isGuest={isGuest}
+                menuOpen={menuPackId === pack.id}
+                onEdit={openEditForm}
+                onEditDate={openDateForm}
+                onRate={changeRating}
+                onRemove={removePack}
+                onSelectTag={setActiveTag}
+                onSetStatus={changeStatus}
+                onToggleMenu={() => setMenuPackId(
+                  menuPackId === pack.id ? null : pack.id
+                )}
+              />
             );
           })}
         </div>
@@ -734,205 +438,30 @@ export default function SigamePacksPage() {
       )}
 
       {formOpen && (
-        <div
-          className="sigame-modal-backdrop"
-          onMouseDown={event => {
-            if (event.target === event.currentTarget && !formBusy) closeForm();
-          }}
-        >
-          <form
-            className="sigame-pack-form"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="sigame-form-title"
-            onSubmit={submitPack}
-          >
-            <div className="sigame-form-heading">
-              <h2 id="sigame-form-title">{editingId ? 'Изменить пак' : 'Добавить пак'}</h2>
-              <button
-                type="button"
-                className="sigame-form-close"
-                onClick={closeForm}
-                disabled={formBusy}
-                aria-label="Закрыть форму"
-              >
-                ×
-              </button>
-            </div>
-
-            {!editingId && (
-              <div className="sigame-file-field">
-                <span className="sigame-field-label">Файл пака *</span>
-                {!selectedFile ? (
-                  <label
-                    className={`sigame-dropzone ${isDragging ? 'dragging' : ''} ${fileError ? 'invalid' : ''}`}
-                    onDragEnter={event => {
-                      event.preventDefault();
-                      setIsDragging(true);
-                    }}
-                    onDragOver={event => event.preventDefault()}
-                    onDragLeave={event => {
-                      event.preventDefault();
-                      setIsDragging(false);
-                    }}
-                    onDrop={event => {
-                      event.preventDefault();
-                      setIsDragging(false);
-                      chooseFile(event.dataTransfer.files?.[0]);
-                    }}
-                  >
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".siq"
-                      onChange={event => chooseFile(event.target.files?.[0])}
-                    />
-                    <span className="sigame-dropzone-icon" aria-hidden="true">⇧</span>
-                    <strong>Перетащите .siq-файл сюда</strong>
-                    <span>или выберите файл</span>
-                  </label>
-                ) : (
-                  <div className="sigame-selected-file">
-                    <span aria-hidden="true">📦</span>
-                    <div>
-                      <strong>{selectedFile.name}</strong>
-                      <small>{formatFileSize(selectedFile.size)}</small>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={removeSelectedFile}
-                      disabled={formBusy}
-                      aria-label="Удалить выбранный файл"
-                    >
-                      ×
-                    </button>
-                  </div>
-                )}
-                {fileError && <span className="sigame-file-error" role="alert">{fileError}</span>}
-              </div>
-            )}
-
-            <label className="sigame-field">
-              <span>Название *</span>
-              <input
-                value={form.title}
-                onChange={event => setForm(previous => ({
-                  ...previous,
-                  title: event.target.value,
-                }))}
-                maxLength={200}
-                placeholder="Например, История Древней Греции"
-                required
-                autoFocus={Boolean(editingId)}
-              />
-            </label>
-
-            <label className="sigame-field">
-              <span>Теги <small>через запятую, до {MAX_TAGS}</small></span>
-              <input
-                value={form.tags}
-                onChange={event => setForm(previous => ({
-                  ...previous,
-                  tags: event.target.value,
-                }))}
-                placeholder="история, кино, сложный, 18+"
-              />
-              {tagError && (
-                <span className="sigame-file-error" role="alert">{tagError}</span>
-              )}
-            </label>
-
-            <div className="sigame-form-actions">
-              <button className="button-ghost" type="button" onClick={closeForm} disabled={formBusy}>
-                Отмена
-              </button>
-              <button
-                className="button-primary"
-                type="submit"
-                disabled={
-                  formBusy
-                  || !form.title.trim()
-                  || Boolean(tagError)
-                  || (!editingId && (!selectedFile || Boolean(fileError)))
-                }
-              >
-                {formBusy
-                  ? (editingId ? 'Сохраняем…' : 'Загружаем…')
-                  : (editingId ? 'Сохранить' : 'Добавить в библиотеку')}
-              </button>
-            </div>
-          </form>
-        </div>
+        <SigamePackForm
+          busy={formBusy}
+          editingId={editingId}
+          fileError={fileError}
+          form={form}
+          selectedFile={selectedFile}
+          setForm={setForm}
+          tagError={tagError}
+          onChooseFile={chooseFile}
+          onClose={closeForm}
+          onRemoveFile={removeSelectedFile}
+          onSubmit={submitPack}
+        />
       )}
 
       {datePack && (
-        <div
-          className="sigame-modal-backdrop"
-          onMouseDown={event => {
-            if (event.target === event.currentTarget && !dateBusy) setDatePack(null);
-          }}
-        >
-          <form
-            className="sigame-pack-form sigame-date-form"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="sigame-date-form-title"
-            onSubmit={submitPlayedDate}
-          >
-            <div className="sigame-form-heading">
-              <h2 id="sigame-date-form-title">Дата игры</h2>
-              <button
-                type="button"
-                className="sigame-form-close"
-                onClick={() => setDatePack(null)}
-                disabled={dateBusy}
-                aria-label="Закрыть форму"
-              >
-                ×
-              </button>
-            </div>
-
-            <p className="sigame-date-pack-name">{datePack.title}</p>
-            <label className="sigame-field">
-              <span>Когда сыграли</span>
-              <input
-                type="date"
-                value={playedDate}
-                onChange={event => setPlayedDate(event.target.value)}
-                required
-                autoFocus
-              />
-            </label>
-
-            <div className="sigame-date-actions">
-              <button
-                className="button-ghost sigame-unknown-date-button"
-                type="button"
-                onClick={() => savePlayedDate(null)}
-                disabled={dateBusy}
-              >
-                Дата неизвестна
-              </button>
-              <div>
-                <button
-                  className="button-ghost"
-                  type="button"
-                  onClick={() => setDatePack(null)}
-                  disabled={dateBusy}
-                >
-                  Отмена
-                </button>
-                <button
-                  className="button-primary"
-                  type="submit"
-                  disabled={dateBusy || !playedDate}
-                >
-                  {dateBusy ? 'Сохраняем…' : 'Сохранить'}
-                </button>
-              </div>
-            </div>
-          </form>
-        </div>
+        <SigameDateDialog
+          busy={dateBusy}
+          date={playedDate}
+          pack={datePack}
+          onChange={setPlayedDate}
+          onClose={() => setDatePack(null)}
+          onSave={savePlayedDate}
+        />
       )}
     </main>
   );

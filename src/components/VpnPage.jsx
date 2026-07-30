@@ -6,7 +6,7 @@ import {
   fetchVpnClients,
   fetchVpnStatus,
 } from '../api';
-import { useApp } from '../App';
+import { useApp } from '../app/AppContext';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import ConfirmDialog from './ConfirmDialog';
 

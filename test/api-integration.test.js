@@ -128,6 +128,23 @@ test('real server enforces authentication, dynamic roles and content ownership',
     cookie: sergey.cookie,
   })).status, 200);
 
+  const samuraiTheme = await request(instance, '/api/theme', {
+    method: 'POST',
+    cookie: sergey.cookie,
+    body: { theme: 'samurai' },
+  });
+  assert.equal(samuraiTheme.status, 200, JSON.stringify(samuraiTheme.payload));
+  const currentTheme = await request(instance, '/api/theme', {
+    cookie: sergey.cookie,
+  });
+  assert.equal(currentTheme.status, 200);
+  assert.equal(currentTheme.payload.theme, 'samurai');
+  assert.equal((await request(instance, '/api/theme', {
+    method: 'POST',
+    cookie: sergey.cookie,
+    body: { theme: 'unknown-theme' },
+  })).status, 400);
+
   const customSpinDuration = await request(instance, '/api/settings/spin-duration', {
     method: 'POST',
     cookie: sergey.cookie,

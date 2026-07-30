@@ -12,16 +12,16 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-5);
-  border: 1px solid rgba(117, 74, 14, 0.16);
+  border: 1px solid var(--feature-hero-border);
   border-radius: 22px;
-  background: linear-gradient(135deg, #fff4bc, #f4c951);
-  box-shadow: 0 12px 34px rgba(102, 65, 7, 0.11);
-  color: #3c280a;
+  background: var(--feature-hero-background);
+  box-shadow: var(--shadow-medium);
+  color: var(--feature-hero-text);
 }
 
 .sigame-hero h1 {
   margin: 0 0 5px;
-  color: #352309;
+  color: var(--feature-hero-text);
   font-size: clamp(1.65rem, 4vw, 2.3rem);
   line-height: 1.08;
   letter-spacing: -0.035em;
@@ -29,7 +29,7 @@
 
 .sigame-hero p {
   margin: 0;
-  color: #6c4a12;
+  color: var(--feature-hero-muted);
   font-size: 0.92rem;
 }
 
@@ -43,8 +43,8 @@
   gap: 9px;
   border: 0;
   border-radius: var(--radius-pill);
-  background: #382507;
-  color: #fff8df;
+  background: var(--feature-hero-action);
+  color: var(--feature-hero-action-text);
   font: inherit;
   font-size: 0.88rem;
   font-weight: 800;
@@ -57,7 +57,7 @@
 }
 
 .sigame-add-button:hover {
-  background: #563a0e;
+  background: var(--feature-hero-action-hover);
   transform: translateY(-1px);
 }
 
@@ -66,7 +66,7 @@
   padding: var(--space-3);
   border: 1px solid var(--color-border-soft);
   border-radius: 18px;
-  background: rgba(255, 253, 243, 0.86);
+  background: var(--color-surface-translucent);
   box-shadow: var(--shadow-small);
   backdrop-filter: blur(10px);
 }
@@ -105,7 +105,7 @@
 .sigame-tabs button.active {
   border-color: var(--color-primary-border);
   background: var(--theme-btn);
-  color: #fff;
+  color: var(--color-on-primary);
 }
 
 .sigame-tabs button span {
@@ -133,14 +133,14 @@
   gap: 8px;
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  background: #fff;
+  background: var(--color-surface-elevated);
   color: var(--color-text-muted);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .sigame-search:focus-within {
   border-color: var(--color-primary-border);
-  box-shadow: 0 0 0 3px rgba(224, 169, 35, 0.15);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
 }
 
 .sigame-search input {
@@ -171,7 +171,7 @@
   border: 1px solid var(--color-border);
   border-radius: 12px;
   outline: 0;
-  background: #fff;
+  background: var(--color-surface-elevated);
   color: var(--color-text);
   font: inherit;
   font-size: 0.82rem;
@@ -180,7 +180,7 @@
 .sigame-sort select:focus,
 .sigame-rating-control select:focus {
   border-color: var(--color-primary-border);
-  box-shadow: 0 0 0 3px rgba(224, 169, 35, 0.15);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
 }
 
 .sigame-tags-filter {
@@ -205,9 +205,9 @@
 
 .sigame-tags-filter button:hover,
 .sigame-tags-filter button.active {
-  border-color: #c8901d;
-  background: #fff1b9;
-  color: #60420d;
+  border-color: var(--feature-accent);
+  background: var(--feature-accent-surface);
+  color: var(--feature-accent-text);
 }
 
 .sigame-tags-filter button span {
@@ -244,17 +244,17 @@
   inset: 0 auto 0 0;
   width: 4px;
   border-radius: 20px 0 0 20px;
-  background: #e9ba3f;
+  background: var(--feature-accent);
   content: "";
 }
 
 .sigame-card.played::before {
-  background: #63a66f;
+  background: var(--feature-played-accent);
 }
 
 .sigame-card:hover {
   border-color: var(--color-border);
-  box-shadow: 0 12px 28px rgba(70, 48, 10, 0.09);
+  box-shadow: var(--shadow-medium);
   transform: translateY(-1px);
 }
 
@@ -279,8 +279,8 @@
   padding: 0 8px;
   border: 0;
   border-radius: var(--radius-pill);
-  background: #fff0bd;
-  color: #745015;
+  background: var(--feature-accent-surface);
+  color: var(--feature-accent-text);
   font: inherit;
   font-size: 0.68rem;
   font-weight: 700;
@@ -288,8 +288,8 @@
 }
 
 .sigame-card.played .sigame-card-tags button {
-  background: #edf5e9;
-  color: #466b42;
+  background: var(--color-success-surface);
+  color: var(--color-success-text);
 }
 
 .sigame-more {
@@ -375,7 +375,7 @@
 }
 
 .sigame-rating-summary strong {
-  color: #3f7c49;
+  color: var(--color-success);
   font-size: 1.18rem;
   line-height: 1;
 }
@@ -470,7 +470,7 @@
 
 .sigame-download-button {
   border: 1px solid var(--color-border);
-  background: #fff;
+  background: var(--color-surface-elevated);
   color: var(--color-text);
 }
 
@@ -479,13 +479,13 @@
 }
 
 .sigame-status-button {
-  border: 1px solid #c6911d;
-  background: #f9d66a;
-  color: #503509;
+  border: 1px solid var(--feature-accent);
+  background: var(--feature-accent-surface);
+  color: var(--feature-accent-text);
 }
 
 .sigame-status-button:hover:not(:disabled) {
-  background: #f3c84b;
+  background: color-mix(in srgb, var(--feature-accent) 78%, var(--color-surface));
 }
 
 .sigame-card button:disabled {
@@ -549,7 +549,7 @@
   align-content: center;
   border: 1px dashed var(--color-border);
   border-radius: 20px;
-  background: rgba(255, 253, 243, 0.58);
+  background: color-mix(in srgb, var(--color-surface) 64%, transparent);
   color: var(--color-text-muted);
   text-align: center;
 }
@@ -590,7 +590,7 @@
   padding: 20px;
   place-items: center;
   overflow-y: auto;
-  background: rgba(42, 30, 10, 0.58);
+  background: var(--color-overlay);
   backdrop-filter: blur(5px);
 }
 
@@ -672,7 +672,7 @@
   border: 1px solid var(--color-border);
   border-radius: 11px;
   outline: 0;
-  background: #fff;
+  background: var(--color-surface-elevated);
   color: var(--color-text);
   font: inherit;
   font-weight: 500;
@@ -680,7 +680,7 @@
 
 .sigame-field input:focus {
   border-color: var(--color-primary-border);
-  box-shadow: 0 0 0 3px rgba(224, 169, 35, 0.15);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
 }
 
 .sigame-dropzone {
@@ -701,8 +701,8 @@
 
 .sigame-dropzone:hover,
 .sigame-dropzone.dragging {
-  border-color: #c8901d;
-  background: #fff6d5;
+  border-color: var(--feature-accent);
+  background: var(--feature-accent-surface);
 }
 
 .sigame-dropzone.invalid {
@@ -719,7 +719,7 @@
 }
 
 .sigame-dropzone-icon {
-  color: #9b6b13;
+  color: var(--feature-accent-text);
   font-size: 1.5rem;
   line-height: 1;
 }
@@ -740,9 +740,9 @@
   padding: 12px;
   align-items: center;
   gap: 11px;
-  border: 1px solid #b9d9b9;
+  border: 1px solid var(--color-success-border);
   border-radius: 13px;
-  background: #f0f8ee;
+  background: var(--color-success-surface);
 }
 
 .sigame-selected-file > span {
@@ -774,7 +774,7 @@
   height: 32px;
   border: 0;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.8);
+  background: color-mix(in srgb, var(--color-surface-elevated) 82%, transparent);
   color: var(--color-text-muted);
   font-size: 1.15rem;
   cursor: pointer;

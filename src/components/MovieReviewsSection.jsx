@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useApp } from '../App';
+import { useApp } from '../app/AppContext';
 import {
   deleteMovieReview,
   fetchMovieReviews,
@@ -8,34 +8,9 @@ import {
   postMovieReview,
   postReviewReaction,
 } from '../api';
-
-const RECOMMEND_OPTIONS = [
-  { value: 1, label: '✅ Рекомендую', cls: 'yes' },
-  { value: 0, label: '😐 Сойдёт', cls: 'meh' },
-  { value: -1, label: '❌ Не рекомендую', cls: 'no' },
-];
-
-function getRecommendInfo(value) {
-  if (value === 1) return { cls: 'yes', label: '✅ Рекомендую' };
-  if (value === -1) return { cls: 'no', label: '❌ Не рекомендую' };
-  return { cls: 'meh', label: '😐 Сойдёт' };
-}
-
-function normalizeTitle(value) {
-  return String(value || '').trim().toLocaleLowerCase('ru');
-}
-
-function formatDate(value) {
-  if (!value) return '';
-  const normalized = value.includes('Z') || value.includes('+') ? value : `${value}Z`;
-  const date = new Date(normalized);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-}
+import MovieReviewCard from '../features/reviews/MovieReviewCard';
+import MovieReviewComposer from '../features/reviews/MovieReviewComposer';
+import { normalizeMovieTitle } from '../features/reviews/reviewUtils';
 
 export default function MovieReviewsSection({
   movie = null,
@@ -151,7 +126,7 @@ export default function MovieReviewsSection({
   }, [socket, movie, reviewBelongsToMovie, loadWatchedMovies, loadReviews]);
 
   const matchingWatchedMovies = useMemo(() => watchedMovies.filter(
-    item => normalizeTitle(item.title) === normalizeTitle(formTitle)
+    item => normalizeMovieTitle(item.title) === normalizeMovieTitle(formTitle)
   ), [watchedMovies, formTitle]);
 
   const selectedMovie = useMemo(() => {
@@ -239,10 +214,6 @@ export default function MovieReviewsSection({
     } catch {
       showToast('Ошибка соединения', 'error');
     }
-  };
-
-  const editField = field => event => {
-    setEditFields(previous => ({ ...previous, [field]: event.target.value }));
   };
 
   const editMovieLink = event => {
@@ -343,168 +314,34 @@ export default function MovieReviewsSection({
       </div>
 
       {!isGuest && currentUser && (!movie || (reviewsState === 'ready' && !existingOwnReview)) && (
-        <form className="review-form" onSubmit={handleSubmit}>
-          {movie ? (
-            <div className="review-form-movie-lock">
-              <span aria-hidden="true">🎬</span>
-              <div>
-                <small>Рецензия на фильм</small>
-                <strong>{movie.title}</strong>
-              </div>
-            </div>
-          ) : (
-            <div className="review-form-field">
-              <label className="review-field-label" htmlFor="movie-review-title">
-                Название фильма *
-              </label>
-              <input
-                id="movie-review-title"
-                className="review-form-input"
-                type="text"
-                list="watched-movie-review-options"
-                value={formTitle}
-                onChange={event => {
-                  setFormTitle(event.target.value);
-                  setFormMovieId('');
-                }}
-                placeholder="Выберите из просмотренных или введите другое"
-                maxLength={200}
-                required
-              />
-              <datalist id="watched-movie-review-options">
-                {watchedMovies.map(item => (
-                  <option key={item.id} value={item.title} />
-                ))}
-              </datalist>
-              {matchingWatchedMovies.length <= 1 && (
-                <label className="review-link-choice">
-                  <input
-                    type="checkbox"
-                    checked={linkToWatched}
-                    onChange={event => setLinkToWatched(event.target.checked)}
-                  />
-                  <span>
-                    {matchingWatchedMovies.length === 1
-                      ? 'Связать с найденным фильмом в «Просмотренных»'
-                      : 'Связать автоматически при точном совпадении'}
-                  </span>
-                </label>
-              )}
-              {watchedState === 'loading' ? (
-                <small className="review-field-hint">Загружаем подсказки из просмотренного…</small>
-              ) : watchedState === 'error' ? (
-                <small className="review-field-hint is-error">
-                  Подсказки не загрузились.
-                  <button type="button" onClick={loadWatchedMovies}>Повторить</button>
-                </small>
-              ) : matchingWatchedMovies.length > 1 ? (
-                <label className="review-form-field review-match-choice">
-                  <span>В истории несколько фильмов с таким названием</span>
-                  <select
-                    className="review-form-input"
-                    value={formMovieId}
-                    onChange={event => setFormMovieId(event.target.value)}
-                  >
-                    <option value="">Оставить рецензию без связи</option>
-                    {matchingWatchedMovies.map(item => (
-                      <option key={item.id} value={item.id}>
-                        {item.title} · {formatDate(item.watched_at || item.added_at)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : matchingWatchedMovies.length === 0 ? (
-                <small className="review-field-hint">
-                  Можно написать рецензию и на фильм не из общей истории.
-                </small>
-              ) : null}
-              {existingOwnReview && (
-                <div className="review-existing-note" role="status">
-                  <strong>Вы уже написали обзор на этот фильм.</strong>
-                  <button
-                    ref={existingReviewActionRef}
-                    className="button-ghost"
-                    type="button"
-                    onClick={() => startEdit(existingOwnReview)}
-                  >
-                    Изменить мой обзор
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          <label className="review-form-field">
-            <span>Текст рецензии *</span>
-            <textarea
-              ref={composerRef}
-              className="review-form-textarea"
-              placeholder="Что запомнилось, что сработало, а что — нет?"
-              value={formContent}
-              onChange={event => setFormContent(event.target.value)}
-              maxLength={5000}
-              rows={5}
-              required
-            />
-          </label>
-
-          <details className="review-extra-fields">
-            <summary>Добавить режиссёра и год</summary>
-            <div className="wine-fields-row">
-              <label className="review-form-field wine-field">
-                <span>Режиссёр</span>
-                <input
-                  className="review-form-input"
-                  type="text"
-                  value={director}
-                  onChange={event => setDirector(event.target.value)}
-                  maxLength={100}
-                />
-              </label>
-              <label className="review-form-field wine-field wine-field-short">
-                <span>Год</span>
-                <input
-                  className="review-form-input"
-                  type="number"
-                  value={year}
-                  onChange={event => setYear(event.target.value)}
-                  min={1888}
-                  max={2100}
-                />
-              </label>
-            </div>
-          </details>
-
-          <div className="review-form-footer">
-            <div className="recommend-toggle-group" aria-label="Рекомендация">
-              {RECOMMEND_OPTIONS.map(option => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={`review-recommend-toggle ${option.cls}${recommend === option.value ? ' active' : ''}`}
-                  onClick={() => setRecommend(option.value)}
-                  aria-pressed={recommend === option.value}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-            <button
-              type="submit"
-              className="review-submit-btn"
-              disabled={
-                submitting
-                || Boolean(existingOwnReview)
-                || !(movie?.title || formTitle.trim())
-                || !formContent.trim()
-                || !connected
-              }
-            >
-              {submitting ? 'Публикуем…' : 'Опубликовать'}
-            </button>
-          </div>
-          {!connected && <p className="review-form-status">Публикация недоступна, пока нет соединения.</p>}
-        </form>
+        <MovieReviewComposer
+          composerRef={composerRef}
+          connected={connected}
+          director={director}
+          existingOwnReview={existingOwnReview}
+          existingReviewActionRef={existingReviewActionRef}
+          formContent={formContent}
+          formMovieId={formMovieId}
+          formTitle={formTitle}
+          linkToWatched={linkToWatched}
+          loadWatchedMovies={loadWatchedMovies}
+          matchingWatchedMovies={matchingWatchedMovies}
+          movie={movie}
+          recommend={recommend}
+          setDirector={setDirector}
+          setFormContent={setFormContent}
+          setFormMovieId={setFormMovieId}
+          setFormTitle={setFormTitle}
+          setLinkToWatched={setLinkToWatched}
+          setRecommend={setRecommend}
+          setYear={setYear}
+          submitting={submitting}
+          watchedMovies={watchedMovies}
+          watchedState={watchedState}
+          year={year}
+          onStartEdit={startEdit}
+          onSubmit={handleSubmit}
+        />
       )}
 
       {!isGuest && currentUser && movie && reviewsState === 'ready' && existingOwnReview && (
@@ -545,165 +382,25 @@ export default function MovieReviewsSection({
       ) : (
         <div className="reviews-list">
           {reviews.map(review => (
-            <article key={review.id} className="review-card">
-              {editingId === review.id ? (
-                <div ref={editFormRef} className="review-edit-form">
-                  {review.movie_id ? (
-                    <div className="review-form-movie-lock compact">
-                      <span aria-hidden="true">🎬</span>
-                      <strong>{review.title}</strong>
-                    </div>
-                  ) : (
-                    <>
-                      <label className="review-form-field">
-                        <span>Название фильма</span>
-                        <input
-                          className="review-form-input"
-                          value={editFields.title}
-                          onChange={editField('title')}
-                          maxLength={200}
-                        />
-                      </label>
-                      {!movie && watchedMovies.length > 0 && (
-                        <label className="review-form-field">
-                          <span>Связать со строкой в «Просмотренных»</span>
-                          <select
-                            className="review-form-input"
-                            value={editFields.movieId || ''}
-                            onChange={editMovieLink}
-                          >
-                            <option value="">Оставить без связи</option>
-                            {watchedMovies.map(item => (
-                              <option key={item.id} value={item.id}>{item.title}</option>
-                            ))}
-                          </select>
-                        </label>
-                      )}
-                    </>
-                  )}
-                  <label className="review-form-field">
-                    <span>Текст рецензии</span>
-                    <textarea
-                      className="review-form-textarea"
-                      value={editFields.content}
-                      onChange={editField('content')}
-                      maxLength={5000}
-                      rows={4}
-                    />
-                  </label>
-                  <div className="wine-fields-row">
-                    <input
-                      className="review-form-input wine-field"
-                      value={editFields.director}
-                      onChange={editField('director')}
-                      maxLength={100}
-                      placeholder="Режиссёр"
-                      aria-label="Режиссёр"
-                    />
-                    <input
-                      className="review-form-input wine-field wine-field-short"
-                      type="number"
-                      value={editFields.year}
-                      onChange={editField('year')}
-                      min={1888}
-                      max={2100}
-                      placeholder="Год"
-                      aria-label="Год"
-                    />
-                  </div>
-                  <div className="review-form-footer">
-                    <div className="recommend-toggle-group" aria-label="Рекомендация">
-                      {RECOMMEND_OPTIONS.map(option => (
-                        <button
-                          key={option.value}
-                          type="button"
-                          className={`review-recommend-toggle ${option.cls}${editFields.recommend === option.value ? ' active' : ''}`}
-                          onClick={() => setEditFields(previous => ({ ...previous, recommend: option.value }))}
-                          aria-pressed={editFields.recommend === option.value}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                    <button type="button" className="review-edit-cancel" onClick={cancelEdit}>Отмена</button>
-                    <button
-                      type="button"
-                      className="review-submit-btn"
-                      onClick={() => handleEditSave(review.id)}
-                      disabled={!editFields.title?.trim() || !editFields.content?.trim()}
-                    >
-                      Сохранить
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <header className="review-card-header">
-                    {!movie && <span className="review-card-title">{review.title}</span>}
-                    <span className={`review-badge ${getRecommendInfo(review.recommend).cls}`}>
-                      {getRecommendInfo(review.recommend).label}
-                    </span>
-                    {!isGuest && (currentUser?.id === review.user_id || isAdmin) && (
-                      <div className="review-card-actions">
-                        <button
-                          className="review-edit-btn"
-                          type="button"
-                          onClick={() => startEdit(review)}
-                          aria-label={`Редактировать рецензию на ${review.title}`}
-                          title="Редактировать"
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          className="review-delete-btn"
-                          type="button"
-                          onClick={() => handleDelete(review.id)}
-                          aria-label={`Удалить рецензию на ${review.title}`}
-                          title="Удалить"
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    )}
-                  </header>
-                  {(review.director || review.year) && (
-                    <div className="wine-card-details">
-                      {review.director && <span>🎥 {review.director}</span>}
-                      {review.year && <span>📅 {review.year}</span>}
-                    </div>
-                  )}
-                  <div className="review-card-meta">
-                    <span className="review-author">{review.user_name}</span>
-                    <span className="review-date">{formatDate(review.created_at)}</span>
-                  </div>
-                  <p className="review-content">{review.content}</p>
-                  {!isGuest && currentUser && (
-                    <div className="review-reactions">
-                      <button
-                        className={`reaction-btn like ${(review.reactions || []).find(item => item.user_id === currentUser.id)?.reaction === 1 ? 'active' : ''}`}
-                        type="button"
-                        onClick={() => handleReaction(review.id, 1)}
-                        disabled={currentUser.id === review.user_id}
-                        aria-label={`Нравится, ${review.likes || 0}`}
-                        aria-pressed={(review.reactions || []).find(item => item.user_id === currentUser.id)?.reaction === 1}
-                      >
-                        👍 {review.likes || 0}
-                      </button>
-                      <button
-                        className={`reaction-btn dislike ${(review.reactions || []).find(item => item.user_id === currentUser.id)?.reaction === -1 ? 'active' : ''}`}
-                        type="button"
-                        onClick={() => handleReaction(review.id, -1)}
-                        disabled={currentUser.id === review.user_id}
-                        aria-label={`Не нравится, ${review.dislikes || 0}`}
-                        aria-pressed={(review.reactions || []).find(item => item.user_id === currentUser.id)?.reaction === -1}
-                      >
-                        👎 {review.dislikes || 0}
-                      </button>
-                    </div>
-                  )}
-                </>
-              )}
-            </article>
+            <MovieReviewCard
+              key={review.id}
+              currentUser={currentUser}
+              editFields={editFields}
+              editFormRef={editFormRef}
+              editing={editingId === review.id}
+              isAdmin={isAdmin}
+              isGuest={isGuest}
+              movie={movie}
+              review={review}
+              setEditFields={setEditFields}
+              watchedMovies={watchedMovies}
+              onCancelEdit={cancelEdit}
+              onDelete={handleDelete}
+              onEditMovieLink={editMovieLink}
+              onReaction={handleReaction}
+              onSave={handleEditSave}
+              onStartEdit={startEdit}
+            />
           ))}
         </div>
       )}

@@ -23,6 +23,32 @@ const RIND_THEMES = {
     marker: "#ec407a",
     markerStroke: "#d81b60",
   },
+  samurai: {
+    outer: "#181714",
+    mid: "#9e281c",
+    inner: "#34312b",
+    marker: "#d9bd73",
+    markerStroke: "#6f551e",
+  },
+};
+
+const WHEEL_PALETTES = {
+  cheese: {
+    wedges: ["#FFE56A", "#F7D94C", "#F2C94C", "#FFEA7A"],
+    divider: "#C89428",
+    hole: "#DBA428",
+    holeShadow: "#C48E18",
+    holeHighlight: "#E8B840",
+    label: "#5B3D08",
+  },
+  samurai: {
+    wedges: ["#f2ead8", "#e1d4ba", "#eadfc9", "#d7c8aa"],
+    divider: "#675e50",
+    hole: "#8f8170",
+    holeShadow: "#625b50",
+    holeHighlight: "#b7a98e",
+    label: "#1c1b18",
+  },
 };
 
 const CheeseWheel = forwardRef(function CheeseWheel({
@@ -37,6 +63,8 @@ const CheeseWheel = forwardRef(function CheeseWheel({
   const rotRef = useRef(0);
   const spinningRef = useRef(false);
   const hoveredSectorRef = useRef(-1);
+  const animationFrameRef = useRef(null);
+  const completionTimerRef = useRef(null);
 
   const seeded = (s) => { let v = s; return () => { v = (v * 16807) % 2147483647; return (v - 1) / 2147483646; }; };
 
@@ -74,6 +102,7 @@ const CheeseWheel = forwardRef(function CheeseWheel({
     ensureHoles(n);
 
     const rind = RIND_THEMES[theme] || RIND_THEMES.cheese;
+    const palette = WHEEL_PALETTES[theme] || WHEEL_PALETTES.cheese;
     const rindOuter = r + 28;
     const rindMid = r + 16;
     const rindInner = r + 4;
@@ -97,7 +126,7 @@ const CheeseWheel = forwardRef(function CheeseWheel({
     ctx.fill();
 
     /* cheese sectors */
-    const wedgeColors = ["#FFE56A", "#F7D94C", "#F2C94C", "#FFEA7A"];
+    const wedgeColors = palette.wedges;
     movies.forEach((m, i) => {
       const startAngle = rot + i * sliceAngle;
       const endAngle = startAngle + sliceAngle;
@@ -120,7 +149,7 @@ const CheeseWheel = forwardRef(function CheeseWheel({
         ctx.beginPath();
         ctx.moveTo(cx, cy);
         ctx.lineTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
-        ctx.strokeStyle = "#C89428";
+        ctx.strokeStyle = palette.divider;
         ctx.lineWidth = 2.5;
         ctx.stroke();
       });
@@ -135,7 +164,7 @@ const CheeseWheel = forwardRef(function CheeseWheel({
 
       ctx.beginPath();
       ctx.arc(hx, hy, hr, 0, 2 * Math.PI);
-      ctx.fillStyle = "#DBA428";
+      ctx.fillStyle = palette.hole;
       ctx.fill();
 
       /* top shadow crescent */
@@ -145,7 +174,7 @@ const CheeseWheel = forwardRef(function CheeseWheel({
       ctx.clip();
       ctx.beginPath();
       ctx.arc(hx, hy - hr * 0.35, hr * 0.95, 0, 2 * Math.PI);
-      ctx.fillStyle = "#C48E18";
+      ctx.fillStyle = palette.holeShadow;
       ctx.fill();
       ctx.restore();
 
@@ -156,7 +185,7 @@ const CheeseWheel = forwardRef(function CheeseWheel({
       ctx.clip();
       ctx.beginPath();
       ctx.arc(hx, hy + hr * 0.45, hr * 0.85, 0, 2 * Math.PI);
-      ctx.fillStyle = "#E8B840";
+      ctx.fillStyle = palette.holeHighlight;
       ctx.fill();
       ctx.restore();
     });
@@ -210,7 +239,7 @@ const CheeseWheel = forwardRef(function CheeseWheel({
       ctx.strokeStyle = wedgeColors[i % wedgeColors.length];
       ctx.lineWidth = 4;
       ctx.strokeText(label, 0, 0, sectorWidth);
-      ctx.fillStyle = "#5B3D08";
+      ctx.fillStyle = palette.label;
       ctx.fillText(label, 0, 0, sectorWidth);
       ctx.restore();
     });
@@ -222,6 +251,18 @@ const CheeseWheel = forwardRef(function CheeseWheel({
     const ctx = canvas.getContext("2d");
     draw(ctx, canvas.width, canvas.height, rotRef.current);
   }, [movies, draw]);
+
+  useEffect(() => () => {
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    if (completionTimerRef.current !== null) {
+      window.clearTimeout(completionTimerRef.current);
+      completionTimerRef.current = null;
+    }
+    spinningRef.current = false;
+  }, []);
 
   useImperativeHandle(ref, () => ({
     spin: (winnerIndex, duration, randomOffset, turns) => {
@@ -285,8 +326,9 @@ const CheeseWheel = forwardRef(function CheeseWheel({
       }
 
       if (progress < 1) {
-        requestAnimationFrame(animate);
+        animationFrameRef.current = requestAnimationFrame(animate);
       } else {
+        animationFrameRef.current = null;
         const finalRot = currentRot % (2 * Math.PI);
         rotRef.current = finalRot;
 
@@ -295,11 +337,14 @@ const CheeseWheel = forwardRef(function CheeseWheel({
 
         playWinSound();
         if (onSpinComplete) {
-          setTimeout(() => onSpinComplete(movies[winnerIndex]), reducedMotion ? 80 : 400);
+          completionTimerRef.current = window.setTimeout(() => {
+            completionTimerRef.current = null;
+            onSpinComplete(movies[winnerIndex]);
+          }, reducedMotion ? 80 : 400);
         }
       }
     };
-    requestAnimationFrame(animate);
+    animationFrameRef.current = requestAnimationFrame(animate);
   }, [movies, draw, onSpinComplete, respectReducedMotion]);
 
   const updateHoveredSector = (event) => {

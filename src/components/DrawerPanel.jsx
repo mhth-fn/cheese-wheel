@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useApp } from '../App';
-import { postSpinDuration, uploadCenterImage, deleteCenterImage } from '../api';
+import { useState } from 'react';
+import { useApp } from '../app/AppContext';
+import DrawerNextTab from '../features/wheel/DrawerNextTab';
+import DrawerParticipantsTab, {
+  countReadyParticipants,
+} from '../features/wheel/DrawerParticipantsTab';
+import DrawerSettingsTab from '../features/wheel/DrawerSettingsTab';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 
 const TABS = [
@@ -8,97 +12,6 @@ const TABS = [
   { key: 'next', icon: '⏭', label: 'Следующие' },
   { key: 'settings', icon: '⚙️', label: 'Настройки' },
 ];
-
-const EMPTY_MOVIE_DRAFT = {
-  title: '',
-  alternative_title: '',
-  director: '',
-  year: '',
-};
-
-function movieToDraft(movie = {}) {
-  return {
-    title: movie.title || '',
-    alternative_title: movie.alternative_title || '',
-    director: movie.director || '',
-    year: movie.year == null ? '' : String(movie.year),
-  };
-}
-
-function movieDraftPayload(draft) {
-  return {
-    title: draft.title.trim(),
-    alternative_title: draft.alternative_title.trim() || null,
-    director: draft.director.trim() || null,
-    year: draft.year === '' ? null : Number(draft.year),
-  };
-}
-
-function movieMetaText(movie) {
-  return [
-    movie.alternative_title,
-    movie.year,
-    movie.director,
-  ].filter(Boolean).join(' · ');
-}
-
-function MovieFields({ value, onChange, idPrefix, autoFocus = false }) {
-  const setField = field => event => onChange({
-    ...value,
-    [field]: event.target.value,
-  });
-
-  return (
-    <div className="wm-movie-fields">
-      <label className="sr-only" htmlFor={`${idPrefix}-title`}>Название фильма</label>
-      <input
-        id={`${idPrefix}-title`}
-        className="wm-input"
-        type="text"
-        placeholder="Название на русском…"
-        value={value.title}
-        maxLength={200}
-        onChange={setField('title')}
-        autoFocus={autoFocus}
-        required
-      />
-      <label className="sr-only" htmlFor={`${idPrefix}-alternative`}>Альтернативное название</label>
-      <input
-        id={`${idPrefix}-alternative`}
-        className="wm-input"
-        type="text"
-        placeholder="Альтернативное название…"
-        value={value.alternative_title}
-        maxLength={200}
-        onChange={setField('alternative_title')}
-      />
-      <div className="wm-movie-meta-fields">
-        <label className="sr-only" htmlFor={`${idPrefix}-director`}>Режиссёр</label>
-        <input
-          id={`${idPrefix}-director`}
-          className="wm-input"
-          type="text"
-          placeholder="Режиссёр…"
-          value={value.director}
-          maxLength={200}
-          onChange={setField('director')}
-        />
-        <label className="sr-only" htmlFor={`${idPrefix}-year`}>Год</label>
-        <input
-          id={`${idPrefix}-year`}
-          className="wm-input wm-year-input"
-          type="number"
-          min="1888"
-          max="2100"
-          inputMode="numeric"
-          placeholder="Год"
-          value={value.year}
-          onChange={setField('year')}
-        />
-      </div>
-    </div>
-  );
-}
 
 export default function DrawerPanel({
   movies,
@@ -118,189 +31,15 @@ export default function DrawerPanel({
     currentUser,
     isGuest,
     isAdmin,
-    spinDuration,
-    setSpinDuration,
     addEnabled,
-    centerImage,
-    setCenterImage,
-    showToast,
     connected,
     wheelIsSpinning,
     wheelStatus,
   } = useApp();
-  const [currentDraft, setCurrentDraft] = useState(EMPTY_MOVIE_DRAFT);
-  const [nextDraft, setNextDraft] = useState(EMPTY_MOVIE_DRAFT);
   const [activeTab, setActiveTab] = useState('participants');
-  const [deletingId, setDeletingId] = useState(null);
-  const [editingId, setEditingId] = useState(null);
-  const [editDraft, setEditDraft] = useState(EMPTY_MOVIE_DRAFT);
-  const [forming, setForming] = useState(false);
-  const [formingNext, setFormingNext] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [confirmImageDelete, setConfirmImageDelete] = useState(false);
-  const [durationDraft, setDurationDraft] = useState(String(spinDuration));
-  const [durationSaving, setDurationSaving] = useState(false);
-  const fileRef = useRef(null);
-  const durationSavingRef = useRef(false);
   const dialogRef = useDialogA11y(open, onClose);
   const tabs = isAdmin ? TABS : TABS.filter(tab => tab.key !== 'settings');
-
-  const displayedCurrentMovies = wheelStatus.formed
-    ? (wheelStatus.round_movies || wheelStatus.movies)
-    : movies;
-  const primaryMovies = new Map();
-  displayedCurrentMovies.forEach(movie => {
-    if (movie.added_by && !primaryMovies.has(movie.added_by)) {
-      primaryMovies.set(movie.added_by, movie);
-    }
-  });
-  const readyUsers = users.filter(user => primaryMovies.has(user.id));
-  const currentUserMovie = primaryMovies.get(currentUser?.id);
-  const currentUserNextMovie = nextMovies.find(movie => movie.added_by === currentUser?.id);
-  const extraMovies = displayedCurrentMovies.filter(movie => primaryMovies.get(movie.added_by)?.id !== movie.id);
-  const canManageMovie = movie => (
-    !isGuest
-    && Boolean(movie)
-    && (movie.added_by === currentUser?.id || isAdmin)
-  );
-  const canManageCurrentMovie = movie => (
-    !movie?.is_watched
-    && canManageMovie(movie)
-    && (!wheelStatus.formed || isAdmin)
-  );
-  const parsedDurationDraft = Number.parseInt(durationDraft, 10);
-  const durationValue = Number.isInteger(parsedDurationDraft)
-    ? Math.max(5, Math.min(30, parsedDurationDraft))
-    : spinDuration;
-  const durationProgress = ((durationValue - 5) / 25) * 100;
-
-  useEffect(() => {
-    setDurationDraft(String(spinDuration));
-  }, [spinDuration]);
-
-  const handleCurrentAdd = async event => {
-    event.preventDefault();
-    const movie = movieDraftPayload(currentDraft);
-    if (!movie.title || wheelIsSpinning) return;
-    const success = await onAdd(movie);
-    if (success) setCurrentDraft(EMPTY_MOVIE_DRAFT);
-  };
-
-  const handleNextAdd = async event => {
-    event.preventDefault();
-    const movie = movieDraftPayload(nextDraft);
-    if (!movie.title || wheelIsSpinning) return;
-    const success = await onAddNext(movie);
-    if (success) setNextDraft(EMPTY_MOVIE_DRAFT);
-  };
-
-  const handleDelete = async (id, next = false) => {
-    if (wheelIsSpinning) return;
-    setDeletingId(id);
-    await (next ? onRemoveNext(id) : onRemove(id));
-    setDeletingId(null);
-  };
-
-  const startEditing = movie => {
-    setEditingId(movie.id);
-    setEditDraft(movieToDraft(movie));
-  };
-
-  const cancelEditing = () => {
-    setEditingId(null);
-    setEditDraft(EMPTY_MOVIE_DRAFT);
-  };
-
-  const saveEditing = async event => {
-    event?.preventDefault();
-    const movie = movieDraftPayload(editDraft);
-    if (!movie.title) return;
-    const success = await onUpdate(editingId, movie);
-    if (success) cancelEditing();
-  };
-
-  const handleForm = async () => {
-    setForming(true);
-    await onForm();
-    setForming(false);
-  };
-
-  const handleFormNext = async () => {
-    setFormingNext(true);
-    await onFormNext();
-    setFormingNext(false);
-  };
-
-  const setDuration = async value => {
-    const parsedValue = Number(value);
-    if (!Number.isFinite(parsedValue) || durationSavingRef.current) {
-      setDurationDraft(String(spinDuration));
-      return;
-    }
-    const nextValue = Math.round(Math.max(5, Math.min(30, parsedValue)));
-    const previous = spinDuration;
-    setDurationDraft(String(nextValue));
-    if (nextValue === previous) return;
-    durationSavingRef.current = true;
-    setDurationSaving(true);
-    setSpinDuration(nextValue);
-    try {
-      const response = await postSpinDuration(nextValue);
-      if (!response.ok) throw new Error();
-      showToast(`Время прокрутки: ${nextValue} сек`, 'success');
-    } catch {
-      setSpinDuration(previous);
-      setDurationDraft(String(previous));
-      showToast('Не удалось изменить время', 'error');
-    } finally {
-      durationSavingRef.current = false;
-      setDurationSaving(false);
-    }
-  };
-
-  const handleUpload = async event => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
-      showToast('Выберите PNG, JPG, GIF или WebP', 'error');
-      event.target.value = '';
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      showToast('Файл больше 5 МБ', 'error');
-      event.target.value = '';
-      return;
-    }
-
-    setUploading(true);
-    try {
-      const response = await uploadCenterImage(file);
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Ошибка загрузки');
-      setCenterImage(data.url);
-      showToast('Центр колеса обновлён', 'success');
-    } catch (error) {
-      showToast(error.message || 'Ошибка загрузки', 'error');
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = '';
-    }
-  };
-
-  const handleImageDelete = useCallback(async () => {
-    setUploading(true);
-    try {
-      const response = await deleteCenterImage();
-      if (!response.ok) throw new Error();
-      setCenterImage(null);
-      setConfirmImageDelete(false);
-      showToast('Изображение удалено', 'info');
-    } catch {
-      showToast('Ошибка удаления изображения', 'error');
-    } finally {
-      setUploading(false);
-    }
-  }, [setCenterImage, showToast]);
+  const readyCount = countReadyParticipants(users, movies, wheelStatus);
 
   if (!open) return null;
 
@@ -327,7 +66,7 @@ export default function DrawerPanel({
         <div className="wm-tabs" role="tablist" aria-label="Разделы настроек">
           {tabs.map(tab => {
             const count = tab.key === 'participants'
-              ? `${readyUsers.length}/${users.length}`
+              ? `${readyCount}/${users.length}`
               : tab.key === 'next'
                 ? nextMovies.length
                 : null;
@@ -349,371 +88,40 @@ export default function DrawerPanel({
         </div>
 
         {activeTab === 'participants' && (
-          <div className="wm-panel" role="tabpanel">
-            {wheelIsSpinning && (
-              <div className="wm-notice" role="status">Состав заблокирован до остановки колеса.</div>
-            )}
-
-            {!wheelStatus.formed && isAdmin && (
-              <section className="wm-formation">
-                <p>Проверьте выборы участников и сформируйте колесо для этого раунда.</p>
-                <button
-                  className="button-primary wm-form-wheel"
-                  type="button"
-                  onClick={handleForm}
-                  disabled={isGuest || !connected || movies.length === 0 || wheelIsSpinning || forming}
-                >
-                  {forming ? 'Формируем…' : 'Сформировать колесо'}
-                </button>
-              </section>
-            )}
-            {!wheelStatus.formed && !isAdmin && (
-              <div className="wm-notice" role="status">
-                Когда все выберут фильмы, администратор сформирует колесо.
-              </div>
-            )}
-
-            {!wheelStatus.formed && !isGuest && addEnabled && !currentUserMovie && (
-              <form className="wm-add-row wm-movie-entry" onSubmit={handleCurrentAdd}>
-                <MovieFields
-                  value={currentDraft}
-                  onChange={setCurrentDraft}
-                  idPrefix="movie-input-participants"
-                />
-                <button className="wm-add-btn button-primary" type="submit" disabled={!currentDraft.title.trim() || wheelIsSpinning || !connected}>
-                  Добавить
-                </button>
-              </form>
-            )}
-
-            {!wheelStatus.formed && !isGuest && !addEnabled && (
-              <div className="wm-notice">Добавление фильмов сейчас отключено.</div>
-            )}
-
-            <div className="wm-participants">
-              {users.map(user => {
-                const movie = primaryMovies.get(user.id);
-                const watched = Boolean(movie?.is_watched);
-                const unselected = wheelStatus.formed && !movie;
-                const manageable = canManageCurrentMovie(movie);
-                const editing = manageable && editingId === movie.id;
-                const participantState = watched
-                  ? 'is-watched'
-                  : movie
-                    ? 'is-ready'
-                    : unselected
-                      ? 'is-unselected'
-                      : 'is-waiting';
-                return (
-                  <article key={user.id} className={`wm-participant ${participantState}${editing ? ' is-editing' : ''}${manageable ? ' has-actions' : ''}`}>
-                    <span className="wm-avatar" aria-hidden="true">{user.name.slice(0, 1)}</span>
-                    <div className="wm-participant-copy">
-                      <strong>{user.name}{currentUser?.id === user.id ? ' · вы' : ''}</strong>
-                      {editing ? (
-                        <form className="wm-inline-edit" onSubmit={saveEditing}>
-                          <MovieFields
-                            value={editDraft}
-                            onChange={setEditDraft}
-                            idPrefix={`edit-current-${movie.id}`}
-                            autoFocus
-                          />
-                          <div className="wm-inline-edit-actions">
-                            <button className="button-primary" type="submit" disabled={!editDraft.title.trim()}>Сохранить</button>
-                            <button className="button-ghost" type="button" onClick={cancelEditing}>Отмена</button>
-                          </div>
-                        </form>
-                      ) : (
-                        <>
-                          <span title={movie?.title}>
-                            {movie?.title || (unselected ? 'Не участвовал в этом колесе' : 'Ещё не добавил фильм')}
-                          </span>
-                          {movie && movieMetaText(movie) && (
-                            <small className="wm-movie-meta">{movieMetaText(movie)}</small>
-                          )}
-                        </>
-                      )}
-                    </div>
-                    <span
-                      className="wm-participant-status"
-                      aria-label={watched ? 'Просмотрено' : movie ? 'В колесе' : unselected ? 'Не выбран' : 'Ожидаем фильм'}
-                    >
-                      {watched ? 'Просмотрено' : movie ? 'В колесе' : unselected ? 'Не выбран' : 'Ожидаем'}
-                    </span>
-                    {movie && !editing && manageable && (
-                      <div className="wm-participant-actions">
-                        <button
-                          className="icon-button"
-                          type="button"
-                          onClick={() => startEditing(movie)}
-                          disabled={wheelIsSpinning}
-                          aria-label={`Изменить фильм ${movie.title}`}
-                          title="Изменить фильм"
-                        >
-                          ✎
-                        </button>
-                        <button
-                          className="icon-button danger"
-                          type="button"
-                          onClick={() => handleDelete(movie.id)}
-                          disabled={wheelIsSpinning || deletingId === movie.id}
-                          aria-label={`Удалить фильм ${movie.title}`}
-                          title="Удалить фильм"
-                        >
-                          {deletingId === movie.id ? '…' : '🗑'}
-                        </button>
-                      </div>
-                    )}
-                  </article>
-                );
-              })}
-
-              {extraMovies.map(movie => {
-                const manageable = canManageCurrentMovie(movie);
-                const editing = manageable && editingId === movie.id;
-                return (
-                <article key={movie.id} className={`wm-participant is-ready${editing ? ' is-editing' : ''}${manageable ? ' has-actions' : ''}`}>
-                  <span className="wm-avatar" aria-hidden="true">?</span>
-                  <div className="wm-participant-copy">
-                    <strong>{movie.added_by_name || 'Дополнительный фильм'}</strong>
-                    {editing ? (
-                      <form className="wm-inline-edit" onSubmit={saveEditing}>
-                        <MovieFields
-                          value={editDraft}
-                          onChange={setEditDraft}
-                          idPrefix={`edit-extra-${movie.id}`}
-                          autoFocus
-                        />
-                        <div className="wm-inline-edit-actions">
-                          <button className="button-primary" type="submit" disabled={!editDraft.title.trim()}>Сохранить</button>
-                          <button className="button-ghost" type="button" onClick={cancelEditing}>Отмена</button>
-                        </div>
-                      </form>
-                    ) : (
-                      <>
-                        <span>{movie.title}</span>
-                        {movieMetaText(movie) && <small className="wm-movie-meta">{movieMetaText(movie)}</small>}
-                      </>
-                    )}
-                  </div>
-                  <span className="wm-participant-status">Готово</span>
-                  {!editing && manageable && (
-                    <div className="wm-participant-actions">
-                      <button className="icon-button" type="button" onClick={() => startEditing(movie)} aria-label={`Изменить фильм ${movie.title}`}>✎</button>
-                      <button className="icon-button danger" type="button" onClick={() => handleDelete(movie.id)} aria-label={`Удалить фильм ${movie.title}`}>🗑</button>
-                    </div>
-                  )}
-                </article>
-                );
-              })}
-            </div>
-          </div>
+          <DrawerParticipantsTab
+            movies={movies}
+            users={users}
+            currentUser={currentUser}
+            isGuest={isGuest}
+            isAdmin={isAdmin}
+            addEnabled={addEnabled}
+            connected={connected}
+            wheelIsSpinning={wheelIsSpinning}
+            wheelStatus={wheelStatus}
+            onAdd={onAdd}
+            onRemove={onRemove}
+            onUpdate={onUpdate}
+            onForm={onForm}
+          />
         )}
 
         {activeTab === 'next' && (
-          <div className="wm-panel" role="tabpanel">
-            {!isGuest && (
-              <>
-                <form className="wm-add-row wm-movie-entry" onSubmit={handleNextAdd}>
-                  <MovieFields
-                    value={nextDraft}
-                    onChange={setNextDraft}
-                    idPrefix="movie-input-next"
-                  />
-                  <button className="wm-add-btn button-primary" type="submit" disabled={!nextDraft.title.trim() || wheelIsSpinning || !connected}>
-                    {currentUserNextMovie ? 'Заменить' : 'Добавить'}
-                  </button>
-                </form>
-                {currentUserNextMovie && (
-                  <p className="wm-own-choice-note">
-                    Сейчас ваш выбор — «{currentUserNextMovie.title}». Новое название заменит его.
-                  </p>
-                )}
-              </>
-            )}
-            <p className="wm-hint">Здесь каждый участник выбирает один фильм для следующего раунда.</p>
-
-            {wheelStatus.formed && isAdmin && (
-              <section className="wm-next-cycle">
-                <p>Когда список будет готов, замените им текущее колесо.</p>
-                <button
-                  className="button-primary"
-                  type="button"
-                  onClick={handleFormNext}
-                  disabled={!connected || nextMovies.length === 0 || wheelIsSpinning || formingNext}
-                >
-                  {formingNext ? 'Формируем…' : 'Сформировать следующее колесо'}
-                </button>
-              </section>
-            )}
-
-            <div className="wm-list">
-              {nextMovies.length === 0 ? (
-                <div className="empty-state">
-                  <div className="empty-state-icon" aria-hidden="true">🧀</div>
-                  <div className="empty-state-title">Следующий список ещё не собран</div>
-                </div>
-              ) : nextMovies.map(movie => {
-                const editing = editingId === movie.id;
-                const manageable = canManageMovie(movie);
-                const isOwn = movie.added_by === currentUser?.id;
-                return (
-                  <article key={movie.id} className={`wm-item ${deletingId === movie.id ? 'is-deleting' : ''}${editing ? ' is-editing' : ''}${manageable ? ' has-actions' : ''}`}>
-                    <span className="wm-avatar" aria-hidden="true">{movie.added_by_name?.slice(0, 1) || '?'}</span>
-                    <div className="wm-item-copy">
-                      {editing ? (
-                        <form className="wm-inline-edit" onSubmit={saveEditing}>
-                          <MovieFields
-                            value={editDraft}
-                            onChange={setEditDraft}
-                            idPrefix={`edit-next-${movie.id}`}
-                            autoFocus
-                          />
-                          <div className="wm-inline-edit-actions">
-                            <button className="button-primary" type="submit" disabled={!editDraft.title.trim()}>Сохранить</button>
-                            <button className="button-ghost" type="button" onClick={cancelEditing}>Отмена</button>
-                          </div>
-                        </form>
-                      ) : (
-                        <strong title={movie.title}>{movie.title}</strong>
-                      )}
-                      <span>
-                        {movieMetaText(movie) ? `${movieMetaText(movie)} · ` : ''}
-                        Выбор на следующий раунд · {movie.added_by_name || 'Автор не указан'}{isOwn ? ' · вы' : ''}
-                      </span>
-                    </div>
-                    <span className="wm-item-status">Следующий раунд</span>
-                    {manageable && !editing && (
-                      <div className="wm-item-actions">
-                        <button
-                          className="icon-button"
-                          type="button"
-                          onClick={() => startEditing(movie)}
-                          disabled={wheelIsSpinning}
-                          aria-label={`Изменить фильм ${movie.title}`}
-                          title="Изменить фильм"
-                        >
-                          ✎
-                        </button>
-                        <button
-                          className="icon-button danger"
-                          type="button"
-                          onClick={() => handleDelete(movie.id, true)}
-                          disabled={wheelIsSpinning || deletingId === movie.id}
-                          aria-label={`Удалить фильм ${movie.title}`}
-                          title="Удалить фильм"
-                        >
-                          {deletingId === movie.id ? '…' : '🗑'}
-                        </button>
-                      </div>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
-          </div>
+          <DrawerNextTab
+            movies={nextMovies}
+            currentUser={currentUser}
+            isGuest={isGuest}
+            isAdmin={isAdmin}
+            connected={connected}
+            wheelIsSpinning={wheelIsSpinning}
+            wheelStatus={wheelStatus}
+            onAdd={onAddNext}
+            onRemove={onRemoveNext}
+            onUpdate={onUpdate}
+            onForm={onFormNext}
+          />
         )}
 
-        {activeTab === 'settings' && isAdmin && (
-          <div className="wm-settings" role="tabpanel">
-            <section className="wm-settings-block">
-              <div className="wm-settings-heading">
-                <div>
-                  <h3>Время вращения</h3>
-                  <p>Сколько секунд колесо будет выбирать фильм.</p>
-                </div>
-                <strong>{durationValue} сек</strong>
-              </div>
-              <div className="wm-duration-control">
-                <input
-                  className="wm-duration-slider"
-                  type="range"
-                  min="5"
-                  max="30"
-                  step="1"
-                  value={durationValue}
-                  style={{ '--duration-progress': `${durationProgress}%` }}
-                  onChange={event => setDurationDraft(event.target.value)}
-                  onPointerUp={event => setDuration(event.currentTarget.value)}
-                  onKeyUp={event => {
-                    if (['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) {
-                      setDuration(event.currentTarget.value);
-                    }
-                  }}
-                  onBlur={event => setDuration(event.currentTarget.value)}
-                  disabled={isGuest || wheelIsSpinning || durationSaving}
-                  aria-label="Время вращения от 5 до 30 секунд"
-                />
-                <label className="wm-duration-number">
-                  <span className="sr-only">Точное время вращения</span>
-                  <input
-                    type="number"
-                    min="5"
-                    max="30"
-                    step="1"
-                    inputMode="numeric"
-                    value={durationDraft}
-                    onChange={event => setDurationDraft(event.target.value)}
-                    onBlur={event => setDuration(event.currentTarget.value)}
-                    onKeyDown={event => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault();
-                        event.currentTarget.blur();
-                      } else if (event.key === 'Escape') {
-                        setDurationDraft(String(spinDuration));
-                        event.currentTarget.blur();
-                      }
-                    }}
-                    disabled={isGuest || wheelIsSpinning || durationSaving}
-                  />
-                  <span>сек</span>
-                </label>
-              </div>
-              <div className="wm-duration-scale" aria-hidden="true"><span>5</span><span>30</span></div>
-              <p className="wm-duration-saving" role="status" aria-live="polite">
-                {durationSaving ? 'Сохраняем…' : 'Выберите любое целое значение.'}
-              </p>
-            </section>
-
-            <section className="wm-settings-block">
-              <div className="wm-settings-heading">
-                <div>
-                  <h3>Центр колеса</h3>
-                  <p>Квадратное изображение обрежется по кругу.</p>
-                </div>
-              </div>
-              <div className="wm-center-row">
-                <div className="wm-center-preview">
-                  {centerImage ? <img src={centerImage} alt="Текущий центр колеса" /> : <span aria-hidden="true">🧀</span>}
-                </div>
-                <div className="wm-center-actions">
-                  <label className={`button-primary wm-upload-btn ${uploading || isGuest ? 'is-disabled' : ''}`}>
-                    {uploading ? 'Загрузка…' : centerImage ? 'Заменить' : 'Загрузить'}
-                    <input
-                      ref={fileRef}
-                      type="file"
-                      accept="image/png,image/jpeg,image/gif,image/webp"
-                      hidden
-                      onChange={handleUpload}
-                      disabled={uploading || isGuest}
-                    />
-                  </label>
-                  {!isGuest && centerImage && !confirmImageDelete && (
-                    <button className="button-ghost danger" type="button" onClick={() => setConfirmImageDelete(true)} disabled={uploading}>
-                      Удалить
-                    </button>
-                  )}
-                </div>
-              </div>
-              {confirmImageDelete && (
-                <div className="wm-inline-confirm" role="alert">
-                  <span>Удалить изображение из центра?</span>
-                  <button className="button-ghost" type="button" onClick={() => setConfirmImageDelete(false)} disabled={uploading}>Отмена</button>
-                  <button className="button-danger" type="button" onClick={handleImageDelete} disabled={uploading}>Удалить</button>
-                </div>
-              )}
-            </section>
-          </div>
-        )}
+        {activeTab === 'settings' && isAdmin && <DrawerSettingsTab />}
       </section>
     </div>
   );
