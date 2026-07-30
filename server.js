@@ -1915,15 +1915,15 @@ function readMovieInput(body, existing = null) {
     return { error: 'Введите название фильма (до 200 символов)' };
   }
 
-  const alternativeResult = source.alternative_title === undefined && existing
-    ? { valid: true, value: existing.alternative_title || null }
+  const alternativeResult = source.alternative_title === undefined
+    ? { valid: true, value: existing?.alternative_title || null }
     : sanitizeOptionalMovieText(source.alternative_title);
   if (!alternativeResult.valid) {
     return { error: 'Альтернативное название — до 200 символов' };
   }
 
-  const directorResult = source.director === undefined && existing
-    ? { valid: true, value: existing.director || null }
+  const directorResult = source.director === undefined
+    ? { valid: true, value: existing?.director || null }
     : sanitizeOptionalMovieText(source.director);
   if (!directorResult.valid) {
     return { error: 'Имя режиссёра — до 200 символов' };
