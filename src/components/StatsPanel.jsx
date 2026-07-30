@@ -109,9 +109,11 @@ export default function StatsPanel({
   scope = 'all',
   comparisonScope = 'all',
   selectedUserIds = [],
+  comparisonUserCount = selectedUserIds.length,
 }) {
   const [stats, setStats] = useState(null);
   const [state, setState] = useState('loading');
+  const showRatingMatches = comparisonUserCount >= 2;
 
   const load = useCallback(async () => {
     setState('loading');
@@ -132,9 +134,11 @@ export default function StatsPanel({
     return (
       <div className="stats-panel stats-loading" aria-live="polite">
         {[1, 2, 3, 4].map(item => <div key={item} className="stat-card skeleton" />)}
-        <div className="stats-match-grid">
-          {[5, 6].map(item => <div key={item} className="stat-card skeleton" />)}
-        </div>
+        {showRatingMatches && (
+          <div className="stats-match-grid">
+            {[5, 6].map(item => <div key={item} className="stat-card skeleton" />)}
+          </div>
+        )}
       </div>
     );
   }
@@ -260,20 +264,22 @@ export default function StatsPanel({
           ))}
         </div>
       </article>
-      <div className="stats-match-grid">
-        <RatingMatchCard
-          label={isPersonal ? 'Бестис' : 'На одной волне'}
-          pair={stats.closest_rating_pair}
-          tone="closest"
-          personal={isPersonal}
-        />
-        <RatingMatchCard
-          label={isPersonal ? 'Биф' : 'Разные вкусы'}
-          pair={stats.furthest_rating_pair}
-          tone="furthest"
-          personal={isPersonal}
-        />
-      </div>
+      {showRatingMatches && (
+        <div className="stats-match-grid">
+          <RatingMatchCard
+            label={isPersonal ? 'Бестис' : 'На одной волне'}
+            pair={stats.closest_rating_pair}
+            tone="closest"
+            personal={isPersonal}
+          />
+          <RatingMatchCard
+            label={isPersonal ? 'Биф' : 'Разные вкусы'}
+            pair={stats.furthest_rating_pair}
+            tone="furthest"
+            personal={isPersonal}
+          />
+        </div>
+      )}
     </section>
   );
 }

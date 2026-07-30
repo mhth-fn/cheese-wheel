@@ -3921,11 +3921,10 @@ app.get('/api/stats', (req, res) => {
         .filter(Boolean)
         .map(parseIntStrict);
       if (
-        selectedComparisonUserIds.length === 0
-        || selectedComparisonUserIds.some(id => isNaN(id))
+        selectedComparisonUserIds.some(id => isNaN(id))
         || new Set(selectedComparisonUserIds).size !== selectedComparisonUserIds.length
       ) {
-        return res.status(400).json({ error: 'Выберите хотя бы одного участника для сравнения' });
+        return res.status(400).json({ error: 'Некорректный список участников для сравнения' });
       }
       if (selectedComparisonUserIds.includes(Number(currentUser.id))) {
         return res.status(400).json({ error: 'Для сравнения можно выбирать только других участников' });

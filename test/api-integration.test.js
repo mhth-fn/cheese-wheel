@@ -251,6 +251,24 @@ test('real server enforces authentication, dynamic roles and content ownership',
   assert.equal(personalSelectedStats.payload.closest_rating_pair.second_user, 'Пётр');
   assert.equal(personalSelectedStats.payload.closest_rating_pair.average_difference, 1);
   assert.equal(personalSelectedStats.payload.furthest_rating_pair.second_user, 'Пётр');
+  const personalEmptyComparisonStats = await request(
+    instance,
+    '/api/stats?scope=personal&comparison_scope=selected&user_ids=',
+    { cookie: anton.cookie }
+  );
+  assert.equal(
+    personalEmptyComparisonStats.status,
+    200,
+    JSON.stringify(personalEmptyComparisonStats.payload)
+  );
+  assert.deepEqual(personalEmptyComparisonStats.payload.comparison_user_ids, []);
+  assert.equal(personalEmptyComparisonStats.payload.closest_rating_pair, null);
+  assert.equal(personalEmptyComparisonStats.payload.furthest_rating_pair, null);
+  assert.equal((await request(
+    instance,
+    '/api/stats?scope=selected&user_ids=',
+    { cookie: anton.cookie }
+  )).status, 400);
   assert.equal((await request(
     instance,
     '/api/stats?scope=personal&comparison_scope=selected&user_ids=1',
