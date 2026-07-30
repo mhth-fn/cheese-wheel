@@ -622,6 +622,7 @@ const MAX_SPIN_DURATION = 30;
 const ONE_OFF_MIN_SPIN_DURATION = MIN_SPIN_DURATION;
 const ONE_OFF_MAX_SPIN_DURATION = MAX_SPIN_DURATION;
 const MAX_TITLE_LENGTH = 200;
+const MAX_SIGAME_TAGS = 9;
 const MAX_SIGAME_PACK_BYTES = 200 * 1024 * 1024;
 let activeSpinUntil = 0;
 let activeOneOffSpinUntil = 0;
@@ -1951,7 +1952,7 @@ function readMovieInput(body, existing = null) {
 
 function sanitizeSigameTags(value) {
   if (value === undefined) return [];
-  if (!Array.isArray(value) || value.length > 8) return null;
+  if (!Array.isArray(value) || value.length > MAX_SIGAME_TAGS) return null;
   const tags = [];
   const seen = new Set();
   for (const rawTag of value) {
@@ -4532,7 +4533,7 @@ app.post('/api/sigame-packs', async (req, res) => {
   );
   if (!title) return res.status(400).json({ error: 'Укажите название пака' });
   if (tags === null) {
-    return res.status(400).json({ error: 'Укажите не более 8 корректных тегов' });
+    return res.status(400).json({ error: `Укажите не более ${MAX_SIGAME_TAGS} корректных тегов` });
   }
   if (!originalFileName) {
     return res.status(400).json({

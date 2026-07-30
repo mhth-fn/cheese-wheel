@@ -87,19 +87,22 @@ test('SIGame library securely stores .siq files and enforces played-state rating
     file: Buffer.from('not a zip archive'),
   })).status, 400);
   assert.equal((await uploadPack(instance, anton.cookie, {
-    tags: ['1', '2', '3', '4', '5', '6', '7', '8', '9'],
+    tags: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'],
   })).status, 400);
 
   const created = await uploadPack(instance, anton.cookie, {
     title: '  История Древней Греции  ',
-    tags: ['история', 'Сложный', 'ИСТОРИЯ'],
+    tags: ['история', 'Сложный', 'ИСТОРИЯ', '3', '4', '5', '6', '7', '8'],
     fileName: 'Древняя Греция.siq',
   });
   assert.equal(created.status, 201, JSON.stringify(created.payload));
   assert.equal(created.payload.title, 'История Древней Греции');
   assert.equal(created.payload.status, 'unplayed');
   assert.equal(created.payload.added_by, anton.user.id);
-  assert.deepEqual(new Set(created.payload.tags), new Set(['история', 'Сложный']));
+  assert.deepEqual(
+    new Set(created.payload.tags),
+    new Set(['история', 'Сложный', '3', '4', '5', '6', '7', '8'])
+  );
   assert.equal(created.payload.original_file_name, 'Древняя Греция.siq');
   assert.equal(created.payload.file_size, validSiqFile.length);
   assert.equal(created.payload.has_file, true);

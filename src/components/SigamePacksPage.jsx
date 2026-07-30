@@ -14,6 +14,7 @@ import { useApp } from '../App';
 
 const EMPTY_FORM = { title: '', tags: '' };
 const MAX_FILE_SIZE = 200 * 1024 * 1024;
+const MAX_TAGS = 9;
 
 const SORT_OPTIONS = {
   unplayed: [
@@ -155,8 +156,8 @@ export default function SigamePacksPage() {
   const [dateBusy, setDateBusy] = useState(false);
   const fileInputRef = useRef(null);
   const formTags = normalizeTags(form.tags);
-  const tagError = formTags.length > 8
-    ? 'Можно указать не более 8 тегов'
+  const tagError = formTags.length > MAX_TAGS
+    ? `Можно указать не более ${MAX_TAGS} тегов`
     : formTags.some(tag => tag.length > 24)
       ? 'Каждый тег должен быть не длиннее 24 символов'
       : '';
@@ -827,7 +828,7 @@ export default function SigamePacksPage() {
             </label>
 
             <label className="sigame-field">
-              <span>Теги <small>через запятую, до 8</small></span>
+              <span>Теги <small>через запятую, до {MAX_TAGS}</small></span>
               <input
                 value={form.tags}
                 onChange={event => setForm(previous => ({
