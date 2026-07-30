@@ -643,6 +643,12 @@
     left: 68px;
   }
 
+  html.ios-safari .admin-btn {
+    position: absolute;
+    top: calc(var(--mobile-nav-top, 100dvh) - 62px);
+    bottom: auto;
+  }
+
   body.mobile-nav-hidden .admin-btn {
     visibility: hidden;
     opacity: 0;

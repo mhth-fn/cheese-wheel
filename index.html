@@ -13,6 +13,10 @@
 </head>
 <body>
   <script>
+    var isIosSafari = /iP(?:hone|ad|od)/.test(navigator.userAgent)
+      && /WebKit/.test(navigator.userAgent)
+      && !/(?:CriOS|FxiOS|EdgiOS|OPiOS)/.test(navigator.userAgent);
+    if (isIosSafari) document.documentElement.classList.add('ios-safari');
     var t = localStorage.getItem('theme');
     var browserThemeColors = {
       cheese: '#f8dc78',

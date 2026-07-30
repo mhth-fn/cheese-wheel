@@ -13,6 +13,7 @@ test('mobile viewport extends behind Safari controls without forcing a solid too
   const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 
   assert.match(html, /viewport-fit=cover/);
+  assert.match(html, /classList\.add\(['"]ios-safari['"]\)/);
   assert.doesNotMatch(html, /<meta\s+name=["']theme-color["']/i);
 });
 

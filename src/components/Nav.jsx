@@ -40,6 +40,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
   const [recoveryCodes, setRecoveryCodes] = useState([]);
   const [mobileNavHidden, setMobileNavHidden] = useState(false);
   const dropdownRef = useRef(null);
+  const pagesRef = useRef(null);
   const triggerRef = useRef(null);
   const dropdownWasOpenRef = useRef(false);
   const lastScrollYRef = useRef(0);
@@ -97,8 +98,29 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
       '(max-width: 720px), (max-width: 960px) and (max-height: 560px)'
     );
 
+    const updateFloatingNavigationPosition = () => {
+      const pages = pagesRef.current;
+      const useFloatingPosition = (
+        pages
+        && mobileLayout.matches
+        && document.documentElement.classList.contains('ios-safari')
+      );
+
+      if (!useFloatingPosition) {
+        document.documentElement.style.removeProperty('--mobile-nav-top');
+        return;
+      }
+
+      const viewport = window.visualViewport;
+      const viewportTop = viewport?.pageTop ?? window.scrollY;
+      const viewportHeight = viewport?.height ?? window.innerHeight;
+      const top = Math.max(0, viewportTop + viewportHeight - pages.offsetHeight - 12);
+      document.documentElement.style.setProperty('--mobile-nav-top', `${Math.round(top)}px`);
+    };
+
     const resetNavigation = () => {
       cancelScheduledNavHide();
+      updateFloatingNavigationPosition();
       lastScrollYRef.current = Math.max(0, window.scrollY);
       scrollTravelRef.current = 0;
       setMobileNavHidden(false);
@@ -129,6 +151,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
 
     const updateNavigation = () => {
       scrollFrameRef.current = null;
+      updateFloatingNavigationPosition();
       const scrollY = Math.max(0, window.scrollY);
       const delta = scrollY - lastScrollYRef.current;
       const scrollHeight = document.scrollingElement?.scrollHeight || document.body.scrollHeight;
@@ -175,13 +198,18 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
     resetNavigation();
     window.addEventListener('scroll', scheduleNavigationUpdate, { passive: true });
     window.addEventListener('resize', handleLayoutChange);
+    window.visualViewport?.addEventListener('scroll', scheduleNavigationUpdate, { passive: true });
+    window.visualViewport?.addEventListener('resize', scheduleNavigationUpdate);
     mobileLayout.addEventListener?.('change', handleLayoutChange);
 
     return () => {
       cancelScheduledNavHide();
       window.removeEventListener('scroll', scheduleNavigationUpdate);
       window.removeEventListener('resize', handleLayoutChange);
+      window.visualViewport?.removeEventListener('scroll', scheduleNavigationUpdate);
+      window.visualViewport?.removeEventListener('resize', scheduleNavigationUpdate);
       mobileLayout.removeEventListener?.('change', handleLayoutChange);
+      document.documentElement.style.removeProperty('--mobile-nav-top');
       if (scrollFrameRef.current !== null) {
         window.cancelAnimationFrame(scrollFrameRef.current);
         scrollFrameRef.current = null;
@@ -395,6 +423,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
   return (
     <nav className="nav" aria-label="Основные разделы">
       <div
+        ref={pagesRef}
         className={`nav-pages${mobileNavHidden ? ' is-hidden' : ''}`}
         style={{ '--nav-page-count': pages.length }}
         onFocusCapture={revealMobileNavigation}

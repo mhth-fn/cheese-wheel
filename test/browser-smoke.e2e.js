@@ -75,6 +75,11 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     locale: 'ru-RU',
+    userAgent: [
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)',
+      'AppleWebKit/605.1.15 (KHTML, like Gecko)',
+      'Version/26.0 Mobile/15E148 Safari/604.1',
+    ].join(' '),
   });
   const page = await context.newPage();
   const browserErrors = [];
@@ -444,7 +449,11 @@ test('mobile browser can log in and use watched and reviews navigation', async t
       layout.formContentWidth <= layout.formWidth,
       `${orientation}: review form contents must not overflow`
     );
-    assert.equal(layout.navPosition, 'fixed', `${orientation}: phone navigation must stay mobile`);
+    assert.equal(
+      layout.navPosition,
+      'absolute',
+      `${orientation}: iOS navigation must avoid Safari fixed-edge tinting`
+    );
     assert.equal(
       layout.navRect.left < layout.profileRect.right
         && layout.navRect.right > layout.profileRect.left
