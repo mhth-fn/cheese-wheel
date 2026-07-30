@@ -48,6 +48,9 @@ export default function MovieDetailsDialog({
           <div>
             <p>Просмотренный фильм</p>
             <h2 id="movie-details-title">{movie.title}</h2>
+            {movie.alternative_title && (
+              <span className="movie-details-alternative">{movie.alternative_title}</span>
+            )}
           </div>
           <button
             className="icon-button"
@@ -60,6 +63,14 @@ export default function MovieDetailsDialog({
         </header>
 
         <div className="movie-details-meta">
+          <div>
+            <span>Год</span>
+            <strong>{movie.year || 'Не указан'}</strong>
+          </div>
+          <div>
+            <span>Режиссёр</span>
+            <strong>{movie.director || 'Не указан'}</strong>
+          </div>
           <div>
             <span>Просмотрен</span>
             <strong>{formatDate(movie.watched_at || movie.added_at)}</strong>

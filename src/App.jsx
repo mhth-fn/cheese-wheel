@@ -541,7 +541,7 @@ export default function App() {
   }, [isGuest, currentUser]);
 
   // Drawer handlers
-  const handleDrawerAdd = useCallback(async (title) => {
+  const handleDrawerAdd = useCallback(async (movie) => {
     if (!connected) {
       showToast('Нет соединения с сервером', 'error');
       return false;
@@ -551,10 +551,10 @@ export default function App() {
       return false;
     }
     try {
-      const res = await postMovie(title);
+      const res = await postMovie(movie);
       if (res.ok) {
         const data = await res.json();
-        showToast(data.replaced ? 'Ваш фильм заменён' : `\u00AB${title}\u00BB выбран для колеса`, 'success');
+        showToast(data.replaced ? 'Ваш фильм заменён' : `\u00AB${movie.title}\u00BB выбран для колеса`, 'success');
         return true;
       } else {
         const data = await res.json();
@@ -581,13 +581,13 @@ export default function App() {
     }
   }, [connected, showToast, wheelIsSpinning]);
 
-  const handleDrawerUpdate = useCallback(async (id, title) => {
+  const handleDrawerUpdate = useCallback(async (id, movie) => {
     if (!connected || wheelIsSpinning) {
       showToast(!connected ? 'Нет соединения с сервером' : 'Дождитесь окончания прокрутки', 'error');
       return false;
     }
     try {
-      const response = await updateMovie(id, { title });
+      const response = await updateMovie(id, movie);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Ошибка обновления');
       showToast('Фильм обновлён', 'success');
@@ -616,16 +616,16 @@ export default function App() {
     }
   }, [connected, showToast, wheelIsSpinning]);
 
-  const handleNextAdd = useCallback(async (title) => {
+  const handleNextAdd = useCallback(async (movie) => {
     if (!connected) {
       showToast('Нет соединения с сервером', 'error');
       return false;
     }
     try {
-      const res = await postNextMovie(title);
+      const res = await postNextMovie(movie);
       if (res.ok) {
         const data = await res.json();
-        showToast(data.replaced ? 'Ваш фильм для следующего раунда заменён' : `«${title}» выбран для следующего раунда`, 'success');
+        showToast(data.replaced ? 'Ваш фильм для следующего раунда заменён' : `«${movie.title}» выбран для следующего раунда`, 'success');
         return true;
       } else {
         const data = await res.json();

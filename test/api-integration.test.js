@@ -156,9 +156,17 @@ test('real server enforces authentication, dynamic roles and content ownership',
   const watched = await request(instance, '/api/watched', {
     method: 'POST',
     cookie: sergey.cookie,
-    body: { title: 'Integration Film' },
+    body: {
+      title: 'Интеграционный фильм',
+      alternative_title: 'Integration Film',
+      director: 'Test Director',
+      year: 2024,
+    },
   });
   assert.equal(watched.status, 200, JSON.stringify(watched.payload));
+  assert.equal(watched.payload.alternative_title, 'Integration Film');
+  assert.equal(watched.payload.director, 'Test Director');
+  assert.equal(watched.payload.year, 2024);
   const watchedId = watched.payload.id;
 
   assert.equal((await request(instance, `/api/movies/${watchedId}`, {
@@ -169,10 +177,24 @@ test('real server enforces authentication, dynamic roles and content ownership',
   const renamed = await request(instance, `/api/movies/${watchedId}`, {
     method: 'PATCH',
     cookie: sergey.cookie,
-    body: { title: 'Admin renamed film', watched_at: '2026-07-25' },
+    body: {
+      title: 'Переименованный фильм',
+      alternative_title: 'Admin Renamed Film',
+      director: 'Updated Director',
+      year: 2025,
+      watched_at: '2026-07-25',
+    },
   });
   assert.equal(renamed.status, 200);
-  assert.equal(renamed.payload.title, 'Admin renamed film');
+  assert.equal(renamed.payload.title, 'Переименованный фильм');
+  assert.equal(renamed.payload.alternative_title, 'Admin Renamed Film');
+  assert.equal(renamed.payload.director, 'Updated Director');
+  assert.equal(renamed.payload.year, 2025);
+  assert.equal((await request(instance, `/api/movies/${watchedId}`, {
+    method: 'PATCH',
+    cookie: sergey.cookie,
+    body: { title: 'Invalid year', year: 1887 },
+  })).status, 400);
 
   assert.equal((await request(instance, '/api/ratings', {
     method: 'POST',
@@ -431,9 +453,17 @@ test('real server enforces authentication, dynamic roles and content ownership',
   const wheelMovie = await request(instance, '/api/wheel', {
     method: 'POST',
     cookie: anton.cookie,
-    body: { title: 'Persisted Spin Film' },
+    body: {
+      title: 'Фильм для сохранённой прокрутки',
+      alternative_title: 'Persisted Spin Film',
+      director: 'Wheel Director',
+      year: 2023,
+    },
   });
   assert.equal(wheelMovie.status, 200, JSON.stringify(wheelMovie.payload));
+  assert.equal(wheelMovie.payload.alternative_title, 'Persisted Spin Film');
+  assert.equal(wheelMovie.payload.director, 'Wheel Director');
+  assert.equal(wheelMovie.payload.year, 2023);
   assert.equal((await request(instance, '/api/wheel/form', {
     method: 'POST',
     cookie: sergey.cookie,
@@ -470,6 +500,9 @@ test('real server enforces authentication, dynamic roles and content ownership',
     await delay(100);
   }
   assert.ok(completedMovie, 'persisted spin must complete exactly once after restart');
+  assert.equal(completedMovie.alternative_title, 'Persisted Spin Film');
+  assert.equal(completedMovie.director, 'Wheel Director');
+  assert.equal(completedMovie.year, 2023);
   const wheelStatus = await request(instance, '/api/wheel/status', {
     cookie: sergey.cookie,
   });

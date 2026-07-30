@@ -311,6 +311,11 @@
   font-size: 0.78rem;
 }
 
+.movie-title-cell .movie-title-meta {
+  color: var(--color-primary-active);
+  font-size: 0.72rem;
+}
+
 .movie-review-actions {
   display: flex;
   align-items: center;
@@ -437,7 +442,19 @@
 .add-movie-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
   gap: var(--space-2);
+}
+
+.add-movie-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px;
+  gap: var(--space-2);
+}
+
+.add-movie-fields .add-movie-input:nth-of-type(1),
+.add-movie-fields .add-movie-input:nth-of-type(2) {
+  grid-column: 1 / -1;
 }
 
 .add-movie-input,
@@ -464,6 +481,12 @@
 
 .edit-movie-title {
   width: 100%;
+}
+
+.edit-movie-meta-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  gap: var(--space-2);
 }
 
 .edit-movie-date-row {
@@ -698,6 +721,10 @@
 
   .add-movie-form {
     grid-template-columns: 1fr;
+  }
+
+  .add-movie-fields {
+    grid-template-columns: minmax(0, 1fr) 88px;
   }
 
   .add-movie-btn {

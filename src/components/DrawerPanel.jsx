@@ -9,6 +9,97 @@ const TABS = [
   { key: 'settings', icon: '⚙️', label: 'Настройки' },
 ];
 
+const EMPTY_MOVIE_DRAFT = {
+  title: '',
+  alternative_title: '',
+  director: '',
+  year: '',
+};
+
+function movieToDraft(movie = {}) {
+  return {
+    title: movie.title || '',
+    alternative_title: movie.alternative_title || '',
+    director: movie.director || '',
+    year: movie.year == null ? '' : String(movie.year),
+  };
+}
+
+function movieDraftPayload(draft) {
+  return {
+    title: draft.title.trim(),
+    alternative_title: draft.alternative_title.trim() || null,
+    director: draft.director.trim() || null,
+    year: draft.year === '' ? null : Number(draft.year),
+  };
+}
+
+function movieMetaText(movie) {
+  return [
+    movie.alternative_title,
+    movie.year,
+    movie.director,
+  ].filter(Boolean).join(' · ');
+}
+
+function MovieFields({ value, onChange, idPrefix, autoFocus = false }) {
+  const setField = field => event => onChange({
+    ...value,
+    [field]: event.target.value,
+  });
+
+  return (
+    <div className="wm-movie-fields">
+      <label className="sr-only" htmlFor={`${idPrefix}-title`}>Название фильма</label>
+      <input
+        id={`${idPrefix}-title`}
+        className="wm-input"
+        type="text"
+        placeholder="Название на русском…"
+        value={value.title}
+        maxLength={200}
+        onChange={setField('title')}
+        autoFocus={autoFocus}
+        required
+      />
+      <label className="sr-only" htmlFor={`${idPrefix}-alternative`}>Альтернативное название</label>
+      <input
+        id={`${idPrefix}-alternative`}
+        className="wm-input"
+        type="text"
+        placeholder="Альтернативное название…"
+        value={value.alternative_title}
+        maxLength={200}
+        onChange={setField('alternative_title')}
+      />
+      <div className="wm-movie-meta-fields">
+        <label className="sr-only" htmlFor={`${idPrefix}-director`}>Режиссёр</label>
+        <input
+          id={`${idPrefix}-director`}
+          className="wm-input"
+          type="text"
+          placeholder="Режиссёр…"
+          value={value.director}
+          maxLength={200}
+          onChange={setField('director')}
+        />
+        <label className="sr-only" htmlFor={`${idPrefix}-year`}>Год</label>
+        <input
+          id={`${idPrefix}-year`}
+          className="wm-input wm-year-input"
+          type="number"
+          min="1888"
+          max="2100"
+          inputMode="numeric"
+          placeholder="Год"
+          value={value.year}
+          onChange={setField('year')}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function DrawerPanel({
   movies,
   nextMovies,
@@ -37,12 +128,12 @@ export default function DrawerPanel({
     wheelIsSpinning,
     wheelStatus,
   } = useApp();
-  const [currentInput, setCurrentInput] = useState('');
-  const [nextInput, setNextInput] = useState('');
+  const [currentDraft, setCurrentDraft] = useState(EMPTY_MOVIE_DRAFT);
+  const [nextDraft, setNextDraft] = useState(EMPTY_MOVIE_DRAFT);
   const [activeTab, setActiveTab] = useState('participants');
   const [deletingId, setDeletingId] = useState(null);
   const [editingId, setEditingId] = useState(null);
-  const [editTitle, setEditTitle] = useState('');
+  const [editDraft, setEditDraft] = useState(EMPTY_MOVIE_DRAFT);
   const [forming, setForming] = useState(false);
   const [formingNext, setFormingNext] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -89,18 +180,18 @@ export default function DrawerPanel({
 
   const handleCurrentAdd = async event => {
     event.preventDefault();
-    const title = currentInput.trim();
-    if (!title || wheelIsSpinning) return;
-    const success = await onAdd(title);
-    if (success) setCurrentInput('');
+    const movie = movieDraftPayload(currentDraft);
+    if (!movie.title || wheelIsSpinning) return;
+    const success = await onAdd(movie);
+    if (success) setCurrentDraft(EMPTY_MOVIE_DRAFT);
   };
 
   const handleNextAdd = async event => {
     event.preventDefault();
-    const title = nextInput.trim();
-    if (!title || wheelIsSpinning) return;
-    const success = await onAddNext(title);
-    if (success) setNextInput('');
+    const movie = movieDraftPayload(nextDraft);
+    if (!movie.title || wheelIsSpinning) return;
+    const success = await onAddNext(movie);
+    if (success) setNextDraft(EMPTY_MOVIE_DRAFT);
   };
 
   const handleDelete = async (id, next = false) => {
@@ -112,19 +203,19 @@ export default function DrawerPanel({
 
   const startEditing = movie => {
     setEditingId(movie.id);
-    setEditTitle(movie.title);
+    setEditDraft(movieToDraft(movie));
   };
 
   const cancelEditing = () => {
     setEditingId(null);
-    setEditTitle('');
+    setEditDraft(EMPTY_MOVIE_DRAFT);
   };
 
   const saveEditing = async event => {
     event?.preventDefault();
-    const title = editTitle.trim();
-    if (!title) return;
-    const success = await onUpdate(editingId, title);
+    const movie = movieDraftPayload(editDraft);
+    if (!movie.title) return;
+    const success = await onUpdate(editingId, movie);
     if (success) cancelEditing();
   };
 
@@ -283,19 +374,13 @@ export default function DrawerPanel({
             )}
 
             {!wheelStatus.formed && !isGuest && addEnabled && !currentUserMovie && (
-              <form className="wm-add-row" onSubmit={handleCurrentAdd}>
-                <label className="sr-only" htmlFor="movie-input-participants">Ваш фильм</label>
-                <input
-                  id="movie-input-participants"
-                  className="wm-input"
-                  type="text"
-                  placeholder="Добавить свой фильм…"
-                  value={currentInput}
-                  maxLength={200}
-                  onChange={event => setCurrentInput(event.target.value)}
-                  disabled={wheelIsSpinning || !connected}
+              <form className="wm-add-row wm-movie-entry" onSubmit={handleCurrentAdd}>
+                <MovieFields
+                  value={currentDraft}
+                  onChange={setCurrentDraft}
+                  idPrefix="movie-input-participants"
                 />
-                <button className="wm-add-btn button-primary" type="submit" disabled={!currentInput.trim() || wheelIsSpinning || !connected}>
+                <button className="wm-add-btn button-primary" type="submit" disabled={!currentDraft.title.trim() || wheelIsSpinning || !connected}>
                   Добавить
                 </button>
               </form>
@@ -326,21 +411,26 @@ export default function DrawerPanel({
                       <strong>{user.name}{currentUser?.id === user.id ? ' · вы' : ''}</strong>
                       {editing ? (
                         <form className="wm-inline-edit" onSubmit={saveEditing}>
-                          <input
-                            value={editTitle}
-                            maxLength={200}
-                            onChange={event => setEditTitle(event.target.value)}
-                            onKeyDown={event => event.key === 'Escape' && cancelEditing()}
-                            aria-label={`Название фильма участника ${user.name}`}
+                          <MovieFields
+                            value={editDraft}
+                            onChange={setEditDraft}
+                            idPrefix={`edit-current-${movie.id}`}
                             autoFocus
                           />
-                          <button className="icon-button" type="submit" disabled={!editTitle.trim()} aria-label="Сохранить название">✓</button>
-                          <button className="icon-button" type="button" onClick={cancelEditing} aria-label="Отменить редактирование">✕</button>
+                          <div className="wm-inline-edit-actions">
+                            <button className="button-primary" type="submit" disabled={!editDraft.title.trim()}>Сохранить</button>
+                            <button className="button-ghost" type="button" onClick={cancelEditing}>Отмена</button>
+                          </div>
                         </form>
                       ) : (
-                        <span title={movie?.title}>
-                          {movie?.title || (unselected ? 'Не участвовал в этом колесе' : 'Ещё не добавил фильм')}
-                        </span>
+                        <>
+                          <span title={movie?.title}>
+                            {movie?.title || (unselected ? 'Не участвовал в этом колесе' : 'Ещё не добавил фильм')}
+                          </span>
+                          {movie && movieMetaText(movie) && (
+                            <small className="wm-movie-meta">{movieMetaText(movie)}</small>
+                          )}
+                        </>
                       )}
                     </div>
                     <span
@@ -387,19 +477,22 @@ export default function DrawerPanel({
                     <strong>{movie.added_by_name || 'Дополнительный фильм'}</strong>
                     {editing ? (
                       <form className="wm-inline-edit" onSubmit={saveEditing}>
-                        <input
-                          value={editTitle}
-                          maxLength={200}
-                          onChange={event => setEditTitle(event.target.value)}
-                          onKeyDown={event => event.key === 'Escape' && cancelEditing()}
-                          aria-label="Название дополнительного фильма"
+                        <MovieFields
+                          value={editDraft}
+                          onChange={setEditDraft}
+                          idPrefix={`edit-extra-${movie.id}`}
                           autoFocus
                         />
-                        <button className="icon-button" type="submit" disabled={!editTitle.trim()} aria-label="Сохранить название">✓</button>
-                        <button className="icon-button" type="button" onClick={cancelEditing} aria-label="Отменить редактирование">✕</button>
+                        <div className="wm-inline-edit-actions">
+                          <button className="button-primary" type="submit" disabled={!editDraft.title.trim()}>Сохранить</button>
+                          <button className="button-ghost" type="button" onClick={cancelEditing}>Отмена</button>
+                        </div>
                       </form>
                     ) : (
-                      <span>{movie.title}</span>
+                      <>
+                        <span>{movie.title}</span>
+                        {movieMetaText(movie) && <small className="wm-movie-meta">{movieMetaText(movie)}</small>}
+                      </>
                     )}
                   </div>
                   <span className="wm-participant-status">Готово</span>
@@ -420,21 +513,13 @@ export default function DrawerPanel({
           <div className="wm-panel" role="tabpanel">
             {!isGuest && (
               <>
-                <form className="wm-add-row" onSubmit={handleNextAdd}>
-                  <label className="sr-only" htmlFor="movie-input-next">
-                    {currentUserNextMovie ? 'Заменить свой фильм для следующего раунда' : 'Выбрать фильм для следующего раунда'}
-                  </label>
-                  <input
-                    id="movie-input-next"
-                    className="wm-input"
-                    type="text"
-                    placeholder={currentUserNextMovie ? 'Новое название фильма…' : 'Ваш фильм для следующего раунда…'}
-                    value={nextInput}
-                    maxLength={200}
-                    onChange={event => setNextInput(event.target.value)}
-                    disabled={wheelIsSpinning || !connected}
+                <form className="wm-add-row wm-movie-entry" onSubmit={handleNextAdd}>
+                  <MovieFields
+                    value={nextDraft}
+                    onChange={setNextDraft}
+                    idPrefix="movie-input-next"
                   />
-                  <button className="wm-add-btn button-primary" type="submit" disabled={!nextInput.trim() || wheelIsSpinning || !connected}>
+                  <button className="wm-add-btn button-primary" type="submit" disabled={!nextDraft.title.trim() || wheelIsSpinning || !connected}>
                     {currentUserNextMovie ? 'Заменить' : 'Добавить'}
                   </button>
                 </form>
@@ -477,21 +562,22 @@ export default function DrawerPanel({
                     <div className="wm-item-copy">
                       {editing ? (
                         <form className="wm-inline-edit" onSubmit={saveEditing}>
-                          <input
-                            value={editTitle}
-                            maxLength={200}
-                            onChange={event => setEditTitle(event.target.value)}
-                            onKeyDown={event => event.key === 'Escape' && cancelEditing()}
-                            aria-label={`Фильм участника ${movie.added_by_name || ''} для следующего раунда`}
+                          <MovieFields
+                            value={editDraft}
+                            onChange={setEditDraft}
+                            idPrefix={`edit-next-${movie.id}`}
                             autoFocus
                           />
-                          <button className="icon-button" type="submit" disabled={!editTitle.trim()} aria-label="Сохранить название">✓</button>
-                          <button className="icon-button" type="button" onClick={cancelEditing} aria-label="Отменить редактирование">✕</button>
+                          <div className="wm-inline-edit-actions">
+                            <button className="button-primary" type="submit" disabled={!editDraft.title.trim()}>Сохранить</button>
+                            <button className="button-ghost" type="button" onClick={cancelEditing}>Отмена</button>
+                          </div>
                         </form>
                       ) : (
                         <strong title={movie.title}>{movie.title}</strong>
                       )}
                       <span>
+                        {movieMetaText(movie) ? `${movieMetaText(movie)} · ` : ''}
                         Выбор на следующий раунд · {movie.added_by_name || 'Автор не указан'}{isOwn ? ' · вы' : ''}
                       </span>
                     </div>

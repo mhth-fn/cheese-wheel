@@ -50,11 +50,11 @@ export async function formNextWheel() {
   return apiFetch('/api/wheel/form-next', { method: 'POST' });
 }
 
-export async function postMovie(title) {
+export async function postMovie(movie) {
   return apiFetch('/api/wheel', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title })
+    body: JSON.stringify(movie)
   });
 }
 
@@ -67,11 +67,11 @@ export async function fetchNextWheelMovies() {
   return res.json();
 }
 
-export async function postNextMovie(title) {
+export async function postNextMovie(movie) {
   return apiFetch('/api/next-wheel', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title })
+    body: JSON.stringify(movie)
   });
 }
 
@@ -118,11 +118,11 @@ export async function fetchWatched() {
   return res.json();
 }
 
-export async function postWatchedMovie(title) {
+export async function postWatchedMovie(movie) {
   return apiFetch('/api/watched', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title })
+    body: JSON.stringify(movie)
   });
 }
 

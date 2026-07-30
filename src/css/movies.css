@@ -186,8 +186,21 @@
 .wm-add-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
   gap: var(--space-2);
   padding: var(--space-4);
+}
+
+.wm-movie-fields {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
+}
+
+.wm-movie-meta-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  gap: var(--space-2);
 }
 
 .wm-input {
@@ -201,6 +214,7 @@
 }
 
 .wm-add-btn {
+  min-height: var(--control-height);
   box-shadow: none;
 }
 
@@ -250,6 +264,17 @@
   margin-top: 2px;
   color: var(--color-text-muted);
   font-size: 0.75rem;
+}
+
+.wm-movie-meta {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 0.68rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wm-participant-status {
@@ -304,8 +329,7 @@
 
 .wm-inline-edit {
   display: grid;
-  grid-template-columns: minmax(90px, 1fr) 36px 36px;
-  gap: var(--space-1);
+  gap: var(--space-2);
   margin-top: 3px;
 }
 
@@ -319,9 +343,27 @@
   color: var(--color-text);
 }
 
-.wm-inline-edit .icon-button {
-  width: 36px;
-  height: 36px;
+.wm-inline-edit-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.wm-inline-edit-actions .button-primary,
+.wm-inline-edit-actions .button-ghost {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  box-shadow: none;
+  font-size: 0.72rem;
+}
+
+.wm-participant.is-editing,
+.wm-item.is-editing {
+  align-items: start;
+}
+
+.wm-participant.is-editing .wm-participant-copy,
+.wm-item.is-editing .wm-item-copy {
+  grid-column: 2 / -1;
 }
 
 .wm-hint {
@@ -685,6 +727,10 @@
 @media (max-width: 430px) {
   .wm-add-row {
     grid-template-columns: 1fr;
+  }
+
+  .wm-movie-meta-fields {
+    grid-template-columns: minmax(0, 1fr) 88px;
   }
 
   .wm-add-btn {

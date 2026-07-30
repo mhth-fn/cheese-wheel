@@ -12,6 +12,39 @@ import StatsPanel from './StatsPanel';
 import ConfirmDialog from './ConfirmDialog';
 import MovieDetailsDialog from './MovieDetailsDialog';
 
+const EMPTY_MOVIE_DRAFT = {
+  title: '',
+  alternative_title: '',
+  director: '',
+  year: '',
+};
+
+function movieToDraft(movie = {}) {
+  return {
+    title: movie.title || '',
+    alternative_title: movie.alternative_title || '',
+    director: movie.director || '',
+    year: movie.year == null ? '' : String(movie.year),
+  };
+}
+
+function movieDraftPayload(draft) {
+  return {
+    title: draft.title.trim(),
+    alternative_title: draft.alternative_title.trim() || null,
+    director: draft.director.trim() || null,
+    year: draft.year === '' ? null : Number(draft.year),
+  };
+}
+
+function movieMetaText(movie) {
+  return [
+    movie.alternative_title,
+    movie.year,
+    movie.director,
+  ].filter(Boolean).join(' · ');
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return '';
   const date = new Date(dateStr);
@@ -74,7 +107,7 @@ export default function WatchedPage() {
   const [debouncedQuery, setDebouncedQuery] = useState(searchQuery);
   const [sortColumn, setSortColumn] = useState('avg_rating');
   const [sortDirection, setSortDirection] = useState('desc');
-  const [movieInput, setMovieInput] = useState('');
+  const [addDraft, setAddDraft] = useState(EMPTY_MOVIE_DRAFT);
   const [statsKey, setStatsKey] = useState(0);
   const [loadState, setLoadState] = useState('loading');
   const [loadError, setLoadError] = useState('');
@@ -85,7 +118,7 @@ export default function WatchedPage() {
   const [detailsMovie, setDetailsMovie] = useState(null);
   const [detailsView, setDetailsView] = useState('details');
   const [editingId, setEditingId] = useState(null);
-  const [editTitle, setEditTitle] = useState('');
+  const [editDraft, setEditDraft] = useState(EMPTY_MOVIE_DRAFT);
   const [editWatchedAt, setEditWatchedAt] = useState('');
   const [selectedUserIds, setSelectedUserIds] = useState(null);
   const [personalModeEnabled, setPersonalModeEnabled] = useState(false);
@@ -394,7 +427,7 @@ export default function WatchedPage() {
   const startEditing = movie => {
     if (!isAdmin) return;
     setEditingId(movie.id);
-    setEditTitle(movie.title);
+    setEditDraft(movieToDraft(movie));
     setEditWatchedAt(
       movie.watched_at
         ? String(movie.watched_at).slice(0, 10)
@@ -404,18 +437,19 @@ export default function WatchedPage() {
 
   const cancelEditing = () => {
     setEditingId(null);
-    setEditTitle('');
+    setEditDraft(EMPTY_MOVIE_DRAFT);
     setEditWatchedAt('');
   };
 
   const saveEditing = async () => {
-    if (!editTitle.trim()) {
+    const movie = movieDraftPayload(editDraft);
+    if (!movie.title) {
       showToast('Название не может быть пустым', 'error');
       return;
     }
     try {
       const response = await updateMovie(editingId, {
-        title: editTitle.trim(),
+        ...movie,
         watched_at: editWatchedAt || null,
       });
       if (!response.ok) {
@@ -438,17 +472,17 @@ export default function WatchedPage() {
   const handleAddWatched = async event => {
     event.preventDefault();
     if (!isAdmin || !connected) return;
-    const title = movieInput.trim();
-    if (!title) return;
+    const movie = movieDraftPayload(addDraft);
+    if (!movie.title) return;
     setAdding(true);
     try {
-      const response = await postWatchedMovie(title);
+      const response = await postWatchedMovie(movie);
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Ошибка добавления');
       }
-      showToast(`«${title}» добавлен в просмотренные`, 'success');
-      setMovieInput('');
+      showToast(`«${movie.title}» добавлен в просмотренные`, 'success');
+      setAddDraft(EMPTY_MOVIE_DRAFT);
     } catch (error) {
       showToast(error.message || 'Ошибка соединения', 'error');
     } finally {
@@ -458,7 +492,12 @@ export default function WatchedPage() {
 
   const query = debouncedQuery.trim().toLocaleLowerCase('ru');
   const filtered = query
-    ? scopedMovies.filter(movie => movie.title.toLocaleLowerCase('ru').includes(query))
+    ? scopedMovies.filter(movie => [
+      movie.title,
+      movie.alternative_title,
+      movie.director,
+      movie.year,
+    ].some(value => String(value || '').toLocaleLowerCase('ru').includes(query)))
     : scopedMovies;
   const sorted = sortColumn ? [...filtered].sort((a, b) => {
     let aValue = a[sortColumn];
@@ -544,11 +583,47 @@ export default function WatchedPage() {
       <input
         id={`edit-title-${layout}-${movie.id}`}
         className="edit-movie-title"
-        value={editTitle}
-        onChange={event => setEditTitle(event.target.value)}
+        placeholder="Название на русском"
+        value={editDraft.title}
+        onChange={event => setEditDraft(current => ({ ...current, title: event.target.value }))}
         onKeyDown={handleEditKeyDown}
         autoFocus
       />
+      <label className="sr-only" htmlFor={`edit-alternative-${layout}-${movie.id}`}>
+        Альтернативное название
+      </label>
+      <input
+        id={`edit-alternative-${layout}-${movie.id}`}
+        className="edit-movie-title"
+        placeholder="Альтернативное название"
+        value={editDraft.alternative_title}
+        onChange={event => setEditDraft(current => ({ ...current, alternative_title: event.target.value }))}
+        onKeyDown={handleEditKeyDown}
+      />
+      <div className="edit-movie-meta-row">
+        <label className="sr-only" htmlFor={`edit-director-${layout}-${movie.id}`}>Режиссёр</label>
+        <input
+          id={`edit-director-${layout}-${movie.id}`}
+          className="edit-movie-title"
+          placeholder="Режиссёр"
+          value={editDraft.director}
+          onChange={event => setEditDraft(current => ({ ...current, director: event.target.value }))}
+          onKeyDown={handleEditKeyDown}
+        />
+        <label className="sr-only" htmlFor={`edit-year-${layout}-${movie.id}`}>Год</label>
+        <input
+          id={`edit-year-${layout}-${movie.id}`}
+          className="edit-movie-title edit-movie-year"
+          type="number"
+          min="1888"
+          max="2100"
+          inputMode="numeric"
+          placeholder="Год"
+          value={editDraft.year}
+          onChange={event => setEditDraft(current => ({ ...current, year: event.target.value }))}
+          onKeyDown={handleEditKeyDown}
+        />
+      </div>
       <div className="edit-movie-date-row">
         <label htmlFor={`edit-date-${layout}-${movie.id}`}>Дата просмотра:</label>
         <input
@@ -588,7 +663,7 @@ export default function WatchedPage() {
               aria-haspopup="dialog"
             >
               <strong>{movie.title}</strong>
-              <span>Открыть карточку фильма</span>
+              <span>{movieMetaText(movie) || 'Открыть карточку фильма'}</span>
             </button>
             <div className="watched-card-average">
               <span>{personalMode ? 'Моя оценка' : 'Средняя'}</span>
@@ -838,6 +913,9 @@ export default function WatchedPage() {
                           aria-haspopup="dialog"
                         >
                           <strong>{movie.title}</strong>
+                          {movieMetaText(movie) && (
+                            <span className="movie-title-meta">{movieMetaText(movie)}</span>
+                          )}
                           <span>
                             {movie.watched_at ? `просмотрен ${formatDate(movie.watched_at)}` : movie.added_at ? `добавлен ${formatDate(movie.added_at)}` : 'дата не указана'}
                           </span>
@@ -889,18 +967,55 @@ export default function WatchedPage() {
             <h2>Добавить фильм в просмотренные</h2>
           </div>
           <form className="add-movie-form" onSubmit={handleAddWatched}>
-            <label className="sr-only" htmlFor="watched-movie-title">Название фильма</label>
-            <input
-              id="watched-movie-title"
-              type="text"
-              className="add-movie-input"
-              placeholder="Название фильма…"
-              maxLength={100}
-              value={movieInput}
-              onChange={event => setMovieInput(event.target.value)}
-              disabled={adding || !connected}
-            />
-            <button type="submit" className="add-movie-btn button-primary" disabled={!movieInput.trim() || adding || !connected}>
+            <div className="add-movie-fields">
+              <label className="sr-only" htmlFor="watched-movie-title">Название фильма</label>
+              <input
+                id="watched-movie-title"
+                type="text"
+                className="add-movie-input"
+                placeholder="Название на русском…"
+                maxLength={200}
+                value={addDraft.title}
+                onChange={event => setAddDraft(current => ({ ...current, title: event.target.value }))}
+                disabled={adding || !connected}
+              />
+              <label className="sr-only" htmlFor="watched-movie-alternative">Альтернативное название</label>
+              <input
+                id="watched-movie-alternative"
+                type="text"
+                className="add-movie-input"
+                placeholder="Альтернативное название…"
+                maxLength={200}
+                value={addDraft.alternative_title}
+                onChange={event => setAddDraft(current => ({ ...current, alternative_title: event.target.value }))}
+                disabled={adding || !connected}
+              />
+              <label className="sr-only" htmlFor="watched-movie-director">Режиссёр</label>
+              <input
+                id="watched-movie-director"
+                type="text"
+                className="add-movie-input"
+                placeholder="Режиссёр…"
+                maxLength={200}
+                value={addDraft.director}
+                onChange={event => setAddDraft(current => ({ ...current, director: event.target.value }))}
+                disabled={adding || !connected}
+              />
+              <label className="sr-only" htmlFor="watched-movie-year">Год</label>
+              <input
+                id="watched-movie-year"
+                type="number"
+                className="add-movie-input add-movie-year"
+                min="1888"
+                max="2100"
+                inputMode="numeric"
+                placeholder="Год"
+                value={addDraft.year}
+                onChange={event => setAddDraft(current => ({ ...current, year: event.target.value }))}
+                disabled={adding || !connected}
+              />
+            </div>
+            <button type="submit" className="add-movie-btn button-primary" disabled={!addDraft.title.trim() || adding || !connected}>
               {adding ? 'Добавляем…' : 'Добавить'}
             </button>
           </form>

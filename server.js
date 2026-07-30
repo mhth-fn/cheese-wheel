@@ -1017,6 +1017,19 @@ try {
 
 db.exec('UPDATE movies SET is_next_wheel = 0 WHERE is_next_wheel IS NULL');
 
+// Миграция: дополнительные сведения о фильме
+[
+  'alternative_title TEXT',
+  'director TEXT',
+  'year INTEGER',
+].forEach(column => {
+  try {
+    db.exec(`ALTER TABLE movies ADD COLUMN ${column}`);
+  } catch (e) {
+    // колонка уже существует
+  }
+});
+
 // Старые дубликаты оставляли одному участнику несколько активных выборов.
 // Сохраняем самый свежий выбор перед добавлением ограничений на уровне БД.
 const removeDuplicateActiveChoices = db.transaction(() => {
@@ -1337,8 +1350,16 @@ const stmts = {
     )
   `),
   clearCurrentWheel: db.prepare('DELETE FROM movies WHERE is_watched = 0 AND is_next_wheel = 0'),
-  insertMovie: db.prepare('INSERT INTO movies (title, added_by, is_next_wheel) VALUES (?, ?, 0)'),
-  insertNextMovie: db.prepare('INSERT INTO movies (title, added_by, is_next_wheel) VALUES (?, ?, 1)'),
+  insertMovie: db.prepare(`
+    INSERT INTO movies (
+      title, alternative_title, director, year, added_by, is_next_wheel
+    ) VALUES (?, ?, ?, ?, ?, 0)
+  `),
+  insertNextMovie: db.prepare(`
+    INSERT INTO movies (
+      title, alternative_title, director, year, added_by, is_next_wheel
+    ) VALUES (?, ?, ?, ?, ?, 1)
+  `),
   getMovieById: db.prepare('SELECT * FROM movies WHERE id = ?'),
   getMovieWithAuthorById: db.prepare(`
     SELECT m.*, u.name as added_by_name
@@ -1356,7 +1377,12 @@ const stmts = {
   deleteUnwatched: db.prepare('DELETE FROM movies WHERE id = ? AND is_watched = 0 AND is_next_wheel = 0'),
   deleteNextMovie: db.prepare('DELETE FROM movies WHERE id = ? AND is_watched = 0 AND is_next_wheel = 1'),
   markWatched: db.prepare("UPDATE movies SET is_watched = 1, watched_at = datetime('now') WHERE id = ?"),
-  insertWatched: db.prepare("INSERT INTO movies (title, is_watched, added_by, watched_at) VALUES (?, 1, ?, datetime('now'))"),
+  insertWatched: db.prepare(`
+    INSERT INTO movies (
+      title, alternative_title, director, year,
+      is_watched, added_by, watched_at
+    ) VALUES (?, ?, ?, ?, 1, ?, datetime('now'))
+  `),
   getOneOffMovies: db.prepare(`
     SELECT m.id, m.title, m.added_by, m.added_at, u.name AS added_by_name
     FROM one_off_movies m
@@ -1375,8 +1401,16 @@ const stmts = {
   deleteOneOffMovie: db.prepare('DELETE FROM one_off_movies WHERE id = ?'),
   getWatchedMoviesForReviewLink: db.prepare('SELECT id, title FROM movies WHERE is_watched = 1'),
   getWatched: null, // инициализируется ниже динамически
-  updateMovie: db.prepare('UPDATE movies SET title = ?, added_at = ? WHERE id = ?'),
-  updateWatchedMovie: db.prepare('UPDATE movies SET title = ?, watched_at = ? WHERE id = ? AND is_watched = 1'),
+  updateMovie: db.prepare(`
+    UPDATE movies
+    SET title = ?, alternative_title = ?, director = ?, year = ?, added_at = ?
+    WHERE id = ?
+  `),
+  updateWatchedMovie: db.prepare(`
+    UPDATE movies
+    SET title = ?, alternative_title = ?, director = ?, year = ?, watched_at = ?
+    WHERE id = ? AND is_watched = 1
+  `),
   deleteRatings: db.prepare('DELETE FROM ratings WHERE movie_id = ?'),
   deleteMovie: db.prepare('DELETE FROM movies WHERE id = ?'),
   upsertRating: db.prepare(`
@@ -1827,7 +1861,8 @@ const regenerateRecoveryCodeSet = db.transaction((userId, submittedCode) => {
   const ratingCols = allUsers.map(u => `MAX(CASE WHEN r.user_id = ${u.id} THEN r.rating END) as rating_${u.id}`).join(',\n      ');
   stmts.getWatched = db.prepare(`
     SELECT
-      m.id, m.title, m.watched_at, m.added_at, m.added_by,
+      m.id, m.title, m.alternative_title, m.director, m.year,
+      m.watched_at, m.added_at, m.added_by,
       proposer.name as added_by_name,
       ${ratingCols},
       ROUND(AVG(r.rating), 1) as avg_rating,
@@ -1858,6 +1893,60 @@ function sanitizeTitle(title) {
   const trimmed = title.trim();
   if (trimmed.length === 0 || trimmed.length > MAX_TITLE_LENGTH) return null;
   return trimmed;
+}
+
+function sanitizeOptionalMovieText(value, maxLength = MAX_TITLE_LENGTH) {
+  if (value === null || value === '') return { valid: true, value: null };
+  if (typeof value !== 'string') return { valid: false, value: null };
+  const trimmed = value.trim();
+  if (!trimmed) return { valid: true, value: null };
+  if (trimmed.length > maxLength || /[\p{Cc}\p{Cf}]/u.test(trimmed)) {
+    return { valid: false, value: null };
+  }
+  return { valid: true, value: trimmed };
+}
+
+function readMovieInput(body, existing = null) {
+  const source = body && typeof body === 'object' ? body : {};
+  const title = source.title === undefined && existing
+    ? existing.title
+    : sanitizeTitle(source.title);
+  if (!title) {
+    return { error: 'Введите название фильма (до 200 символов)' };
+  }
+
+  const alternativeResult = source.alternative_title === undefined && existing
+    ? { valid: true, value: existing.alternative_title || null }
+    : sanitizeOptionalMovieText(source.alternative_title);
+  if (!alternativeResult.valid) {
+    return { error: 'Альтернативное название — до 200 символов' };
+  }
+
+  const directorResult = source.director === undefined && existing
+    ? { valid: true, value: existing.director || null }
+    : sanitizeOptionalMovieText(source.director);
+  if (!directorResult.valid) {
+    return { error: 'Имя режиссёра — до 200 символов' };
+  }
+
+  let year = existing?.year ?? null;
+  if (source.year !== undefined) {
+    if (source.year === null || source.year === '') {
+      year = null;
+    } else {
+      year = parseIntStrict(source.year);
+      if (isNaN(year) || year < 1888 || year > 2100) {
+        return { error: 'Год фильма — от 1888 до 2100' };
+      }
+    }
+  }
+
+  return {
+    title,
+    alternative_title: alternativeResult.value,
+    director: directorResult.value,
+    year,
+  };
 }
 
 function sanitizeSigameTags(value) {
@@ -2056,6 +2145,9 @@ function toWheelSnapshotMovie(movie) {
   return {
     id: Number(movie.id),
     title: movie.title,
+    alternative_title: movie.alternative_title || null,
+    director: movie.director || null,
+    year: movie.year == null ? null : Number(movie.year),
     added_by: movie.added_by ?? null,
     added_by_name: movie.added_by_name ?? null,
     is_watched: Number(movie.is_watched) === 1,
@@ -3039,10 +3131,8 @@ app.post('/api/wheel', rejectWheelMutationDuringSpin, rejectFormedCurrentWheelMu
   if (addEnabledRow?.value === '0') {
     return res.status(403).json({ error: 'Добавление фильмов отключено' });
   }
-  const title = sanitizeTitle(req.body.title);
-  if (!title) {
-    return res.status(400).json({ error: 'Введите название фильма (до 200 символов)' });
-  }
+  const input = readMovieInput(req.body);
+  if (input.error) return res.status(400).json({ error: input.error });
   const userId = Number(req.tokenData.userId);
   if (!Number.isInteger(userId) || !stmts.getUserById.get(userId)) {
     return res.status(403).json({ error: 'Войдите как участник, чтобы выбрать фильм' });
@@ -3052,11 +3142,24 @@ app.post('/api/wheel', rejectWheelMutationDuringSpin, rejectFormedCurrentWheelMu
     const existing = stmts.getCurrentMovieByUser.get(userId);
     let movie;
     if (existing) {
-      stmts.updateMovie.run(title, existing.added_at || null, existing.id);
+      stmts.updateMovie.run(
+        input.title,
+        input.alternative_title,
+        input.director,
+        input.year,
+        existing.added_at || null,
+        existing.id
+      );
       movie = stmts.getMovieWithAuthorById.get(existing.id);
       io.emit('movie-updated', movie);
     } else {
-      const result = stmts.insertMovie.run(title, userId);
+      const result = stmts.insertMovie.run(
+        input.title,
+        input.alternative_title,
+        input.director,
+        input.year,
+        userId
+      );
       movie = stmts.getMovieWithAuthorById.get(result.lastInsertRowid);
       io.emit('movie-added', movie);
     }
@@ -3134,10 +3237,8 @@ app.get('/api/next-wheel', (req, res) => {
 });
 
 app.post('/api/next-wheel', rejectWheelMutationDuringSpin, (req, res) => {
-  const title = sanitizeTitle(req.body.title);
-  if (!title) {
-    return res.status(400).json({ error: 'Введите название фильма (до 200 символов)' });
-  }
+  const input = readMovieInput(req.body);
+  if (input.error) return res.status(400).json({ error: input.error });
   const userId = Number(req.tokenData.userId);
   if (!Number.isInteger(userId) || !stmts.getUserById.get(userId)) {
     return res.status(403).json({ error: 'Войдите как участник, чтобы выбрать фильм' });
@@ -3147,11 +3248,24 @@ app.post('/api/next-wheel', rejectWheelMutationDuringSpin, (req, res) => {
     const existing = stmts.getNextMovieByUser.get(userId);
     let movie;
     if (existing) {
-      stmts.updateMovie.run(title, existing.added_at || null, existing.id);
+      stmts.updateMovie.run(
+        input.title,
+        input.alternative_title,
+        input.director,
+        input.year,
+        existing.added_at || null,
+        existing.id
+      );
       movie = stmts.getMovieWithAuthorById.get(existing.id);
       io.emit('next-movie-updated', movie);
     } else {
-      const result = stmts.insertNextMovie.run(title, userId);
+      const result = stmts.insertNextMovie.run(
+        input.title,
+        input.alternative_title,
+        input.director,
+        input.year,
+        userId
+      );
       movie = stmts.getMovieWithAuthorById.get(result.lastInsertRowid);
       io.emit('next-movie-added', movie);
     }
@@ -3296,7 +3410,13 @@ app.post('/api/one-off-wheel/result', requireAdmin, (req, res) => {
     const watchedMovie = db.transaction(() => {
       let watched = null;
       if (req.body.add_to_watched) {
-        const inserted = stmts.insertWatched.run(result.movie.title, req.tokenData.userId);
+        const inserted = stmts.insertWatched.run(
+          result.movie.title,
+          null,
+          null,
+          null,
+          req.tokenData.userId
+        );
         watched = stmts.getMovieById.get(inserted.lastInsertRowid);
       }
       stmts.deleteOneOffMovie.run(result.movie.id);
@@ -3325,12 +3445,16 @@ app.post('/api/one-off-wheel/result', requireAdmin, (req, res) => {
 });
 
 app.post('/api/watched', requireAdmin, (req, res) => {
-  const title = sanitizeTitle(req.body.title);
-  if (!title) {
-    return res.status(400).json({ error: 'Введите название фильма (до 200 символов)' });
-  }
+  const input = readMovieInput(req.body);
+  if (input.error) return res.status(400).json({ error: input.error });
   try {
-    const result = stmts.insertWatched.run(title, req.tokenData.userId);
+    const result = stmts.insertWatched.run(
+      input.title,
+      input.alternative_title,
+      input.director,
+      input.year,
+      req.tokenData.userId
+    );
     const movie = stmts.getMovieById.get(result.lastInsertRowid);
     const user = stmts.getUsers.all().find(u => u.id === req.tokenData.userId);
     io.emit('watched-added', movie);
@@ -3387,8 +3511,8 @@ app.patch('/api/movies/:id', rejectWheelMutationDuringSpin, (req, res) => {
     return res.status(403).json({ error: 'Общую историю меняет только администратор' });
   }
 
-  const title = req.body.title !== undefined ? sanitizeTitle(req.body.title) : movie.title;
-  if (!title) return res.status(400).json({ error: 'Название не может быть пустым' });
+  const input = readMovieInput(req.body, movie);
+  if (input.error) return res.status(400).json({ error: input.error });
 
   let addedAt = movie.added_at || null;
   let watchedAt = movie.watched_at || null;
@@ -3410,19 +3534,33 @@ app.patch('/api/movies/:id', rejectWheelMutationDuringSpin, (req, res) => {
   try {
     const updateMovieAndReviews = db.transaction(() => {
       if (movie.is_watched === 1) {
-        stmts.updateWatchedMovie.run(title, watchedAt, id);
+        stmts.updateWatchedMovie.run(
+          input.title,
+          input.alternative_title,
+          input.director,
+          input.year,
+          watchedAt,
+          id
+        );
         updateFormedWheelSnapshot(id, snapshotMovie => ({
           ...snapshotMovie,
-          title,
+          ...input,
         }));
       } else {
-        stmts.updateMovie.run(title, addedAt, id);
+        stmts.updateMovie.run(
+          input.title,
+          input.alternative_title,
+          input.director,
+          input.year,
+          addedAt,
+          id
+        );
         updateFormedWheelSnapshot(id, snapshotMovie => ({
           ...snapshotMovie,
-          title,
+          ...input,
         }));
       }
-      stmts.updateLinkedMovieReviewTitles.run(title, id);
+      stmts.updateLinkedMovieReviewTitles.run(input.title, id);
     });
     updateMovieAndReviews();
     const updated = stmts.getMovieWithAuthorById.get(id);
