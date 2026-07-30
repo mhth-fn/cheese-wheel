@@ -626,7 +626,6 @@ const MAX_SIGAME_PACK_BYTES = 200 * 1024 * 1024;
 let activeSpinUntil = 0;
 let activeOneOffSpinUntil = 0;
 let oneOffEliminationActive = false;
-let oneOffEliminationTimer = null;
 
 function rejectWheelMutationDuringSpin(req, res, next) {
   if (Date.now() < activeSpinUntil || readPendingSpin()) {
@@ -4703,19 +4702,12 @@ io.use((socket, next) => {
 
 function stopOneOffElimination() {
   oneOffEliminationActive = false;
-  if (oneOffEliminationTimer) {
-    clearTimeout(oneOffEliminationTimer);
-    oneOffEliminationTimer = null;
-  }
 }
 
-function performOneOffSpin(initiatorSocketId, continuation = false) {
+function performOneOffSpin(initiatorSocketId) {
   const now = Date.now();
   if (activeOneOffSpinUntil > now) {
     return { ok: false, error: 'Разовое колесо уже вращается' };
-  }
-  if (oneOffEliminationActive && !continuation) {
-    return { ok: false, error: 'Режим на выбывание уже запущен' };
   }
 
   const state = getOneOffState();
@@ -4731,7 +4723,7 @@ function performOneOffSpin(initiatorSocketId, continuation = false) {
     stopOneOffElimination();
     return { ok: false, error: 'Добавьте хотя бы один фильм' };
   }
-  if (continuation && state.mode !== 'elimination') {
+  if (oneOffEliminationActive && state.mode !== 'elimination') {
     stopOneOffElimination();
     return { ok: false, error: 'Режим на выбывание остановлен' };
   }
@@ -4782,7 +4774,7 @@ function performOneOffSpin(initiatorSocketId, continuation = false) {
     return { ok: false, error: 'Не удалось сохранить результат' };
   }
 
-  activeOneOffSpinUntil = Date.now() + spinDuration * 1000 + 500;
+  activeOneOffSpinUntil = Date.now() + spinDuration * 1000;
   const shouldContinue = outcome.type === 'eliminated';
   oneOffEliminationActive = shouldContinue;
 
@@ -4800,17 +4792,7 @@ function performOneOffSpin(initiatorSocketId, continuation = false) {
   });
   broadcastOneOffState();
 
-  if (shouldContinue) {
-    oneOffEliminationTimer = setTimeout(() => {
-      oneOffEliminationTimer = null;
-      const next = performOneOffSpin(initiatorSocketId, true);
-      if (!next.ok) {
-        stopOneOffElimination();
-        broadcastOneOffState();
-      }
-    }, spinDuration * 1000 + 650);
-    oneOffEliminationTimer.unref?.();
-  } else {
+  if (!shouldContinue) {
     stopOneOffElimination();
   }
 

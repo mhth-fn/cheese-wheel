@@ -48,7 +48,7 @@ async function connect(instance, cookie) {
   return socket;
 }
 
-test('one-off wheel is admin-published and supports selection and elimination', async t => {
+test('one-off wheel is admin-published and elimination rounds start manually', async t => {
   const dataDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'cheese-one-off-test-'));
   const instance = await startServer(dataDir);
   const sockets = [];
@@ -176,11 +176,24 @@ test('one-off wheel is admin-published and supports selection and elimination', 
   assert.equal(eliminationInProgress.payload.elimination_active, true);
   assert.equal(eliminationInProgress.payload.movies.length, 2);
 
-  const finalEliminationSpinPromise = waitForSocket(
-    adminSocket,
-    'one-off-spinning',
-    7_000
-  );
+  let automaticSpin = null;
+  const captureAutomaticSpin = payload => {
+    automaticSpin = payload;
+  };
+  adminSocket.on('one-off-spinning', captureAutomaticSpin);
+  await delay(5_800);
+  adminSocket.off('one-off-spinning', captureAutomaticSpin);
+  assert.equal(automaticSpin, null, 'next elimination round must not start automatically');
+
+  const waitingForManualSpin = await request(instance, '/api/one-off-wheel', {
+    cookie: admin.cookie,
+  });
+  assert.equal(waitingForManualSpin.payload.enabled, true);
+  assert.equal(waitingForManualSpin.payload.elimination_active, true);
+  assert.equal(waitingForManualSpin.payload.movies.length, 2);
+
+  const finalEliminationSpinPromise = waitForSocket(adminSocket, 'one-off-spinning');
+  adminSocket.emit('spin-one-off');
   const finalEliminationSpin = await finalEliminationSpinPromise;
   assert.equal(finalEliminationSpin.mode, 'elimination');
   assert.equal(finalEliminationSpin.outcome.type, 'eliminated-and-winner');

@@ -15,7 +15,7 @@ const {
 
 const fsp = fs.promises;
 
-test('one-off selection uses one spin and elimination continues until a winner', async t => {
+test('one-off elimination waits for a manual click before each round', async t => {
   const dataDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'cheese-one-off-browser-'));
   const instance = await startServer(dataDir, { frontend: 'built' });
   let browser = null;
@@ -107,8 +107,16 @@ test('one-off selection uses one spin and elimination continues until a winner',
   await page.getByRole('button', { name: 'Добавить', exact: true }).click();
   await page.getByText('Разовый фильм D', { exact: true }).waitFor();
 
-  await page.getByRole('button', { name: 'Крутить разовое колесо' }).click();
-  await page.getByText('Крутится до выбора одного фильма', { exact: true }).waitFor();
+  const spinButton = page.getByRole('button', { name: 'Крутить разовое колесо' });
+  await spinButton.click();
+  await page.getByText('Сейчас выбывает один фильм', { exact: true }).waitFor();
+  await page.getByText(
+    'Нажмите на центр колеса для следующего раунда',
+    { exact: true }
+  ).waitFor({ timeout: 9_000 });
+  assert.equal(await replacement.isVisible(), true);
+  assert.equal(await spinButton.isEnabled(), true);
+  await spinButton.click();
   await replacement.waitFor({ state: 'detached', timeout: 16_000 });
   await page.locator('.wheel-page-layout').waitFor();
   assert.equal(await page.getByText('Разовое колесо', { exact: true }).count(), 0);

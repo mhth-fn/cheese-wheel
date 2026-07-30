@@ -55,6 +55,11 @@ export default function OneOffWheelPanel() {
   const modeLabel = oneOffState.mode === 'elimination'
     ? 'На выбывание'
     : 'На выпадение';
+  const eliminationHint = oneOffIsSpinning
+    ? 'Сейчас выбывает один фильм'
+    : eliminationActive
+      ? 'Нажмите на центр колеса для следующего раунда'
+      : 'Каждый раунд запускается вручную';
 
   useEffect(() => {
     setDurationDraft(Number(oneOffState.spin_duration) || 5);
@@ -104,7 +109,10 @@ export default function OneOffWheelPanel() {
   const handleSpinComplete = useCallback(() => {
     if (!activeSpin) return;
     if (activeSpin.outcome?.type === 'eliminated') {
-      showToast(`«${activeSpin.outcome.movie.title}» выбывает`, 'info');
+      showToast(
+        `«${activeSpin.outcome.movie.title}» выбывает. Запустите следующий раунд вручную`,
+        'info'
+      );
     }
     setActiveSpin(null);
     setOneOffIsSpinning(false);
@@ -230,7 +238,6 @@ export default function OneOffWheelPanel() {
       movies.length === 0
       || result
       || oneOffIsSpinning
-      || eliminationActive
       || spinPending
     ) return;
     setSpinPending(true);
@@ -243,7 +250,6 @@ export default function OneOffWheelPanel() {
     || movies.length === 0
     || Boolean(result)
     || oneOffIsSpinning
-    || eliminationActive
     || spinPending
   );
   const canMutate = (
@@ -303,7 +309,7 @@ export default function OneOffWheelPanel() {
           <div>
             <p>
               {oneOffState.mode === 'elimination'
-                ? 'Крутится до выбора одного фильма'
+                ? eliminationHint
                 : 'Одна публикация — одна прокрутка'}
             </p>
             <h2>Меню колеса</h2>
