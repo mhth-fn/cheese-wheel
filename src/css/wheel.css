@@ -180,6 +180,11 @@
   color: var(--color-info);
 }
 
+.wheel-readiness.is-disabled {
+  border-color: rgba(188, 63, 53, 0.34);
+  color: var(--color-danger);
+}
+
 .wheel-readiness.is-spinning > span {
   animation: spinDot 0.9s ease-in-out infinite;
 }

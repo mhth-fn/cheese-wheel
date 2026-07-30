@@ -364,6 +364,15 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   await titleInput.waitFor();
   await titleInput.fill('Очень длинное название фильма, которое должно оставаться внутри формы');
 
+  await page.evaluate(() => window.scrollTo(0, 520));
+  await page.waitForFunction(() => (
+    document.querySelector('.nav-pages')?.classList.contains('is-hidden')
+  ));
+  await page.evaluate(() => window.scrollBy(0, -80));
+  await page.waitForFunction(() => (
+    !document.querySelector('.nav-pages')?.classList.contains('is-hidden')
+  ));
+
   const assertReviewFormFits = async orientation => {
     const layout = await page.evaluate(() => {
       const form = document.querySelector('.review-form');
