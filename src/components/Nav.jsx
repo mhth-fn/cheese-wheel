@@ -38,9 +38,13 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
   const [securityError, setSecurityError] = useState('');
   const [setupData, setSetupData] = useState(null);
   const [recoveryCodes, setRecoveryCodes] = useState([]);
+  const [mobileNavHidden, setMobileNavHidden] = useState(false);
   const dropdownRef = useRef(null);
   const triggerRef = useRef(null);
   const dropdownWasOpenRef = useRef(false);
+  const lastScrollYRef = useRef(0);
+  const scrollTravelRef = useRef(0);
+  const scrollFrameRef = useRef(null);
 
   const pages = [
     { key: 'wheel', icon: '🎡', label: 'Колесо' },
@@ -68,6 +72,93 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
     setSetupData(null);
     setRecoveryCodes([]);
   }, []);
+
+  const revealMobileNavigation = useCallback(() => {
+    scrollTravelRef.current = 0;
+    setMobileNavHidden(false);
+  }, []);
+
+  useEffect(() => {
+    const mobileLayout = window.matchMedia(
+      '(max-width: 720px), (max-width: 960px) and (max-height: 560px)'
+    );
+
+    const resetNavigation = () => {
+      lastScrollYRef.current = Math.max(0, window.scrollY);
+      scrollTravelRef.current = 0;
+      setMobileNavHidden(false);
+    };
+
+    const updateNavigation = () => {
+      scrollFrameRef.current = null;
+      const scrollY = Math.max(0, window.scrollY);
+      const delta = scrollY - lastScrollYRef.current;
+      const scrollHeight = document.scrollingElement?.scrollHeight || document.body.scrollHeight;
+      const maxScrollY = Math.max(0, scrollHeight - window.innerHeight);
+      lastScrollYRef.current = scrollY;
+
+      if (!mobileLayout.matches || dropdownOpen || scrollY <= 72 || maxScrollY - scrollY <= 32) {
+        scrollTravelRef.current = 0;
+        setMobileNavHidden(false);
+        return;
+      }
+
+      if (Math.abs(delta) < 2) return;
+
+      const changedDirection = (
+        (scrollTravelRef.current > 0 && delta < 0)
+        || (scrollTravelRef.current < 0 && delta > 0)
+      );
+      scrollTravelRef.current = changedDirection ? delta : scrollTravelRef.current + delta;
+
+      if (scrollTravelRef.current > 28 && scrollY > 120) {
+        scrollTravelRef.current = 0;
+        setMobileNavHidden(true);
+      } else if (scrollTravelRef.current < -14) {
+        scrollTravelRef.current = 0;
+        setMobileNavHidden(false);
+      }
+    };
+
+    const scheduleNavigationUpdate = () => {
+      if (scrollFrameRef.current !== null) return;
+      scrollFrameRef.current = window.requestAnimationFrame(updateNavigation);
+    };
+
+    const handleLayoutChange = () => {
+      if (mobileLayout.matches) {
+        lastScrollYRef.current = Math.max(0, window.scrollY);
+      } else {
+        resetNavigation();
+      }
+    };
+
+    resetNavigation();
+    window.addEventListener('scroll', scheduleNavigationUpdate, { passive: true });
+    window.addEventListener('resize', handleLayoutChange);
+    mobileLayout.addEventListener?.('change', handleLayoutChange);
+
+    return () => {
+      window.removeEventListener('scroll', scheduleNavigationUpdate);
+      window.removeEventListener('resize', handleLayoutChange);
+      mobileLayout.removeEventListener?.('change', handleLayoutChange);
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+        scrollFrameRef.current = null;
+      }
+    };
+  }, [activePage, dropdownOpen]);
+
+  const handleNavigate = (target) => {
+    revealMobileNavigation();
+    onNavigate(target);
+    window.requestAnimationFrame(() => {
+      window.scrollTo({
+        top: 0,
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      });
+    });
+  };
 
   useEffect(() => {
     const handler = (event) => {
@@ -263,12 +354,16 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
 
   return (
     <nav className="nav" aria-label="Основные разделы">
-      <div className="nav-pages" style={{ '--nav-page-count': pages.length }}>
+      <div
+        className={`nav-pages${mobileNavHidden ? ' is-hidden' : ''}`}
+        style={{ '--nav-page-count': pages.length }}
+        onFocusCapture={revealMobileNavigation}
+      >
         {pages.map(page => (
           <button
             key={page.key}
             className={`nav-btn ${(page.active ?? (activePage === page.key)) ? 'active' : ''}`}
-            onClick={() => onNavigate(page.target || page.key)}
+            onClick={() => handleNavigate(page.target || page.key)}
             aria-current={(page.active ?? (activePage === page.key)) ? 'page' : undefined}
             aria-label={page.label}
           >
