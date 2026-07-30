@@ -470,18 +470,28 @@ test('real server enforces authentication, dynamic roles and content ownership',
     body: {},
   })).status, 200);
 
-  const memberSocket = await connect(instance, anton.cookie);
-  const memberRejected = waitForSocket(memberSocket, 'spin-rejected');
-  memberSocket.emit('spin-wheel', { spinDuration: 5 });
-  assert.match((await memberRejected).error, /администратор/);
-  memberSocket.close();
+  assert.equal((await request(instance, '/api/settings/spin-enabled', {
+    method: 'POST',
+    cookie: sergey.cookie,
+    body: { enabled: false },
+  })).status, 200);
+  const disabledMemberSocket = await connect(instance, anton.cookie);
+  const disabledSpinRejected = waitForSocket(disabledMemberSocket, 'spin-rejected');
+  disabledMemberSocket.emit('spin-wheel', { spinDuration: 5 });
+  assert.match((await disabledSpinRejected).error, /основного колеса отключена/);
+  disabledMemberSocket.close();
 
-  const adminSocket = await connect(instance, sergey.cookie);
-  const spinStarted = waitForSocket(adminSocket, 'wheel-spinning');
-  adminSocket.emit('spin-wheel', { spinDuration: 5 });
+  assert.equal((await request(instance, '/api/settings/spin-enabled', {
+    method: 'POST',
+    cookie: sergey.cookie,
+    body: { enabled: true },
+  })).status, 200);
+  const memberSocket = await connect(instance, anton.cookie);
+  const spinStarted = waitForSocket(memberSocket, 'wheel-spinning');
+  memberSocket.emit('spin-wheel', { spinDuration: 5 });
   const spin = await spinStarted;
   assert.equal(spin.winnerMovieId, wheelMovie.payload.id);
-  adminSocket.close();
+  memberSocket.close();
 
   await stopServer(instance, 'SIGKILL');
   instance = await startServer(dataDir);

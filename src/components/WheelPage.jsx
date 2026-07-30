@@ -7,7 +7,6 @@ import OneOffResultModal from './OneOffResultModal';
 export default function WheelPage() {
   const {
     isGuest,
-    isAdmin,
     socket,
     connected,
     showToast,
@@ -35,6 +34,7 @@ export default function WheelPage() {
   const movies = wheelStatus.movies || [];
   const wheelReady = wheelStatus.formed;
   const serverSpinPending = Number(wheelStatus.pending_spin?.complete_at) > Date.now();
+  const spinIsDisabled = spinEnabled === false;
 
   useEffect(() => {
     if (!socket) return undefined;
@@ -103,10 +103,6 @@ export default function WheelPage() {
       showToast('Нет соединения с сервером', 'error');
       return;
     }
-    if (!isAdmin) {
-      showToast('Прокрутку запускает администратор', 'info');
-      return;
-    }
     if (!wheelReady) {
       showToast('Сначала сформируйте колесо', 'info');
       return;
@@ -133,7 +129,6 @@ export default function WheelPage() {
 
   const spinDisabled = (
     isGuest ||
-    !isAdmin ||
     !connected ||
     !wheelReady ||
     isSpinning ||
@@ -147,11 +142,11 @@ export default function WheelPage() {
     ? `Колесо крутится${secondsLeft ? ` · ${secondsLeft} сек` : ''}`
     : serverSpinPending
       ? 'Результат вращения сохраняется'
-      : !wheelStatus.formed
-      ? 'Колесо не готово'
-      : !isAdmin
-        ? 'Прокрутку запускает администратор'
-      : '';
+      : spinIsDisabled
+        ? 'Прокрутка основного колеса отключена'
+        : !wheelStatus.formed
+          ? 'Колесо не готово'
+          : '';
 
   const oneOffVisible = Boolean(
     oneOffState.enabled || oneOffIsSpinning || remoteOneOffSpin
@@ -166,7 +161,7 @@ export default function WheelPage() {
         <div className="wheel-primary">
         {readinessText && (
           <div
-            className={`wheel-readiness${isSpinning ? ' is-spinning' : !isAdmin ? ' is-info' : ' is-warning'}`}
+            className={`wheel-readiness${isSpinning ? ' is-spinning' : spinIsDisabled ? ' is-disabled' : ' is-warning'}`}
             aria-live="polite"
           >
             <span aria-hidden="true" />
@@ -192,8 +187,8 @@ export default function WheelPage() {
                 aria-disabled={spinDisabled}
                 aria-busy={spinPending || isSpinning}
                 title={
-                  !isAdmin
-                    ? 'Прокрутку запускает администратор'
+                  spinIsDisabled
+                    ? 'Прокрутка основного колеса отключена'
                     : wheelReady ? 'Крутить колесо' : 'Сначала сформируйте колесо'
                 }
               >

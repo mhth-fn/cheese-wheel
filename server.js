@@ -4980,10 +4980,6 @@ io.on('connection', (socket) => {
       socket.emit('spin-rejected', { error: 'Слишком много прокруток' });
       return;
     }
-    if (tokenData.role !== 'admin') {
-      socket.emit('spin-rejected', { error: 'Прокрутку запускает администратор' });
-      return;
-    }
     const globalSpinLimit = consumeRateLimit(
       'socket-spin-global',
       'all',
@@ -4997,7 +4993,7 @@ io.on('connection', (socket) => {
 
     const spinEnabledRow = db.prepare("SELECT value FROM settings WHERE key = 'spin_enabled'").get();
     if (spinEnabledRow?.value === '0') {
-      socket.emit('spin-rejected', { error: 'Прокрутка отключена' });
+      socket.emit('spin-rejected', { error: 'Прокрутка основного колеса отключена' });
       return;
     }
     if (Date.now() < activeSpinUntil) {
