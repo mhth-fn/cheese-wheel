@@ -392,6 +392,16 @@
       visibility 0s linear 0.36s;
   }
 
+  html.ios-safari .nav {
+    position: static;
+  }
+
+  html.ios-safari .nav-pages {
+    position: absolute;
+    top: var(--mobile-nav-top, calc(100dvh - 96px));
+    bottom: auto;
+  }
+
   .nav-btn {
     min-width: 0;
     min-height: 52px;
