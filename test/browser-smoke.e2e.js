@@ -591,6 +591,10 @@ test('mobile browser can log in and use watched and reviews navigation', async t
     await samuraiPetals.first().evaluate(element => getComputedStyle(element).animationName),
     'samuraiPetalFall'
   );
+  await page.goto(instance.baseUrl, { waitUntil: 'domcontentloaded' });
+  const samuraiSunIcon = page.locator('.wheel-not-ready-icon.is-samurai-sun');
+  await samuraiSunIcon.waitFor();
+  assert.equal(await samuraiSunIcon.count(), 1);
   await auditTheme('Сырная тема', 'theme-cheese');
 
   assert.deepEqual(browserErrors, []);

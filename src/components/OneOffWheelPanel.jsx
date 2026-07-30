@@ -8,6 +8,7 @@ import {
   uploadCenterImage,
 } from '../api';
 import CheeseWheel from './CheeseWheel';
+import WheelThemeIcon from './WheelThemeIcon';
 
 async function readResponse(response) {
   const data = await response.json().catch(() => ({}));
@@ -60,8 +61,6 @@ export default function OneOffWheelPanel() {
     : eliminationActive
       ? 'Нажмите на центр колеса для следующего раунда'
       : 'Каждый раунд запускается вручную';
-  const wheelFallbackIcon = theme === 'samurai' ? '⚔️' : '🧀';
-
   useEffect(() => {
     setDurationDraft(Number(oneOffState.spin_duration) || 5);
   }, [oneOffState.spin_duration]);
@@ -292,13 +291,13 @@ export default function OneOffWheelPanel() {
               >
                 {centerImage
                   ? <img src={centerImage} alt="" className="wheel-center-img" />
-                  : <span className="wheel-center-fallback" aria-hidden="true">{wheelFallbackIcon}</span>}
+                  : <WheelThemeIcon className="wheel-center-fallback" theme={theme} />}
               </button>
             </div>
           </div>
         ) : (
           <div className="wheel-not-ready one-off-not-ready" aria-live="polite">
-            <span className="wheel-not-ready-icon" aria-hidden="true">{wheelFallbackIcon}</span>
+            <WheelThemeIcon className="wheel-not-ready-icon" theme={theme} />
             <strong>Добавьте фильмы</strong>
             <span>Список для разовой прокрутки находится в меню справа.</span>
           </div>
@@ -355,9 +354,13 @@ export default function OneOffWheelPanel() {
           <div className="one-off-center-setting">
             <span>Центр колеса</span>
             <div>
-              <span className="one-off-center-preview" aria-hidden="true">
-                {centerImage ? <img src={centerImage} alt="" /> : '🧀'}
-              </span>
+              {centerImage ? (
+                <span className="one-off-center-preview" aria-hidden="true">
+                  <img src={centerImage} alt="" />
+                </span>
+              ) : (
+                <WheelThemeIcon className="one-off-center-preview" theme={theme} />
+              )}
               {isAdmin && (
                 <div>
                   <input

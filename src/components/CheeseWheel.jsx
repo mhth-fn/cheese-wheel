@@ -25,10 +25,10 @@ const RIND_THEMES = {
   },
   samurai: {
     outer: "#181714",
-    mid: "#9e281c",
-    inner: "#34312b",
-    marker: "#d9bd73",
-    markerStroke: "#6f551e",
+    mid: "#c9ab6c",
+    inner: "#641812",
+    marker: "#f4dfb3",
+    markerStroke: "#6d1a14",
   },
 };
 
@@ -42,14 +42,60 @@ const WHEEL_PALETTES = {
     label: "#5B3D08",
   },
   samurai: {
-    wedges: ["#f2ead8", "#e1d4ba", "#eadfc9", "#d7c8aa"],
-    divider: "#675e50",
-    hole: "#8f8170",
-    holeShadow: "#625b50",
-    holeHighlight: "#b7a98e",
-    label: "#1c1b18",
+    wedges: ["#a92920", "#b73329", "#98231c", "#c13b2f"],
+    divider: "rgba(255, 237, 211, 0.32)",
+    label: "#fff4df",
+    labelStroke: "rgba(77, 13, 10, 0.78)",
   },
 };
+
+function drawSamuraiSunTexture(ctx, cx, cy, radius, rotation, movieCount) {
+  let seed = 9173 + movieCount * 97;
+  const random = () => {
+    seed = (seed * 16807) % 2147483647;
+    return (seed - 1) / 2147483646;
+  };
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+  ctx.clip();
+
+  const shade = ctx.createRadialGradient(
+    cx - radius * 0.24,
+    cy - radius * 0.28,
+    radius * 0.04,
+    cx,
+    cy,
+    radius
+  );
+  shade.addColorStop(0, "rgba(255, 233, 207, 0.11)");
+  shade.addColorStop(0.52, "rgba(118, 15, 11, 0.02)");
+  shade.addColorStop(1, "rgba(48, 6, 5, 0.22)");
+  ctx.fillStyle = shade;
+  ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+
+  ctx.translate(cx, cy);
+  ctx.rotate(rotation);
+  for (let index = 0; index < 68; index++) {
+    const angle = random() * Math.PI * 2;
+    const distance = Math.sqrt(random()) * radius * 0.94;
+    const x = Math.cos(angle) * distance;
+    const y = Math.sin(angle) * distance;
+    const length = 8 + random() * 34;
+    const bend = (random() - 0.5) * 7;
+    ctx.beginPath();
+    ctx.moveTo(x - length / 2, y);
+    ctx.quadraticCurveTo(x, y + bend, x + length / 2, y + bend * 0.25);
+    ctx.strokeStyle = index % 4 === 0
+      ? `rgba(255, 230, 205, ${0.025 + random() * 0.055})`
+      : `rgba(55, 8, 7, ${0.018 + random() * 0.04})`;
+    ctx.lineWidth = 0.5 + random() * 1.2;
+    ctx.lineCap = "round";
+    ctx.stroke();
+  }
+  ctx.restore();
+}
 
 const CheeseWheel = forwardRef(function CheeseWheel({
   movies,
@@ -99,7 +145,8 @@ const CheeseWheel = forwardRef(function CheeseWheel({
     if (n === 0) return;
     const sliceAngle = (2 * Math.PI) / n;
 
-    ensureHoles(n);
+    const isSamurai = theme === 'samurai';
+    if (!isSamurai) ensureHoles(n);
 
     const rind = RIND_THEMES[theme] || RIND_THEMES.cheese;
     const palette = WHEEL_PALETTES[theme] || WHEEL_PALETTES.cheese;
@@ -125,7 +172,7 @@ const CheeseWheel = forwardRef(function CheeseWheel({
     ctx.fillStyle = rind.inner;
     ctx.fill();
 
-    /* cheese sectors */
+    /* themed sectors */
     const wedgeColors = palette.wedges;
     movies.forEach((m, i) => {
       const startAngle = rot + i * sliceAngle;
@@ -142,6 +189,10 @@ const CheeseWheel = forwardRef(function CheeseWheel({
       }
     });
 
+    if (isSamurai) {
+      drawSamuraiSunTexture(ctx, cx, cy, r, rot, n);
+    }
+
     /* divider lines */
     if (n > 1) {
       movies.forEach((m, i) => {
@@ -155,40 +206,42 @@ const CheeseWheel = forwardRef(function CheeseWheel({
       });
     }
 
-    /* cheese holes */
-    holesRef.current.forEach(({ sector, angleOff, distFrac, hr }) => {
-      const angle = rot + sector * sliceAngle + angleOff;
-      const dist = distFrac * r;
-      const hx = cx + dist * Math.cos(angle);
-      const hy = cy + dist * Math.sin(angle);
+    if (!isSamurai) {
+      /* cheese holes */
+      holesRef.current.forEach(({ sector, angleOff, distFrac, hr }) => {
+        const angle = rot + sector * sliceAngle + angleOff;
+        const dist = distFrac * r;
+        const hx = cx + dist * Math.cos(angle);
+        const hy = cy + dist * Math.sin(angle);
 
-      ctx.beginPath();
-      ctx.arc(hx, hy, hr, 0, 2 * Math.PI);
-      ctx.fillStyle = palette.hole;
-      ctx.fill();
+        ctx.beginPath();
+        ctx.arc(hx, hy, hr, 0, 2 * Math.PI);
+        ctx.fillStyle = palette.hole;
+        ctx.fill();
 
-      /* top shadow crescent */
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(hx, hy, hr, 0, 2 * Math.PI);
-      ctx.clip();
-      ctx.beginPath();
-      ctx.arc(hx, hy - hr * 0.35, hr * 0.95, 0, 2 * Math.PI);
-      ctx.fillStyle = palette.holeShadow;
-      ctx.fill();
-      ctx.restore();
+        /* top shadow crescent */
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(hx, hy, hr, 0, 2 * Math.PI);
+        ctx.clip();
+        ctx.beginPath();
+        ctx.arc(hx, hy - hr * 0.35, hr * 0.95, 0, 2 * Math.PI);
+        ctx.fillStyle = palette.holeShadow;
+        ctx.fill();
+        ctx.restore();
 
-      /* bottom highlight crescent */
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(hx, hy, hr, 0, 2 * Math.PI);
-      ctx.clip();
-      ctx.beginPath();
-      ctx.arc(hx, hy + hr * 0.45, hr * 0.85, 0, 2 * Math.PI);
-      ctx.fillStyle = palette.holeHighlight;
-      ctx.fill();
-      ctx.restore();
-    });
+        /* bottom highlight crescent */
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(hx, hy, hr, 0, 2 * Math.PI);
+        ctx.clip();
+        ctx.beginPath();
+        ctx.arc(hx, hy + hr * 0.45, hr * 0.85, 0, 2 * Math.PI);
+        ctx.fillStyle = palette.holeHighlight;
+        ctx.fill();
+        ctx.restore();
+      });
+    }
 
     /* red triangle markers on rind */
     const markerR = (rindMid + rindOuter) / 2 - 1;
@@ -236,7 +289,7 @@ const CheeseWheel = forwardRef(function CheeseWheel({
       ctx.rotate(rotation);
       ctx.font = `800 ${fontSize}px 'Nunito', 'Comfortaa', sans-serif`;
       ctx.lineJoin = "round";
-      ctx.strokeStyle = wedgeColors[i % wedgeColors.length];
+      ctx.strokeStyle = palette.labelStroke || wedgeColors[i % wedgeColors.length];
       ctx.lineWidth = 4;
       ctx.strokeText(label, 0, 0, sectorWidth);
       ctx.fillStyle = palette.label;
@@ -381,7 +434,7 @@ const CheeseWheel = forwardRef(function CheeseWheel({
         height={500}
         onMouseMove={updateHoveredSector}
         onMouseLeave={clearHoveredSector}
-        aria-label={`Сырное колесо. Фильмы: ${movies.map(movie => movie.title).join(', ')}`}
+        aria-label={`${theme === 'samurai' ? 'Самурайское' : 'Сырное'} колесо. Фильмы: ${movies.map(movie => movie.title).join(', ')}`}
       />
       <div key={pointerTick} className="wheel-pointer bounce" aria-hidden="true" />
     </div>
