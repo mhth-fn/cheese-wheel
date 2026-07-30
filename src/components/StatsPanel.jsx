@@ -15,6 +15,16 @@ function commonFilmsLabel(value) {
     : `${value} общих ${pluralFilms(value)}`;
 }
 
+function ratingComparisonsLabel(value) {
+  const mod10 = value % 10;
+  const mod100 = value % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${value} пара оценок`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+    return `${value} пары оценок`;
+  }
+  return `${value} пар оценок`;
+}
+
 function RatedMovieCard({
   label,
   movie,
@@ -64,6 +74,19 @@ function formatDifference(value) {
   }).format(Number(value));
 }
 
+function differencePointsLabel(value) {
+  const numericValue = Number(value);
+  const formattedValue = formatDifference(numericValue);
+  if (!Number.isInteger(numericValue)) return `${formattedValue} балла`;
+  const mod10 = numericValue % 10;
+  const mod100 = numericValue % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${formattedValue} балл`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+    return `${formattedValue} балла`;
+  }
+  return `${formattedValue} баллов`;
+}
+
 function RatingMatchCard({ label, pair, tone, personal = false }) {
   const description = 'Средняя абсолютная разница оценок по фильмам, которые оценили оба участника';
 
@@ -104,6 +127,58 @@ function RatingMatchCard({ label, pair, tone, personal = false }) {
   );
 }
 
+function RatingDifferenceSummaryCard({
+  summary,
+  personal,
+  comparisonUserCount,
+  participantCount,
+}) {
+  const isOverallPersonalComparison = personal && comparisonUserCount === 0;
+  const userNames = Array.isArray(summary?.user_names) ? summary.user_names : [];
+  const hasEnoughParticipants = personal || participantCount >= 2;
+  const description = isOverallPersonalComparison
+    ? 'Средняя абсолютная разница между вашими оценками и оценками всех остальных участников'
+    : 'Средняя абсолютная разница оценок по фильмам, которые оценили оба участника';
+
+  return (
+    <article
+      className="stat-card rating-match difference-summary"
+      title={description}
+    >
+      <div className="stat-card-label">Средняя разница оценок</div>
+      {summary ? (
+        <>
+          <div className="stat-card-value stat-difference-value">
+            {differencePointsLabel(summary.average_difference)}
+          </div>
+          <div className="stat-card-sub">
+            {isOverallPersonalComparison
+              ? 'Со всеми участниками'
+              : userNames.slice(0, 2).join(' ↔ ')}
+            {' · '}
+            {isOverallPersonalComparison
+              ? ratingComparisonsLabel(summary.comparisons_count)
+              : commonFilmsLabel(summary.comparisons_count)}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="stat-card-value stat-match-empty">
+            {hasEnoughParticipants ? 'Нет общих оценок' : 'Нужен второй участник'}
+          </div>
+          <div className="stat-card-sub">
+            {hasEnoughParticipants
+              ? isOverallPersonalComparison
+                ? 'Появится, когда вы и кто-то ещё оцените один фильм'
+                : 'Появится, когда один фильм оценят оба участника'
+              : 'Выберите ещё одного участника для сравнения'}
+          </div>
+        </>
+      )}
+    </article>
+  );
+}
+
 export default function StatsPanel({
   refreshKey,
   scope = 'all',
@@ -134,11 +209,10 @@ export default function StatsPanel({
     return (
       <div className="stats-panel stats-loading" aria-live="polite">
         {[1, 2, 3, 4].map(item => <div key={item} className="stat-card skeleton" />)}
-        {showRatingMatches && (
-          <div className="stats-match-grid">
-            {[5, 6].map(item => <div key={item} className="stat-card skeleton" />)}
-          </div>
-        )}
+        <div className={`stats-match-grid${showRatingMatches ? '' : ' single'}`}>
+          {(showRatingMatches ? [5, 6] : [5])
+            .map(item => <div key={item} className="stat-card skeleton" />)}
+        </div>
       </div>
     );
   }
@@ -173,6 +247,23 @@ export default function StatsPanel({
     )
   );
   const hasOnePersonalMovie = isPersonal && Number(stats.total_watched) === 1;
+  const participantCount = isPersonal
+    ? 1 + (Array.isArray(stats.comparison_user_ids) ? stats.comparison_user_ids.length : 0)
+    : Array.isArray(stats.selected_user_ids)
+      ? stats.selected_user_ids.length
+      : selectedUserIds.length;
+  const ratingDifferenceSummary = stats.rating_difference_summary || (
+    comparisonUserCount === 1 && stats.closest_rating_pair
+      ? {
+        average_difference: stats.closest_rating_pair.average_difference,
+        comparisons_count: stats.closest_rating_pair.common_movies,
+        user_names: [
+          stats.closest_rating_pair.first_user,
+          stats.closest_rating_pair.second_user,
+        ],
+      }
+      : null
+  );
 
   return (
     <section
@@ -277,6 +368,16 @@ export default function StatsPanel({
             pair={stats.furthest_rating_pair}
             tone="furthest"
             personal={isPersonal}
+          />
+        </div>
+      )}
+      {!showRatingMatches && (
+        <div className="stats-match-grid single">
+          <RatingDifferenceSummaryCard
+            summary={ratingDifferenceSummary}
+            personal={isPersonal}
+            comparisonUserCount={comparisonUserCount}
+            participantCount={participantCount}
           />
         </div>
       )}

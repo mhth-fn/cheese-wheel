@@ -3671,6 +3671,32 @@ function serializeRatingPair(pair) {
   };
 }
 
+function serializeRatingDifferenceSummary(ratingPairs) {
+  const comparisonsCount = ratingPairs.reduce(
+    (total, pair) => total + pair.common_movies,
+    0
+  );
+  if (comparisonsCount === 0) return null;
+
+  const userNames = [];
+  ratingPairs.forEach(pair => {
+    [pair.first_user, pair.second_user].forEach(name => {
+      if (!userNames.includes(name)) userNames.push(name);
+    });
+  });
+
+  const differenceTotal = ratingPairs.reduce(
+    (total, pair) => total + pair.raw_difference * pair.common_movies,
+    0
+  );
+  return {
+    average_difference: roundRating(differenceTotal / comparisonsCount, 2),
+    comparisons_count: comparisonsCount,
+    compared_users: userNames.length,
+    user_names: userNames,
+  };
+}
+
 function buildGroupStats(groupUsers, scope = 'selected') {
   const watchedMovies = stmts.getWatched.all();
   const ratedMovies = watchedMovies.flatMap(movie => {
@@ -3762,6 +3788,7 @@ function buildGroupStats(groupUsers, scope = 'selected') {
     per_user_avg: perUserAvg,
     closest_rating_pair: serializeRatingPair(closestRatingPair),
     furthest_rating_pair: serializeRatingPair(furthestRatingPair),
+    rating_difference_summary: serializeRatingDifferenceSummary(ratingPairs),
   };
 }
 
@@ -3802,14 +3829,15 @@ function buildPersonalStats(currentUser, comparisonScope = 'all', selectedCompar
     : null;
 
   const selectedComparisonUserIdSet = new Set(selectedComparisonUserIds.map(Number));
-  const comparisonUsers = stmts.getUsers.all()
-    .filter(user => Number(user.id) !== Number(currentUser.id))
+  const allComparisonUsers = stmts.getUsers.all()
+    .filter(user => Number(user.id) !== Number(currentUser.id));
+  const comparisonUsers = allComparisonUsers
     .filter(user => (
       comparisonScope === 'selected'
         ? selectedComparisonUserIdSet.has(Number(user.id))
         : comparisonScope !== 'core' || CORE_STATS_USER_NAMES.includes(user.name)
     ));
-  const ratingPairs = comparisonUsers.flatMap((otherUser, order) => {
+  const buildRatingPairs = users => users.flatMap((otherUser, order) => {
     const differences = watchedMovies.flatMap(movie => {
       const currentRating = movie[ratingKey];
       const otherRating = movie[`rating_${otherUser.id}`];
@@ -3830,6 +3858,12 @@ function buildPersonalStats(currentUser, comparisonScope = 'all', selectedCompar
       order,
     }];
   });
+  const ratingPairs = buildRatingPairs(comparisonUsers);
+  const summaryRatingPairs = (
+    comparisonScope === 'selected' && selectedComparisonUserIds.length === 0
+      ? buildRatingPairs(allComparisonUsers)
+      : ratingPairs
+  );
 
   const closestRatingPair = [...ratingPairs].sort((first, second) => (
     first.raw_difference - second.raw_difference
@@ -3875,6 +3909,7 @@ function buildPersonalStats(currentUser, comparisonScope = 'all', selectedCompar
     }],
     closest_rating_pair: serializeRatingPair(closestRatingPair),
     furthest_rating_pair: serializeRatingPair(furthestRatingPair),
+    rating_difference_summary: serializeRatingDifferenceSummary(summaryRatingPairs),
   };
 }
 

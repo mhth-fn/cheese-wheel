@@ -232,6 +232,12 @@ test('real server enforces authentication, dynamic roles and content ownership',
   );
   assert.equal(selectedStats.payload.total_watched, 1);
   assert.equal(selectedStats.payload.top_rated.avg_rating, 8.5);
+  assert.equal(selectedStats.payload.rating_difference_summary.average_difference, 1);
+  assert.equal(selectedStats.payload.rating_difference_summary.comparisons_count, 1);
+  assert.deepEqual(
+    selectedStats.payload.rating_difference_summary.user_names,
+    ['Антон', 'Пётр']
+  );
   assert.equal((await request(instance, '/api/stats?scope=selected&user_ids=999', {
     cookie: sergey.cookie,
   })).status, 400);
@@ -251,6 +257,8 @@ test('real server enforces authentication, dynamic roles and content ownership',
   assert.equal(personalSelectedStats.payload.closest_rating_pair.second_user, 'Пётр');
   assert.equal(personalSelectedStats.payload.closest_rating_pair.average_difference, 1);
   assert.equal(personalSelectedStats.payload.furthest_rating_pair.second_user, 'Пётр');
+  assert.equal(personalSelectedStats.payload.rating_difference_summary.average_difference, 1);
+  assert.equal(personalSelectedStats.payload.rating_difference_summary.comparisons_count, 1);
   const personalEmptyComparisonStats = await request(
     instance,
     '/api/stats?scope=personal&comparison_scope=selected&user_ids=',
@@ -264,6 +272,12 @@ test('real server enforces authentication, dynamic roles and content ownership',
   assert.deepEqual(personalEmptyComparisonStats.payload.comparison_user_ids, []);
   assert.equal(personalEmptyComparisonStats.payload.closest_rating_pair, null);
   assert.equal(personalEmptyComparisonStats.payload.furthest_rating_pair, null);
+  assert.equal(personalEmptyComparisonStats.payload.rating_difference_summary.average_difference, 1);
+  assert.equal(personalEmptyComparisonStats.payload.rating_difference_summary.comparisons_count, 1);
+  assert.deepEqual(
+    personalEmptyComparisonStats.payload.rating_difference_summary.user_names,
+    ['Антон', 'Пётр']
+  );
   assert.equal((await request(
     instance,
     '/api/stats?scope=selected&user_ids=',

@@ -35,6 +35,19 @@
   gap: var(--space-3);
 }
 
+.stats-match-grid.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.stat-card.difference-summary {
+  min-height: 108px;
+  box-shadow: inset 0 3px 0 var(--color-primary), var(--shadow-small);
+}
+
+.stat-difference-value {
+  color: var(--color-primary);
+}
+
 .stat-card.closest {
   box-shadow: inset 0 3px 0 var(--color-success), var(--shadow-small);
 }
