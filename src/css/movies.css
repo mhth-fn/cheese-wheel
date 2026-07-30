@@ -13,7 +13,11 @@
   background: var(--theme-btn);
   box-shadow: var(--shadow-medium);
   cursor: pointer;
-  transition: transform 0.3s ease, box-shadow 0.15s ease, opacity 0.2s ease;
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.15s ease,
+    opacity 0.2s ease,
+    visibility 0s linear;
 }
 
 .drawer-toggle:hover:not(:disabled) {
@@ -669,9 +673,15 @@
   }
 
   body.mobile-nav-hidden .drawer-toggle {
+    visibility: hidden;
     opacity: 0;
     transform: translateY(74px) scale(0.92);
     pointer-events: none;
+    transition:
+      transform 0.3s ease,
+      box-shadow 0.15s ease,
+      opacity 0.2s ease,
+      visibility 0s linear 0.3s;
   }
 
   .wheel-modal-overlay {
