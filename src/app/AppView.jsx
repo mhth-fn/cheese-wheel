@@ -16,6 +16,18 @@ const SigamePacksPage = lazy(() => import('../components/SigamePacksPage'));
 const VpnPage = lazy(() => import('../components/VpnPage'));
 const WatchedPage = lazy(() => import('../components/WatchedPage'));
 
+const REVIEW_KINDS_BY_PAGE = {
+  'movie-reviews': 'movies',
+  'music-reviews': 'music',
+  'wine-reviews': 'wine',
+};
+
+const REVIEW_PAGES_BY_KIND = {
+  movies: 'movie-reviews',
+  music: 'music-reviews',
+  wine: 'wine-reviews',
+};
+
 function PageLoading() {
   return (
     <div className="page-loading" role="status" aria-live="polite">
@@ -103,13 +115,11 @@ function PageContent() {
           </Suspense>
         </div>
       )}
-      {(page === 'movie-reviews' || page === 'wine-reviews') && (
+      {REVIEW_KINDS_BY_PAGE[page] && (
         <div id="reviews-page" className="page active">
           <ReviewsJournalPage
-            kind={page === 'wine-reviews' ? 'wine' : 'movies'}
-            onKindChange={kind => navigate(
-              kind === 'wine' ? 'wine-reviews' : 'movie-reviews'
-            )}
+            kind={REVIEW_KINDS_BY_PAGE[page]}
+            onKindChange={kind => navigate(REVIEW_PAGES_BY_KIND[kind])}
           />
         </div>
       )}

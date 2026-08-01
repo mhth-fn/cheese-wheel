@@ -156,6 +156,26 @@ const stmts = {
   getWineReviewById: db.prepare('SELECT * FROM wine_reviews WHERE id = ?'),
   deleteWineReview: db.prepare('DELETE FROM wine_reviews WHERE id = ? AND user_id = ?'),
   updateWineReview: db.prepare('UPDATE wine_reviews SET title=?, content=?, recommend=?, wine_type=?, grape=?, region=?, vintage=?, price=? WHERE id=? AND user_id=?'),
+  getMusicReviews: db.prepare(`
+    SELECT mr.*, u.name as user_name,
+      COALESCE((SELECT COUNT(*) FROM review_reactions WHERE review_type='music' AND review_id=mr.id AND reaction=1), 0) as likes,
+      COALESCE((SELECT COUNT(*) FROM review_reactions WHERE review_type='music' AND review_id=mr.id AND reaction=-1), 0) as dislikes,
+      COALESCE((SELECT json_group_array(json_object('user_id', user_id, 'reaction', reaction)) FROM review_reactions WHERE review_type='music' AND review_id=mr.id), '[]') as reactions_json
+    FROM music_reviews mr JOIN users u ON mr.user_id = u.id
+    ORDER BY mr.created_at DESC, mr.id DESC
+  `),
+  insertMusicReview: db.prepare(`
+    INSERT INTO music_reviews (
+      user_id, title, artist, music_type, source_url, content, recommend
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `),
+  getMusicReviewById: db.prepare('SELECT * FROM music_reviews WHERE id = ?'),
+  deleteMusicReview: db.prepare('DELETE FROM music_reviews WHERE id = ? AND user_id = ?'),
+  updateMusicReview: db.prepare(`
+    UPDATE music_reviews
+    SET title=?, artist=?, music_type=?, source_url=?, content=?, recommend=?
+    WHERE id=? AND user_id=?
+  `),
   getMovieReviews: db.prepare(`
     SELECT mr.*, u.name as user_name,
       COALESCE((SELECT COUNT(*) FROM review_reactions WHERE review_type='movie' AND review_id=mr.id AND reaction=1), 0) as likes,

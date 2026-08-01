@@ -141,7 +141,7 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS review_reactions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    review_type TEXT NOT NULL CHECK(review_type IN ('movie', 'wine')),
+    review_type TEXT NOT NULL CHECK(review_type IN ('movie', 'wine', 'music')),
     review_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
     reaction INTEGER NOT NULL CHECK(reaction IN (-1, 1)),
@@ -153,6 +153,20 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    recommend INTEGER NOT NULL DEFAULT 1,
+    created_at DATETIME DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS music_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    artist TEXT,
+    music_type TEXT NOT NULL DEFAULT 'track'
+      CHECK(music_type IN ('track', 'album', 'artist', 'playlist', 'live')),
+    source_url TEXT,
     content TEXT NOT NULL,
     recommend INTEGER NOT NULL DEFAULT 1,
     created_at DATETIME DEFAULT (datetime('now')),
@@ -237,6 +251,38 @@ db.exec(`
     SELECT id FROM sigame_packs WHERE status = 'planned'
   );
 `);
+
+// Старое ограничение review_reactions знало только кино и вино. SQLite не
+// умеет расширять CHECK через ALTER COLUMN, поэтому атомарно пересобираем
+// таблицу, сохраняя все существующие реакции.
+const reviewReactionsSchema = db.prepare(`
+  SELECT sql FROM sqlite_master
+  WHERE type = 'table' AND name = 'review_reactions'
+`).get()?.sql || '';
+if (!reviewReactionsSchema.includes("'music'")) {
+  const migrateReviewReactionTypes = db.transaction(() => {
+    db.exec(`
+      ALTER TABLE review_reactions RENAME TO review_reactions_before_music;
+
+      CREATE TABLE review_reactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        review_type TEXT NOT NULL CHECK(review_type IN ('movie', 'wine', 'music')),
+        review_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        reaction INTEGER NOT NULL CHECK(reaction IN (-1, 1)),
+        UNIQUE(review_type, review_id, user_id),
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      );
+
+      INSERT INTO review_reactions (id, review_type, review_id, user_id, reaction)
+      SELECT id, review_type, review_id, user_id, reaction
+      FROM review_reactions_before_music;
+
+      DROP TABLE review_reactions_before_music;
+    `);
+  });
+  migrateReviewReactionTypes();
+}
 
 // Миграция: добавляем колонку password_hash если её нет
 try {

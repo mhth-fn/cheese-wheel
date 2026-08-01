@@ -366,13 +366,16 @@ app.post('/api/review-reactions', (req, res) => {
   const userId = req.tokenData.userId;
   if (!userId) return res.status(403).json({ error: 'Требуется авторизация' });
   const { review_type, review_id, reaction } = req.body;
-  if (!['movie', 'wine'].includes(review_type)) return res.status(400).json({ error: 'Неверный тип обзора' });
+  if (!['movie', 'wine', 'music'].includes(review_type)) return res.status(400).json({ error: 'Неверный тип обзора' });
   const reviewId = parseIntStrict(review_id);
   if (isNaN(reviewId)) return res.status(400).json({ error: 'Неверный ID обзора' });
   if (reaction !== 1 && reaction !== -1) return res.status(400).json({ error: 'Неверная реакция' });
-  const review = review_type === 'movie'
-    ? stmts.getMovieReviewById.get(reviewId)
-    : stmts.getWineReviewById.get(reviewId);
+  const reviewStatements = {
+    movie: stmts.getMovieReviewById,
+    wine: stmts.getWineReviewById,
+    music: stmts.getMusicReviewById,
+  };
+  const review = reviewStatements[review_type].get(reviewId);
   if (!review) return res.status(404).json({ error: 'Обзор не найден' });
   if (review.user_id === userId) return res.status(403).json({ error: 'Нельзя оценивать свой обзор' });
 

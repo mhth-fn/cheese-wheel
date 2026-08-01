@@ -81,6 +81,15 @@ test('mobile browser can log in and use watched and reviews navigation', async t
       'Version/26.0 Mobile/15E148 Safari/604.1',
     ].join(' '),
   });
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
+    origin: instance.baseUrl,
+  });
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, 'share', {
+      configurable: true,
+      value: undefined,
+    });
+  });
   const page = await context.newPage();
   const browserErrors = [];
   page.on('pageerror', error => browserErrors.push(error.message));
@@ -522,9 +531,39 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   await wineTab.click();
   await page.waitForURL(`${instance.baseUrl}/reviews/wine`);
   assert.equal(await wineTab.getAttribute('aria-selected'), 'true');
+  const musicTab = page.getByRole('tab', { name: 'Музыка', exact: true });
+  await musicTab.click();
+  await page.waitForURL(`${instance.baseUrl}/reviews/music`);
+  assert.equal(await musicTab.getAttribute('aria-selected'), 'true');
+  await page.getByLabel('Название *').fill('Browser Music Find');
+  await page.getByLabel('Исполнитель').fill('Browser Artist');
+  await page.getByRole('button', { name: 'Альбом', exact: true }).click();
+  await page.getByLabel('Ссылка, где послушать').fill(
+    'https://music.example.test/browser-album'
+  );
+  await page.getByLabel('Ваш обзор *').fill(
+    'Музыкальная находка из браузерного smoke-теста.'
+  );
+  await page.getByRole('button', { name: 'Опубликовать находку' }).click();
+  await page.getByRole('heading', { name: 'Browser Music Find' }).waitFor();
+  await page.getByRole('link', { name: 'Открыть находку' }).waitFor();
+  const musicReviewCard = page.locator('.music-review-card');
+  assert.equal(await musicReviewCard.count(), 1);
+  const musicReviewId = await musicReviewCard.getAttribute('id');
+  const shareMusicReview = page.getByRole('button', { name: 'Поделиться обзором' });
+  await shareMusicReview.click();
+  await page.getByText('Ссылка на обзор скопирована', { exact: true }).waitFor();
+  assert.equal(
+    await page.evaluate(() => navigator.clipboard.readText()),
+    `${instance.baseUrl}/reviews/music#${musicReviewId}`
+  );
 
   await page.setViewportSize({ width: 390, height: 844 });
   const auditTheme = async (optionName, className) => {
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+    await page.getByRole('button', { name: 'Открыть админ-панель' }).waitFor({
+      state: 'visible',
+    });
     await page.getByRole('button', { name: 'Открыть админ-панель' }).click();
     const adminDialog = page.getByRole('dialog', { name: '⚙️ Админ-панель' });
     await adminDialog.waitFor();

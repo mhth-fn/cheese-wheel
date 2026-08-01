@@ -78,8 +78,8 @@
 
 .reviews-journal-tabs {
   display: grid;
-  width: min(100%, 430px);
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(100%, 620px);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-1);
   padding: var(--space-1);
   margin: 0 auto var(--space-3);
@@ -614,6 +614,234 @@
   margin-bottom: 6px;
 }
 
+/* Music-specific */
+.music-review-form {
+  border-color: var(--feature-accent);
+}
+
+.music-review-form.compact {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+}
+
+.music-discovery-note {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--feature-accent);
+  border-radius: var(--radius-medium);
+  background: var(--feature-accent-surface);
+  color: var(--feature-accent-text);
+}
+
+.music-discovery-note > span {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-surface-translucent-strong);
+  font-size: 1.35rem;
+}
+
+.music-discovery-note strong {
+  font-size: 0.9rem;
+}
+
+.music-discovery-note p {
+  margin-top: 2px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.music-fields-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(180px, 0.7fr);
+  gap: var(--space-2);
+}
+
+.music-type-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.music-type-btn {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 5px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.music-type-btn:hover {
+  border-color: var(--feature-accent);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.music-type-btn.active {
+  border-color: var(--feature-accent);
+  background: var(--feature-accent-surface);
+  color: var(--feature-accent-text);
+  box-shadow: inset 0 0 0 1px var(--feature-accent);
+}
+
+.music-review-card {
+  position: relative;
+  overflow: hidden;
+  border-color: var(--color-border);
+}
+
+.music-review-card::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 4px;
+  background: var(--feature-accent);
+  content: '';
+}
+
+.music-review-card:target {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+}
+
+.music-review-card-header {
+  margin-bottom: var(--space-2);
+  padding-left: var(--space-1);
+}
+
+.music-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--feature-accent-surface);
+  color: var(--feature-accent-text);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.music-review-heading {
+  display: grid;
+  gap: 2px;
+  margin-bottom: var(--space-2);
+  padding-left: var(--space-1);
+}
+
+.music-review-heading h2 {
+  color: var(--color-text);
+  font-size: clamp(1.08rem, 3vw, 1.25rem);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.music-review-heading p {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.music-review-card .review-card-meta,
+.music-review-card .review-content {
+  padding-left: var(--space-1);
+}
+
+.music-review-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--color-border-soft);
+}
+
+.music-review-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.music-source-link,
+.music-share-btn {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: 7px 12px;
+  border-radius: var(--radius-medium);
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.2;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.music-source-link {
+  border: 1px solid var(--feature-accent);
+  background: var(--feature-accent-surface);
+  color: var(--feature-accent-text);
+}
+
+.music-share-btn {
+  border: 1px solid var(--color-border-soft);
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+}
+
+.music-source-link:hover,
+.music-share-btn:hover {
+  filter: brightness(0.97);
+  transform: translateY(-1px);
+}
+
+.music-review-footer .review-reactions {
+  flex: 0 0 auto;
+  margin-top: 0;
+  margin-left: auto;
+}
+
+.music-reviews-empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-large);
+  background: var(--color-surface-muted);
+}
+
+.music-reviews-empty > span {
+  font-size: 2rem;
+}
+
+.music-reviews-empty strong {
+  color: var(--color-text);
+}
+
+.music-reviews-empty p {
+  max-width: 480px;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
 /* Reactions */
 .review-reactions {
   display: flex;
@@ -757,6 +985,9 @@
 
   .reviews-journal-tab {
     min-height: 48px;
+    gap: 4px;
+    padding: 0 var(--space-2);
+    font-size: 0.84rem;
   }
 
   .movie-reviews-section.is-contextual {
@@ -784,5 +1015,36 @@
   .review-submit-btn {
     margin-left: 0;
     min-height: 44px;
+  }
+
+  .music-fields-row {
+    grid-template-columns: 1fr;
+  }
+
+  .music-type-toggle {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .music-type-btn {
+    justify-content: center;
+  }
+
+  .music-review-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .music-review-links {
+    display: grid;
+  }
+
+  .music-source-link,
+  .music-share-btn {
+    min-height: 44px;
+  }
+
+  .music-review-footer .review-reactions {
+    margin-left: 0;
   }
 }

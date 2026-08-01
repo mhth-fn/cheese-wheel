@@ -499,6 +499,81 @@ test('real server enforces authentication, dynamic roles and content ownership',
     cookie: sergey.cookie,
   })).status, 200);
 
+  const unsafeMusicReview = await request(instance, '/api/music-reviews', {
+    method: 'POST',
+    cookie: peter.cookie,
+    body: {
+      title: 'Unsafe music link',
+      content: 'This URL must not be stored',
+      source_url: 'javascript:alert(1)',
+    },
+  });
+  assert.equal(unsafeMusicReview.status, 400);
+  assert.match(unsafeMusicReview.payload.error, /http/);
+
+  const musicReview = await request(instance, '/api/music-reviews', {
+    method: 'POST',
+    cookie: peter.cookie,
+    body: {
+      title: 'Integration Album',
+      artist: 'Integration Artist',
+      music_type: 'album',
+      source_url: 'https://music.example.test/albums/42',
+      content: 'Original music review',
+      recommend: 1,
+    },
+  });
+  assert.equal(musicReview.status, 200, JSON.stringify(musicReview.payload));
+  assert.equal(musicReview.payload.artist, 'Integration Artist');
+  assert.equal(musicReview.payload.music_type, 'album');
+  assert.equal(musicReview.payload.source_url, 'https://music.example.test/albums/42');
+  assert.equal((await request(instance, `/api/music-reviews/${musicReview.payload.id}`, {
+    method: 'PATCH',
+    cookie: anton.cookie,
+    body: { title: 'Other member edit', content: 'No', recommend: -1 },
+  })).status, 403);
+  assert.equal((await request(instance, '/api/review-reactions', {
+    method: 'POST',
+    cookie: peter.cookie,
+    body: { review_type: 'music', review_id: musicReview.payload.id, reaction: 1 },
+  })).status, 403);
+  const musicReaction = await request(instance, '/api/review-reactions', {
+    method: 'POST',
+    cookie: anton.cookie,
+    body: { review_type: 'music', review_id: musicReview.payload.id, reaction: 1 },
+  });
+  assert.equal(musicReaction.status, 200, JSON.stringify(musicReaction.payload));
+  assert.equal(musicReaction.payload.likes, 1);
+  const listedMusicReviews = await request(instance, '/api/music-reviews', {
+    cookie: anton.cookie,
+  });
+  assert.equal(listedMusicReviews.status, 200);
+  assert.equal(listedMusicReviews.payload[0].likes, 1);
+  assert.equal(listedMusicReviews.payload[0].reactions[0].user_id, anton.user.id);
+  const adminMusicEdit = await request(
+    instance,
+    `/api/music-reviews/${musicReview.payload.id}`,
+    {
+      method: 'PATCH',
+      cookie: sergey.cookie,
+      body: {
+        title: 'Admin-edited album',
+        artist: 'Integration Artist',
+        music_type: 'album',
+        source_url: 'https://music.example.test/albums/42',
+        content: 'Admin-edited music review',
+        recommend: 0,
+      },
+    }
+  );
+  assert.equal(adminMusicEdit.status, 200);
+  assert.equal(adminMusicEdit.payload.content, 'Admin-edited music review');
+  assert.equal(adminMusicEdit.payload.likes, 1);
+  assert.equal((await request(instance, `/api/music-reviews/${musicReview.payload.id}`, {
+    method: 'DELETE',
+    cookie: sergey.cookie,
+  })).status, 200);
+
   const wheelMovie = await request(instance, '/api/wheel', {
     method: 'POST',
     cookie: anton.cookie,
@@ -587,6 +662,18 @@ test('startup preserves legacy duplicate reviews while enforcing one linked revi
   const seedDb = new Database(databasePath);
   seedDb.pragma('foreign_keys = ON');
   seedDb.exec('DROP INDEX idx_movie_reviews_user_movie');
+  seedDb.exec(`
+    DROP TABLE review_reactions;
+    CREATE TABLE review_reactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      review_type TEXT NOT NULL CHECK(review_type IN ('movie', 'wine')),
+      review_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      reaction INTEGER NOT NULL CHECK(reaction IN (-1, 1)),
+      UNIQUE(review_type, review_id, user_id),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+  `);
   const movieId = Number(seedDb.prepare(`
     INSERT INTO movies (title, is_watched, watched_at)
     VALUES ('Legacy duplicate film', 1, '2026-07-25')
@@ -633,6 +720,14 @@ test('startup preserves legacy duplicate reviews while enforcing one linked revi
       WHERE review_type = 'movie' AND review_id = ?
     `).get(olderId).count,
     1
+  );
+  assert.match(
+    migratedDb.prepare(`
+      SELECT sql
+      FROM sqlite_master
+      WHERE type = 'table' AND name = 'review_reactions'
+    `).get().sql,
+    /'music'/
   );
   assert.match(
     migratedDb.prepare(`

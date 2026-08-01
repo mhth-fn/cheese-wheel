@@ -19,6 +19,7 @@ const { registerWheelRoutes } = require('./server/routes/wheels');
 const { registerStatsRoutes } = require('./server/routes/stats');
 const { registerSettingsRoutes } = require('./server/routes/settings');
 const { registerReviewRoutes } = require('./server/routes/reviews');
+const { registerMusicReviewRoutes } = require('./server/routes/music-reviews');
 const { registerSigameRoutes } = require('./server/routes/sigame');
 const { registerSocketHandlers } = require('./server/socket-handlers');
 
@@ -305,6 +306,7 @@ registerVpnRoutes(routeContext);
 registerWheelRoutes(routeContext);
 registerStatsRoutes(routeContext);
 registerSettingsRoutes(routeContext);
+registerMusicReviewRoutes(routeContext);
 registerReviewRoutes(routeContext);
 registerSigameRoutes(routeContext);
 

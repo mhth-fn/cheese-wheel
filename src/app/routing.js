@@ -1,6 +1,7 @@
 const PAGE_PATHS = {
   games: '/games',
   'movie-reviews': '/reviews',
+  'music-reviews': '/reviews/music',
   sigame: '/sigame',
   vpn: '/vpn',
   watched: '/watched',
@@ -13,10 +14,12 @@ const PATH_PAGES = new Map([
   ['/movie-reviews', 'movie-reviews'],
   ['/reviews', 'movie-reviews'],
   ['/reviews/movies', 'movie-reviews'],
+  ['/reviews/music', 'music-reviews'],
   ['/reviews/wine', 'wine-reviews'],
   ['/sigame', 'sigame'],
   ['/vpn', 'vpn'],
   ['/watched', 'watched'],
+  ['/music-reviews', 'music-reviews'],
   ['/wine-reviews', 'wine-reviews'],
 ]);
 

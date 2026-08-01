@@ -1,10 +1,12 @@
 import { useRef } from 'react';
 import MovieReviewsPage from './MovieReviewsPage';
+import MusicReviewsPage from './MusicReviewsPage';
 import WineReviewsPage from './WineReviewsPage';
 
 const REVIEW_KINDS = [
   { key: 'movies', icon: '🎬', label: 'Кино' },
   { key: 'wine', icon: '🍷', label: 'Вино' },
+  { key: 'music', icon: '🎵', label: 'Музыка' },
 ];
 
 export default function ReviewsJournalPage({ kind = 'movies', onKindChange }) {
@@ -38,7 +40,7 @@ export default function ReviewsJournalPage({ kind = 'movies', onKindChange }) {
       <header className="reviews-journal-header">
         <p>Впечатления после встречи</p>
         <h1>Обзоры</h1>
-        <span>Все рецензии на кино и заметки о вине — в одном дневнике.</span>
+        <span>Кино, вино и музыка, которые хочется обсудить и передать друзьям.</span>
       </header>
 
       <div
@@ -77,9 +79,9 @@ export default function ReviewsJournalPage({ kind = 'movies', onKindChange }) {
         aria-labelledby={activeTabId}
         tabIndex={0}
       >
-        {kind === 'wine'
-          ? <WineReviewsPage embedded />
-          : <MovieReviewsPage embedded />}
+        {kind === 'wine' && <WineReviewsPage embedded />}
+        {kind === 'music' && <MusicReviewsPage embedded />}
+        {kind === 'movies' && <MovieReviewsPage embedded />}
       </section>
     </main>
   );

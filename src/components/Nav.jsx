@@ -17,7 +17,11 @@ const PRIMARY_PAGES = [
     target: 'movie-reviews',
     icon: '✍️',
     label: 'Обзоры',
-    matches: page => page === 'movie-reviews' || page === 'wine-reviews',
+    matches: page => [
+      'movie-reviews',
+      'music-reviews',
+      'wine-reviews',
+    ].includes(page),
   },
   { key: 'games', icon: '🎮', label: 'Игры' },
   {

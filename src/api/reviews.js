@@ -43,6 +43,45 @@ export function deleteWineReview(id) {
   return apiFetch(`/api/wine-reviews/${id}`, { method: 'DELETE' });
 }
 
+export async function fetchMusicReviews() {
+  const response = await apiFetch('/api/music-reviews');
+  return response.json();
+}
+
+export function postMusicReview({ artist, content, musicType, recommend, sourceUrl, title }) {
+  return apiFetch('/api/music-reviews', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      artist,
+      content,
+      music_type: musicType,
+      recommend,
+      source_url: sourceUrl,
+      title,
+    }),
+  });
+}
+
+export function patchMusicReview(id, { artist, content, musicType, recommend, sourceUrl, title }) {
+  return apiFetch(`/api/music-reviews/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      artist,
+      content,
+      music_type: musicType,
+      recommend,
+      source_url: sourceUrl,
+      title,
+    }),
+  });
+}
+
+export function deleteMusicReview(id) {
+  return apiFetch(`/api/music-reviews/${id}`, { method: 'DELETE' });
+}
+
 export async function fetchMovieReviews(movieId = null) {
   const query = movieId ? `?movie_id=${encodeURIComponent(movieId)}` : '';
   const response = await apiFetch(`/api/movie-reviews${query}`);
