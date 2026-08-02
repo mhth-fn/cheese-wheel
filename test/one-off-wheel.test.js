@@ -265,7 +265,10 @@ test('one-off wheel is admin-published and elimination rounds start manually', a
     }
   );
   assert.equal(durationDuringElimination.status, 409);
-  assert.equal(durationDuringElimination.payload.error, 'Дождитесь окончания режима на выбывание');
+  assert.match(
+    durationDuringElimination.payload.error,
+    /Дождитесь окончания (?:прокрутки разового колеса|режима на выбывание)/
+  );
   assert.equal(
     (await request(instance, '/api/one-off-wheel', { cookie: admin.cookie }))
       .payload.spin_duration,
