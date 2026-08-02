@@ -1,5 +1,6 @@
 import { getSigamePackDownloadUrl } from '../../api';
 import { formatFileSize, formatSigameDate } from './sigameUtils';
+import SigamePackReviews from './SigamePackReviews';
 
 export default function SigamePackCard({
   busy,
@@ -159,6 +160,7 @@ export default function SigamePackCard({
           </div>
         )}
       </div>
+      {pack.status === 'played' && <SigamePackReviews pack={pack} />}
     </article>
   );
 }

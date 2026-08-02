@@ -925,3 +925,115 @@
     transition: none;
   }
 }
+.sigame-reviews {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-soft);
+}
+
+.sigame-reviews-heading,
+.sigame-review header,
+.sigame-review-actions,
+.sigame-review-form > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.sigame-reviews-toggle {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.sigame-reviews-toggle span {
+  display: inline-grid;
+  min-width: 24px;
+  min-height: 24px;
+  margin-left: 4px;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  font-size: 0.74rem;
+}
+
+.sigame-reviews-body {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.sigame-reviews-empty,
+.sigame-review p {
+  margin: 0;
+}
+
+.sigame-review {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-medium);
+  background: var(--color-surface-muted);
+}
+
+.sigame-review header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.sigame-review header span,
+.sigame-reviews-empty {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.sigame-review p {
+  color: var(--color-text);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.sigame-review-actions {
+  justify-content: flex-end;
+}
+
+.sigame-review-form {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-medium);
+}
+
+.sigame-review-form label {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.sigame-review-form textarea,
+.sigame-review-form select {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-medium);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.sigame-review-form textarea {
+  min-height: 112px;
+  padding: var(--space-3);
+  resize: vertical;
+}
+
+.sigame-review-form select {
+  min-height: 42px;
+  padding: 0 var(--space-3);
+}

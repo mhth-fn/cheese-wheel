@@ -19,12 +19,14 @@ const WatchedPage = lazy(() => import('../components/WatchedPage'));
 const REVIEW_KINDS_BY_PAGE = {
   'movie-reviews': 'movies',
   'music-reviews': 'music',
+  'food-reviews': 'food',
   'wine-reviews': 'wine',
 };
 
 const REVIEW_PAGES_BY_KIND = {
   movies: 'movie-reviews',
   music: 'music-reviews',
+  food: 'food-reviews',
   wine: 'wine-reviews',
 };
 
@@ -52,7 +54,7 @@ function AuthState() {
   if (usersLoadState === 'loading') {
     return (
       <div className="auth-page active" aria-live="polite">
-        <div className="auth-logo">🧀</div>
+        <div className="auth-logo" aria-hidden="true">СК</div>
         <h1 className="auth-title">Собираем компанию…</h1>
         <p className="auth-subtitle">Загружаем участников и настройки.</p>
       </div>
@@ -61,7 +63,7 @@ function AuthState() {
   if (usersLoadState === 'error') {
     return (
       <div className="auth-page active" role="alert">
-        <div className="auth-logo">📡</div>
+        <div className="auth-logo auth-logo-text" aria-hidden="true">Нет связи</div>
         <h1 className="auth-title">Сервер не ответил</h1>
         <p className="auth-subtitle">Проверьте соединение и попробуйте снова.</p>
         <button className="button-primary" type="button" onClick={retryUsers}>
@@ -195,7 +197,7 @@ function AppControls() {
             aria-label="Открыть админ-панель"
             title="Админ-панель"
           >
-            ⚙️
+            Админ
           </button>
         </div>
       )}
@@ -213,7 +215,7 @@ function AppControls() {
             aria-label="Открыть управление колесом"
             title="Управление колесом"
           >
-            <span className="drawer-toggle-cheese">{theme === 'samurai' ? '⚔️' : '🧀'}</span>
+            <span className="drawer-toggle-label">Меню</span>
           </button>
         </div>
       )}

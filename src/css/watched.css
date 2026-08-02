@@ -1,9 +1,58 @@
 .watched-scope-control {
-  display: block;
+  display: grid;
+  gap: var(--space-3);
   margin-bottom: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-large);
+  background: var(--color-surface);
   color: var(--color-text-muted);
   font-size: 0.8rem;
   font-weight: 700;
+  box-shadow: var(--shadow-small);
+}
+
+.watched-scope-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.watched-scope-heading > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.watched-scope-heading strong {
+  color: var(--color-text);
+  font-size: 1rem;
+}
+
+.watched-scope-tabs {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 3px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-muted);
+}
+
+.watched-scope-tab {
+  min-height: 34px;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.watched-scope-tab.active {
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-small);
 }
 
 .watched-user-filters {
@@ -12,6 +61,11 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
+}
+
+.watched-filter-label {
+  margin-right: var(--space-1);
+  color: var(--color-text-muted);
 }
 
 .scope-filter-toggle {
@@ -42,8 +96,11 @@
   color: var(--color-on-primary);
 }
 
-.scope-filter-toggle.personal {
-  margin-left: auto;
+.watched-scope-note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.74rem;
+  font-weight: 500;
 }
 
 .watched-toolbar {

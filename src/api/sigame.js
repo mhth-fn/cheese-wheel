@@ -60,6 +60,28 @@ export function deleteSigamePack(id) {
   return apiFetch(`/api/sigame-packs/${id}`, { method: 'DELETE' });
 }
 
+export function createSigamePackReview(packId, review) {
+  return apiFetch(`/api/sigame-packs/${packId}/reviews`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(review),
+  });
+}
+
+export function updateSigamePackReview(packId, reviewId, review) {
+  return apiFetch(`/api/sigame-packs/${packId}/reviews/${reviewId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(review),
+  });
+}
+
+export function deleteSigamePackReview(packId, reviewId) {
+  return apiFetch(`/api/sigame-packs/${packId}/reviews/${reviewId}`, {
+    method: 'DELETE',
+  });
+}
+
 export function getSigamePackDownloadUrl(id) {
   return `/api/sigame-packs/${encodeURIComponent(id)}/download`;
 }

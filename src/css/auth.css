@@ -19,6 +19,12 @@
   animation: authFloat 2.4s ease-in-out infinite;
 }
 
+.auth-logo-text {
+  font-size: 1rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 .auth-title {
   color: var(--color-text);
   font-family: 'Caveat', 'Comfortaa', sans-serif;

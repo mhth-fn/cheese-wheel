@@ -8,9 +8,9 @@ import DrawerSettingsTab from '../features/wheel/DrawerSettingsTab';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 
 const TABS = [
-  { key: 'participants', icon: '👥', label: 'Участники' },
-  { key: 'next', icon: '⏭', label: 'Следующие' },
-  { key: 'settings', icon: '⚙️', label: 'Настройки' },
+  { key: 'participants', label: 'Участники' },
+  { key: 'next', label: 'Следующие' },
+  { key: 'settings', label: 'Настройки' },
 ];
 
 export default function DrawerPanel({
@@ -79,7 +79,6 @@ export default function DrawerPanel({
                 aria-selected={activeTab === tab.key}
                 onClick={() => setActiveTab(tab.key)}
               >
-                <span aria-hidden="true">{tab.icon}</span>
                 <span>{tab.label}</span>
                 {count !== null && <span className="wm-tab-count">{count}</span>}
               </button>

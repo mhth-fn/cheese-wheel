@@ -127,12 +127,11 @@ export default function WatchedPage() {
   const {
     activeScope,
     canUsePersonalFilter,
-    currentParticipant,
     filterUsers,
     groupVisibleUsers,
     personalComparisonScope,
     personalMode,
-    scopedMovies,
+    scopedMovies: statsScopedMovies,
     selectedComparisonUserIds,
     selectedStatsUserIds,
     selectedUserIdSet,
@@ -140,25 +139,16 @@ export default function WatchedPage() {
     togglePersonalFilter,
     toggleUserFilter,
     userFilterEnabled,
-    visibleUsers,
   } = watchedScope;
 
   useEffect(() => {
-    const personalRatingColumn = currentParticipant
-      ? `rating_${currentParticipant.id}`
-      : null;
-    if (personalMode && sortColumn === 'avg_rating' && personalRatingColumn) {
-      setSortColumn(personalRatingColumn);
-      setSortDirection('desc');
-      return;
-    }
-    if (activeScope === 'all' || !sortColumn?.startsWith('rating_')) return;
-    const visibleColumns = new Set(visibleUsers.map(user => `rating_${user.id}`));
+    if (!sortColumn?.startsWith('rating_')) return;
+    const visibleColumns = new Set(users.map(user => `rating_${user.id}`));
     if (!visibleColumns.has(sortColumn)) {
-      setSortColumn(personalMode && personalRatingColumn ? personalRatingColumn : 'avg_rating');
+      setSortColumn('avg_rating');
       setSortDirection('desc');
     }
-  }, [activeScope, currentParticipant, personalMode, visibleUsers, sortColumn]);
+  }, [users, sortColumn]);
 
   const openMoviePanel = (movie, view = 'details') => {
     setDetailsView(view);
@@ -292,13 +282,13 @@ export default function WatchedPage() {
 
   const query = debouncedQuery.trim().toLocaleLowerCase('ru');
   const filtered = query
-    ? scopedMovies.filter(movie => [
+    ? movies.filter(movie => [
       movie.title,
       movie.alternative_title,
       movie.director,
       movie.year,
     ].some(value => String(value || '').toLocaleLowerCase('ru').includes(query)))
-    : scopedMovies;
+    : movies;
   const sorted = sortColumn ? [...filtered].sort((a, b) => {
     let aValue = a[sortColumn];
     let bValue = b[sortColumn];
@@ -313,9 +303,9 @@ export default function WatchedPage() {
     return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
   }) : filtered;
   const detailsMovieForDisplay = detailsMovie
-    ? scopedMovies.find(movie => movie.id === detailsMovie.id) || null
+    ? movies.find(movie => movie.id === detailsMovie.id) || null
     : null;
-  const showAverageColumn = !personalMode;
+  const showAverageColumn = true;
 
   const sortIcon = column => sortColumn === column
     ? <span className="sort-icon active" aria-hidden="true">{sortDirection === 'asc' ? '↑' : '↓'}</span>
@@ -368,9 +358,9 @@ export default function WatchedPage() {
     const value = Number(movie.avg_rating);
     const className = value >= 9 ? 'rating-cheese' : value >= 7 ? 'rating-good' : value >= 4 ? 'rating-mid' : 'rating-bad';
     return (
-      <span className={`rating-avg ${className}`} title={`${movie.ratings_count} из ${visibleUsers.length} оценок`}>
+      <span className={`rating-avg ${className}`} title={`${movie.ratings_count} из ${users.length} оценок`}>
         <strong>{value.toFixed(1)}</strong>
-        <small>{movie.ratings_count}/{visibleUsers.length}</small>
+        <small>{movie.ratings_count}/{users.length}</small>
       </span>
     );
   };
@@ -466,7 +456,7 @@ export default function WatchedPage() {
               <span>{movieMetaText(movie) || 'Открыть карточку фильма'}</span>
             </button>
             <div className="watched-card-average">
-              <span>{personalMode ? 'Моя оценка' : 'Средняя'}</span>
+              <span>Средняя</span>
               {renderAvgRating(movie)}
             </div>
           </header>
@@ -509,7 +499,7 @@ export default function WatchedPage() {
         canUsePersonalFilter={canUsePersonalFilter}
         filterUsers={filterUsers}
         groupVisibleUsers={groupVisibleUsers}
-        movieCount={scopedMovies.length}
+        movieCount={statsScopedMovies.length}
         personalMode={personalMode}
         selectedUserIdSet={selectedUserIdSet}
         userFilterEnabled={userFilterEnabled}
@@ -534,14 +524,14 @@ export default function WatchedPage() {
         loadMovies={loadMovies}
         loadState={loadState}
         movies={movies}
-        personalMode={personalMode}
-        scopedMovies={scopedMovies}
+        personalMode={false}
+        scopedMovies={movies}
         showAverageColumn={showAverageColumn}
         sortColumn={sortColumn}
         sortDirection={sortDirection}
         sorted={sorted}
-        userFilterEnabled={userFilterEnabled}
-        visibleUsers={visibleUsers}
+        userFilterEnabled={false}
+        visibleUsers={users}
         onCompactSortChange={handleCompactSortChange}
         onOpenMovie={openMoviePanel}
         onSetPendingDelete={setPendingDelete}
@@ -584,7 +574,7 @@ export default function WatchedPage() {
       <MovieDetailsDialog
         key={detailsMovieForDisplay ? `${detailsMovieForDisplay.id}:${detailsView}` : 'closed'}
         movie={detailsMovieForDisplay}
-        users={visibleUsers}
+        users={users}
         initialView={detailsView}
         renderRating={renderRatingCell}
         onEdit={movie => {

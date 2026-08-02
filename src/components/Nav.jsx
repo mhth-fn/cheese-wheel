@@ -5,28 +5,26 @@ import TwoFactorPanel from './nav/TwoFactorPanel';
 import { useMobileNavVisibility } from './nav/useMobileNavVisibility';
 
 const PRIMARY_PAGES = [
-  { key: 'wheel', icon: '🎡', label: 'Колесо' },
+  { key: 'wheel', label: 'Колесо' },
   {
     key: 'watched',
-    icon: '📋',
     label: 'Просмотренные',
     shortLabel: 'История',
   },
   {
     key: 'reviews',
     target: 'movie-reviews',
-    icon: '✍️',
     label: 'Обзоры',
     matches: page => [
       'movie-reviews',
       'music-reviews',
       'wine-reviews',
+      'food-reviews',
     ].includes(page),
   },
-  { key: 'games', icon: '🎮', label: 'Игры' },
+  { key: 'games', label: 'Игры' },
   {
     key: 'sigame',
-    icon: '🧠',
     label: 'Паки SIGame',
     shortLabel: 'Паки',
   },
@@ -47,7 +45,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
 
   const pages = isGuest
     ? PRIMARY_PAGES
-    : [...PRIMARY_PAGES, { key: 'vpn', icon: '🔐', label: 'VPN' }];
+    : [...PRIMARY_PAGES, { key: 'vpn', label: 'VPN' }];
 
   const resetSubmenus = useCallback(() => {
     setChangingPassword(false);
@@ -132,7 +130,6 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
                 aria-current={active ? 'page' : undefined}
                 aria-label={page.label}
               >
-                <span aria-hidden="true">{page.icon}</span>
                 <span className={page.shortLabel ? 'nav-label-full' : undefined}>
                   {page.label}
                 </span>
@@ -183,7 +180,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
                 type="button"
                 onClick={() => setChangingPassword(true)}
               >
-                🔑 Поменять пароль
+                Поменять пароль
               </button>
             )}
 
@@ -202,7 +199,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
                 type="button"
                 onClick={() => setSecurityOpen(true)}
               >
-                🛡️ Двухфакторная защита
+                Двухфакторная защита
               </button>
             )}
 
@@ -219,7 +216,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
                 type="button"
                 onClick={onLogout}
               >
-                🚪 Выход
+                Выход
               </button>
             )}
           </div>

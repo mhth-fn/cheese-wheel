@@ -138,3 +138,45 @@ export function postReviewReaction(reviewType, reviewId, reaction) {
     body: JSON.stringify({ review_type: reviewType, review_id: reviewId, reaction }),
   });
 }
+
+export async function fetchFoodReviews() {
+  const response = await apiFetch('/api/food-reviews');
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(data?.error || 'Не удалось загрузить обзоры еды');
+  return data;
+}
+
+export function postFoodReview(review) {
+  return apiFetch('/api/food-reviews', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(review),
+  });
+}
+
+export function patchFoodReview(id, review) {
+  return apiFetch(`/api/food-reviews/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(review),
+  });
+}
+
+export function deleteFoodReview(id) {
+  return apiFetch(`/api/food-reviews/${id}`, { method: 'DELETE' });
+}
+
+export function uploadFoodReviewPhoto(reviewId, file) {
+  const params = new URLSearchParams({ original_file_name: file.name });
+  return apiFetch(`/api/food-reviews/${reviewId}/photos?${params.toString()}`, {
+    method: 'POST',
+    headers: { 'Content-Type': file.type },
+    body: file,
+  });
+}
+
+export function deleteFoodReviewPhoto(reviewId, photoId) {
+  return apiFetch(`/api/food-reviews/${reviewId}/photos/${photoId}`, {
+    method: 'DELETE',
+  });
+}

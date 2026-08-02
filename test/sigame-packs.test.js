@@ -109,6 +109,13 @@ test('SIGame library securely stores .siq files and enforces played-state rating
   assert.equal(created.payload.average_rating, null);
   assert.equal(created.payload.my_rating, null);
   const packId = created.payload.id;
+  assert.deepEqual(created.payload.reviews, []);
+
+  assert.equal((await request(instance, `/api/sigame-packs/${packId}/reviews`, {
+    method: 'POST',
+    cookie: anton.cookie,
+    body: { content: 'Слишком рано', recommend: 1 },
+  })).status, 409);
 
   const db = new Database(path.join(dataDir, 'cheese_wheel.db'));
   const stored = db.prepare(
@@ -166,6 +173,44 @@ test('SIGame library securely stores .siq files and enforces played-state rating
   assert.equal(played.payload.status, 'played');
   assert.equal(played.payload.played_by, peter.user.id);
   assert.ok(played.payload.played_at);
+
+  const antonReview = await request(instance, `/api/sigame-packs/${packId}/reviews`, {
+    method: 'POST',
+    cookie: anton.cookie,
+    body: { content: 'Сильный набор вопросов', recommend: 1 },
+  });
+  assert.equal(antonReview.status, 201, JSON.stringify(antonReview.payload));
+  assert.equal(antonReview.payload.user_name, anton.user.name);
+  assert.equal(antonReview.payload.pack_id, packId);
+  assert.equal((await request(instance, `/api/sigame-packs/${packId}/reviews`, {
+    method: 'POST',
+    cookie: anton.cookie,
+    body: { content: 'Дубликат', recommend: 0 },
+  })).status, 409);
+
+  const peterReview = await request(instance, `/api/sigame-packs/${packId}/reviews`, {
+    method: 'POST',
+    cookie: peter.cookie,
+    body: { content: 'Было сложно, но хорошо', recommend: 0 },
+  });
+  assert.equal(peterReview.status, 201);
+  assert.equal((await request(
+    instance,
+    `/api/sigame-packs/${packId}/reviews/${antonReview.payload.id}`,
+    {
+      method: 'PATCH',
+      cookie: peter.cookie,
+      body: { content: 'Чужая правка', recommend: -1 },
+    }
+  )).status, 403);
+  const packWithReviews = await request(instance, '/api/sigame-packs', {
+    cookie: anton.cookie,
+  });
+  assert.equal(packWithReviews.payload[0].reviews.length, 2);
+  assert.deepEqual(
+    new Set(packWithReviews.payload[0].reviews.map(review => review.pack_id)),
+    new Set([packId])
+  );
 
   assert.equal((await request(instance, `/api/sigame-packs/${packId}/played-date`, {
     method: 'PATCH',

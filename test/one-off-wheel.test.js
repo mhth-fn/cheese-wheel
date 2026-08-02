@@ -255,6 +255,22 @@ test('one-off wheel is admin-published and elimination rounds start manually', a
   assert.equal(eliminationInProgress.payload.enabled, true);
   assert.equal(eliminationInProgress.payload.elimination_active, true);
   assert.equal(eliminationInProgress.payload.movies.length, 2);
+  const durationDuringElimination = await request(
+    instance,
+    '/api/one-off-wheel/settings',
+    {
+      method: 'PATCH',
+      cookie: admin.cookie,
+      body: { spin_duration: 12 },
+    }
+  );
+  assert.equal(durationDuringElimination.status, 409);
+  assert.equal(durationDuringElimination.payload.error, 'Дождитесь окончания режима на выбывание');
+  assert.equal(
+    (await request(instance, '/api/one-off-wheel', { cookie: admin.cookie }))
+      .payload.spin_duration,
+    5
+  );
 
   const replaySocket = createSocket(instance.baseUrl, {
     autoConnect: false,

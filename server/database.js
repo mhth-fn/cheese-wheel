@@ -221,6 +221,45 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS sigame_pack_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pack_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    recommend INTEGER NOT NULL DEFAULT 1 CHECK(recommend IN (-1, 0, 1)),
+    created_at DATETIME DEFAULT (datetime('now')),
+    FOREIGN KEY (pack_id) REFERENCES sigame_packs(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(pack_id, user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS food_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    recommend INTEGER NOT NULL DEFAULT 1 CHECK(recommend IN (-1, 0, 1)),
+    created_at DATETIME DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS food_review_photos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    review_id INTEGER NOT NULL,
+    storage_key TEXT NOT NULL UNIQUE,
+    original_file_name TEXT,
+    mime_type TEXT NOT NULL,
+    file_size INTEGER NOT NULL,
+    added_at INTEGER NOT NULL,
+    FOREIGN KEY (review_id) REFERENCES food_reviews(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_sigame_pack_reviews_pack
+    ON sigame_pack_reviews(pack_id, created_at DESC);
+
+  CREATE INDEX IF NOT EXISTS idx_food_review_photos_review
+    ON food_review_photos(review_id, id);
+
   CREATE INDEX IF NOT EXISTS idx_sigame_packs_status_added
     ON sigame_packs(status, added_at DESC);
 

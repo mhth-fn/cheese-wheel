@@ -2,11 +2,13 @@ import { useRef } from 'react';
 import MovieReviewsPage from './MovieReviewsPage';
 import MusicReviewsPage from './MusicReviewsPage';
 import WineReviewsPage from './WineReviewsPage';
+import FoodReviewsPage from './FoodReviewsPage';
 
 const REVIEW_KINDS = [
-  { key: 'movies', icon: '🎬', label: 'Кино' },
-  { key: 'wine', icon: '🍷', label: 'Вино' },
-  { key: 'music', icon: '🎵', label: 'Музыка' },
+  { key: 'movies', label: 'Кино' },
+  { key: 'wine', label: 'Вино' },
+  { key: 'music', label: 'Музыка' },
+  { key: 'food', label: 'Еда' },
 ];
 
 export default function ReviewsJournalPage({ kind = 'movies', onKindChange }) {
@@ -40,7 +42,7 @@ export default function ReviewsJournalPage({ kind = 'movies', onKindChange }) {
       <header className="reviews-journal-header">
         <p>Впечатления после встречи</p>
         <h1>Обзоры</h1>
-        <span>Кино, вино и музыка, которые хочется обсудить и передать друзьям.</span>
+        <span>Кино, вино, музыка и еда, которые хочется обсудить и передать друзьям.</span>
       </header>
 
       <div
@@ -64,7 +66,6 @@ export default function ReviewsJournalPage({ kind = 'movies', onKindChange }) {
               tabIndex={selected ? 0 : -1}
               onClick={() => selectKind(item.key)}
             >
-              <span aria-hidden="true">{item.icon}</span>
               {item.label}
             </button>
           );
@@ -81,6 +82,7 @@ export default function ReviewsJournalPage({ kind = 'movies', onKindChange }) {
       >
         {kind === 'wine' && <WineReviewsPage embedded />}
         {kind === 'music' && <MusicReviewsPage embedded />}
+        {kind === 'food' && <FoodReviewsPage />}
         {kind === 'movies' && <MovieReviewsPage embedded />}
       </section>
     </main>

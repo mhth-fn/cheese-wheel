@@ -29,9 +29,143 @@ function registerSigameRoutes(context) {
 
 // ============ SIGAME PACKS ============
 
+const sigameReviewStmts = {
+  list: db.prepare(`
+    SELECT r.*, u.name AS user_name
+    FROM sigame_pack_reviews r
+    JOIN users u ON u.id = r.user_id
+    WHERE r.pack_id = ?
+    ORDER BY r.created_at DESC, r.id DESC
+  `),
+  getById: db.prepare('SELECT * FROM sigame_pack_reviews WHERE id = ?'),
+  getByUserAndPack: db.prepare(
+    'SELECT * FROM sigame_pack_reviews WHERE pack_id = ? AND user_id = ?'
+  ),
+  insert: db.prepare(`
+    INSERT INTO sigame_pack_reviews (pack_id, user_id, content, recommend)
+    VALUES (?, ?, ?, ?)
+  `),
+  update: db.prepare(
+    'UPDATE sigame_pack_reviews SET content = ?, recommend = ? WHERE id = ?'
+  ),
+  delete: db.prepare('DELETE FROM sigame_pack_reviews WHERE id = ?'),
+};
+
+function readSigameReview(body) {
+  const content = typeof body?.content === 'string' ? body.content.trim() : '';
+  const recommend = Number(body?.recommend);
+  if (!content || content.length > 5000) {
+    return { error: 'Введите текст обзора (до 5000 символов)' };
+  }
+  if (![-1, 0, 1].includes(recommend)) {
+    return { error: 'Укажите итоговое впечатление' };
+  }
+  return { content, recommend };
+}
+
+function serializeReview(review) {
+  return { ...review, recommend: Number(review.recommend) };
+}
+
+function getPackReviews(packId) {
+  return sigameReviewStmts.list.all(packId).map(serializeReview);
+}
+
+function serializePackWithReviews(row) {
+  const pack = serializeSigamePack(row);
+  return { ...pack, reviews: getPackReviews(pack.id) };
+}
+
+function getPackForViewerWithReviews(packId, viewerId) {
+  const pack = getSigamePackForViewer(packId, viewerId);
+  return pack ? { ...pack, reviews: getPackReviews(packId) } : pack;
+}
+
 app.get('/api/sigame-packs', (req, res) => {
   const viewerId = req.tokenData.isGuest ? null : Number(req.tokenData.userId);
-  res.json(sigameStmts.list.all(viewerId).map(serializeSigamePack));
+  res.json(sigameStmts.list.all(viewerId).map(serializePackWithReviews));
+});
+
+app.get('/api/sigame-packs/:id/reviews', (req, res) => {
+  const packId = parseIntStrict(req.params.id);
+  if (isNaN(packId)) return res.status(400).json({ error: 'Неверный ID пака' });
+  if (!sigameStmts.getRawById.get(packId)) {
+    return res.status(404).json({ error: 'Пак не найден' });
+  }
+  res.json(getPackReviews(packId));
+});
+
+app.post('/api/sigame-packs/:id/reviews', (req, res) => {
+  const packId = parseIntStrict(req.params.id);
+  const userId = Number(req.tokenData.userId);
+  if (isNaN(packId)) return res.status(400).json({ error: 'Неверный ID пака' });
+  if (!Number.isInteger(userId) || !sigameStmts.getRawById.get(packId)) {
+    return res.status(404).json({ error: 'Пак не найден' });
+  }
+  const pack = sigameStmts.getRawById.get(packId);
+  if (pack.status !== 'played') {
+    return res.status(409).json({ error: 'Обзор можно написать только на сыгранный пак' });
+  }
+  const review = readSigameReview(req.body);
+  if (review.error) return res.status(400).json({ error: review.error });
+  const conflict = sigameReviewStmts.getByUserAndPack.get(packId, userId);
+  if (conflict) {
+    return res.status(409).json({
+      code: 'SIGAME_REVIEW_ALREADY_EXISTS',
+      error: 'У вас уже есть обзор на этот пак. Отредактируйте его.',
+      existing_review_id: conflict.id,
+    });
+  }
+  const result = sigameReviewStmts.insert.run(
+    packId,
+    userId,
+    review.content,
+    review.recommend
+  );
+  const created = getPackReviews(packId).find(item => Number(item.id) === Number(result.lastInsertRowid));
+  io.emit('sigame-packs-changed', { action: 'review-created', pack_id: packId });
+  res.status(201).json(created);
+});
+
+app.patch('/api/sigame-packs/:packId/reviews/:reviewId', (req, res) => {
+  const packId = parseIntStrict(req.params.packId);
+  const reviewId = parseIntStrict(req.params.reviewId);
+  if (isNaN(packId) || isNaN(reviewId)) {
+    return res.status(400).json({ error: 'Неверный ID обзора' });
+  }
+  const existing = sigameReviewStmts.getById.get(reviewId);
+  if (!existing || Number(existing.pack_id) !== packId) {
+    return res.status(404).json({ error: 'Обзор не найден' });
+  }
+  const userId = Number(req.tokenData.userId);
+  if (req.tokenData.role !== 'admin' && Number(existing.user_id) !== userId) {
+    return res.status(403).json({ error: 'Можно редактировать только свой обзор' });
+  }
+  const review = readSigameReview(req.body);
+  if (review.error) return res.status(400).json({ error: review.error });
+  sigameReviewStmts.update.run(review.content, review.recommend, reviewId);
+  const updated = getPackReviews(packId).find(item => Number(item.id) === reviewId);
+  io.emit('sigame-packs-changed', { action: 'review-updated', pack_id: packId });
+  res.json(updated);
+});
+
+app.delete('/api/sigame-packs/:packId/reviews/:reviewId', (req, res) => {
+  const packId = parseIntStrict(req.params.packId);
+  const reviewId = parseIntStrict(req.params.reviewId);
+  if (isNaN(packId) || isNaN(reviewId)) {
+    return res.status(400).json({ error: 'Неверный ID обзора' });
+  }
+  const existing = sigameReviewStmts.getById.get(reviewId);
+  if (!existing || Number(existing.pack_id) !== packId) {
+    return res.status(404).json({ error: 'Обзор не найден' });
+  }
+  const userId = Number(req.tokenData.userId);
+  if (req.tokenData.role !== 'admin' && Number(existing.user_id) !== userId) {
+    return res.status(403).json({ error: 'Можно удалить только свой обзор' });
+  }
+  sigameReviewStmts.delete.run(reviewId);
+  io.emit('sigame-packs-changed', { action: 'review-deleted', pack_id: packId });
+  res.json({ ok: true });
 });
 
 app.post('/api/sigame-packs', async (req, res) => {
@@ -84,7 +218,7 @@ app.post('/api/sigame-packs', async (req, res) => {
       return id;
     })();
 
-    const pack = getSigamePackForViewer(packId, userId);
+    const pack = getPackForViewerWithReviews(packId, userId);
     io.emit('sigame-packs-changed', { action: 'created', pack_id: packId });
     return res.status(201).json(pack);
   } catch (error) {
@@ -118,7 +252,7 @@ app.patch('/api/sigame-packs/:id', (req, res) => {
     replaceSigamePackTags(packId, input.tags);
   })();
 
-  const pack = getSigamePackForViewer(packId, Number(req.tokenData.userId));
+  const pack = getPackForViewerWithReviews(packId, Number(req.tokenData.userId));
   io.emit('sigame-packs-changed', { action: 'updated', pack_id: packId });
   res.json(pack);
 });
@@ -149,7 +283,7 @@ app.post('/api/sigame-packs/:id/status', (req, res) => {
     })();
   }
 
-  const pack = getSigamePackForViewer(packId, userId);
+  const pack = getPackForViewerWithReviews(packId, userId);
   io.emit('sigame-packs-changed', {
     action: status === 'played' ? 'played' : 'restored',
     pack_id: packId,
@@ -179,7 +313,7 @@ app.patch('/api/sigame-packs/:id/played-date', (req, res) => {
   }
 
   sigameStmts.updatePlayedAt.run(playedAt, packId);
-  const pack = getSigamePackForViewer(packId, Number(req.tokenData.userId));
+  const pack = getPackForViewerWithReviews(packId, Number(req.tokenData.userId));
   io.emit('sigame-packs-changed', {
     action: 'played-date-updated',
     pack_id: packId,
@@ -244,7 +378,7 @@ app.put('/api/sigame-packs/:id/rating', (req, res) => {
 
   const userId = Number(req.tokenData.userId);
   sigameStmts.upsertRating.run(packId, userId, rating, Date.now());
-  const pack = getSigamePackForViewer(packId, userId);
+  const pack = getPackForViewerWithReviews(packId, userId);
   io.emit('sigame-packs-changed', { action: 'rated', pack_id: packId });
   res.json(pack);
 });
@@ -256,7 +390,7 @@ app.delete('/api/sigame-packs/:id/rating', (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Пак не найден' });
 
   sigameStmts.deleteRating.run(packId, Number(req.tokenData.userId));
-  const pack = getSigamePackForViewer(packId, Number(req.tokenData.userId));
+  const pack = getPackForViewerWithReviews(packId, Number(req.tokenData.userId));
   io.emit('sigame-packs-changed', { action: 'rating-removed', pack_id: packId });
   res.json(pack);
 });

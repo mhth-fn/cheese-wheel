@@ -21,6 +21,7 @@ const { registerSettingsRoutes } = require('./server/routes/settings');
 const { registerReviewRoutes } = require('./server/routes/reviews');
 const { registerMusicReviewRoutes } = require('./server/routes/music-reviews');
 const { registerSigameRoutes } = require('./server/routes/sigame');
+const { registerFoodReviewRoutes } = require('./server/routes/food-reviews');
 const { registerSocketHandlers } = require('./server/socket-handlers');
 
 const testFrontendDistPath = (
@@ -309,6 +310,7 @@ registerSettingsRoutes(routeContext);
 registerMusicReviewRoutes(routeContext);
 registerReviewRoutes(routeContext);
 registerSigameRoutes(routeContext);
+registerFoodReviewRoutes(routeContext);
 
 app.use('/api', (req, res) => {
   res.status(404).json({ error: 'Маршрут не найден' });

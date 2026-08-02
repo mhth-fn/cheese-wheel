@@ -389,6 +389,11 @@ export default function OneOffWheelPanel() {
                 Сохраняем время…
               </small>
             )}
+            {eliminationActive && settingBusy !== 'duration' && (
+              <small className="one-off-setting-status">
+                Время зафиксировано до завершения режима на выбывание.
+              </small>
+            )}
           </label>
           <div className="one-off-center-setting">
             <span>Центр колеса</span>

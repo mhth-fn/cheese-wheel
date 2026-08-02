@@ -87,7 +87,7 @@ export default function AuthPage({ users, onLogin, onGuest }) {
 
   return (
     <div id="auth-page" className="page auth-page active">
-      <div className="auth-logo">🧀</div>
+      <div className="auth-logo" aria-hidden="true">СК</div>
       <h1 className="auth-title">Сырное Колесо</h1>
       <p className="auth-subtitle">
         {needsTwoFactor ? `Подтвердите вход: ${selectedUser?.name || 'участник'}` : 'Выбери себя'}
@@ -156,7 +156,7 @@ export default function AuthPage({ users, onLogin, onGuest }) {
 
       {!needsTwoFactor && (
         <button className="auth-guest-btn" type="button" onClick={onGuest} disabled={loggingIn}>
-          👀 Войти как гость
+          Войти как гость
         </button>
       )}
     </div>
