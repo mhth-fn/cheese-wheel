@@ -419,7 +419,22 @@ const CheeseWheel = forwardRef(function CheeseWheel({
       : 'classic';
     setSpinPhase(spinPhaseRef.current);
     const stage = stageRef.current;
-    if (stage) stage.style.setProperty('--spin-energy', '0');
+    if (stage) {
+      stage.style.setProperty('--spin-energy', '0');
+      if (spinPlan?.falseFinish) {
+        stage.style.setProperty(
+          '--false-finish-hold-duration',
+          `${spinPlan.falseFinishHoldDurationMs}ms`,
+        );
+        stage.style.setProperty(
+          '--false-finish-settle-duration',
+          `${spinPlan.rollbackDurationMs}ms`,
+        );
+      } else {
+        stage.style.removeProperty('--false-finish-hold-duration');
+        stage.style.removeProperty('--false-finish-settle-duration');
+      }
+    }
 
     const pegCount = Math.max(n * 2, 24);
     const pegAngle = (2 * Math.PI) / pegCount;

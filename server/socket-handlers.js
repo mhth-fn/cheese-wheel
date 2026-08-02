@@ -5,37 +5,63 @@ const crypto = require('node:crypto');
 const CARTOON_EFFECT_SEED_LIMIT = 0x1_0000_0000;
 const ONE_OFF_POST_SPIN_LOCK_MS = 1000;
 const FALSE_FINISH_CHANCE_PERCENT = 28;
-const FALSE_FINISH_MIN_OFFSET = 0.08;
-const FALSE_FINISH_OFFSET_STEPS = 401;
-const FALSE_FINISH_MIN_DEPTH_RATIO = 0.12;
-const FALSE_FINISH_DEPTH_STEPS = 601;
+const FALSE_FINISH_MIN_RECOIL_DEGREES = 2;
+const FALSE_FINISH_RECOIL_STEPS = 201;
+const FALSE_FINISH_MIN_WINNER_SHARE = 0.45;
+const FALSE_FINISH_WINNER_SHARE_STEPS = 11;
 
-function createCartoonAnimation(movieCount) {
-  const effectSeed = crypto.randomInt(CARTOON_EFFECT_SEED_LIMIT);
-  const falseFinish = movieCount > 1
-    && crypto.randomInt(100) < FALSE_FINISH_CHANCE_PERCENT;
-  const falseFinishDepthRatio = falseFinish
-    ? FALSE_FINISH_MIN_DEPTH_RATIO + crypto.randomInt(FALSE_FINISH_DEPTH_STEPS) / 10000
-    : 0;
+function createFalseFinishGeometry(movieCount, recoilDegrees, winnerShare) {
+  const sliceDegrees = 360 / movieCount;
+  const winnerOffsetDegrees = recoilDegrees * winnerShare;
+  const falseFinishDepthDegrees = recoilDegrees - winnerOffsetDegrees;
 
   return {
-    profile: 'cartoon',
-    recoil: falseFinish,
-    recoilRatio: falseFinishDepthRatio,
-    falseFinish,
-    falseFinishDepthRatio,
-    effectSeed,
+    randomOffset: winnerOffsetDegrees / sliceDegrees,
+    recoilDegrees,
+    winnerOffsetDegrees,
+    falseFinishDepthDegrees,
+    falseFinishDepthRatio: falseFinishDepthDegrees / sliceDegrees,
   };
 }
 
-function createCartoonRandomOffset(animation) {
-  if (animation.falseFinish) {
-    // Keep the real winner close to the crossed boundary. The wheel can then
-    // convincingly stop on its neighbour and return only 20-30% of a slice.
-    return FALSE_FINISH_MIN_OFFSET
-      + crypto.randomInt(FALSE_FINISH_OFFSET_STEPS) / 10000;
+function createCartoonMotion(movieCount) {
+  const effectSeed = crypto.randomInt(CARTOON_EFFECT_SEED_LIMIT);
+  const falseFinish = movieCount > 1
+    && crypto.randomInt(100) < FALSE_FINISH_CHANCE_PERCENT;
+  let randomOffset = 0.08 + crypto.randomInt(8401) / 10000;
+  let recoilDegrees = 0;
+  let winnerOffsetDegrees = 0;
+  let falseFinishDepthDegrees = 0;
+  let falseFinishDepthRatio = 0;
+
+  if (falseFinish) {
+    const requestedRecoilDegrees = FALSE_FINISH_MIN_RECOIL_DEGREES
+      + crypto.randomInt(FALSE_FINISH_RECOIL_STEPS) / 100;
+    const winnerShare = FALSE_FINISH_MIN_WINNER_SHARE
+      + crypto.randomInt(FALSE_FINISH_WINNER_SHARE_STEPS) / 100;
+    ({
+      randomOffset,
+      recoilDegrees,
+      winnerOffsetDegrees,
+      falseFinishDepthDegrees,
+      falseFinishDepthRatio,
+    } = createFalseFinishGeometry(movieCount, requestedRecoilDegrees, winnerShare));
   }
-  return 0.08 + crypto.randomInt(8401) / 10000;
+
+  return {
+    randomOffset,
+    animation: {
+      profile: 'cartoon',
+      recoil: falseFinish,
+      recoilRatio: falseFinishDepthRatio,
+      recoilDegrees,
+      winnerOffsetDegrees,
+      falseFinish,
+      falseFinishDepthDegrees,
+      falseFinishDepthRatio,
+      effectSeed,
+    },
+  };
 }
 
 function registerSocketHandlers(context) {
@@ -143,8 +169,7 @@ function performOneOffSpin(initiatorSocketId) {
   const spinDuration = state.spin_duration;
   const selectedIndex = crypto.randomInt(state.movies.length);
   const selectedMovie = state.movies[selectedIndex];
-  const animation = createCartoonAnimation(state.movies.length);
-  const randomOffset = createCartoonRandomOffset(animation);
+  const { animation, randomOffset } = createCartoonMotion(state.movies.length);
   const turns = 12 + crypto.randomInt(7);
   const spinId = crypto.randomUUID();
   let outcome;
@@ -347,7 +372,7 @@ io.on('connection', (socket) => {
       randomOffset,
       turns,
       initiatorSocketId: socket.id,
-      animation: createCartoonAnimation(movies.length),
+      animation: createCartoonMotion(movies.length).animation,
     });
   });
 
@@ -391,4 +416,4 @@ io.on('connection', (socket) => {
 // SPA fallback
 }
 
-module.exports = { registerSocketHandlers };
+module.exports = { createFalseFinishGeometry, registerSocketHandlers };

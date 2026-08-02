@@ -25,6 +25,10 @@ function makePlan(overrides = {}) {
   });
 }
 
+function degreesToRadians(degrees) {
+  return degrees * Math.PI / 180;
+}
+
 test('spin plan starts and finishes at exact requested endpoints', () => {
   const plan = makePlan();
 
@@ -71,65 +75,91 @@ test('regular recoil remains inside the selected slice', () => {
   assert.ok(plan.recoilDelta <= 0.06 * sliceAngle + Number.EPSILON);
 });
 
-test('recoil can cross exactly one boundary before settling on the selected slice', () => {
-  const sliceAngle = 0.8;
-  const randomOffset = 0.12;
-  const falseFinishDepthRatio = 0.16;
-  const plan = makePlan({
-    sliceAngle,
-    randomOffset,
-    recoil: true,
-    falseFinish: true,
-    falseFinishDepthRatio,
-  });
-  const firstBoundary = randomOffset * sliceAngle;
-  const secondBoundary = (randomOffset + 1) * sliceAngle;
+test('false finish moves only 2-4 degrees for both wide and narrow slices', () => {
+  for (const { movieCount, recoilDegrees, winnerShare } of [
+    { movieCount: 2, recoilDegrees: 2, winnerShare: 0.45 },
+    { movieCount: 60, recoilDegrees: 4, winnerShare: 0.55 },
+  ]) {
+    const sliceAngle = (Math.PI * 2) / movieCount;
+    const sliceDegrees = 360 / movieCount;
+    const winnerOffsetDegrees = recoilDegrees * winnerShare;
+    const randomOffset = winnerOffsetDegrees / sliceDegrees;
+    const falseFinishDepthRatio = (recoilDegrees - winnerOffsetDegrees) / sliceDegrees;
+    const plan = makePlan({
+      sliceAngle,
+      randomOffset,
+      recoil: true,
+      falseFinish: true,
+      falseFinishDepthRatio,
+    });
+    const firstBoundary = randomOffset * sliceAngle;
+    const secondBoundary = (randomOffset + 1) * sliceAngle;
+    const expectedDelta = degreesToRadians(recoilDegrees);
 
-  assert.equal(plan.falseFinish, true);
-  assert.equal(
-    plan.recoilDelta,
-    (randomOffset + falseFinishDepthRatio) * sliceAngle,
-  );
-  assert.ok(
-    plan.recoilDelta > firstBoundary,
-    'the overshoot must temporarily put the pointer into the adjacent slice',
-  );
-  assert.ok(
-    plan.recoilDelta < secondBoundary,
-    'the overshoot must not skip past the adjacent slice',
-  );
-  assert.equal(
-    sampleSpinPlan(plan, plan.phaseTimes.brakeEndMs).rotation,
-    plan.mainTargetRotation,
-  );
-  assert.equal(
-    sampleSpinPlan(plan, plan.phaseTimes.brakeEndMs).phase,
-    'false-finish',
-  );
-  assert.ok(plan.falseFinishHoldDurationMs >= 420);
-  assert.equal(
-    sampleSpinPlan(
+    assert.equal(plan.falseFinish, true);
+    assert.ok(Math.abs(plan.recoilDelta - expectedDelta) < 1e-12);
+    assert.ok(plan.recoilDegrees >= 2 && plan.recoilDegrees <= 4);
+    assert.ok(
+      plan.recoilDelta > firstBoundary,
+      'the overshoot must temporarily put the pointer into the adjacent slice',
+    );
+    assert.ok(
+      plan.recoilDelta < secondBoundary,
+      'the overshoot must not skip past the adjacent slice',
+    );
+    assert.equal(
+      sampleSpinPlan(plan, plan.phaseTimes.brakeEndMs).rotation,
+      plan.mainTargetRotation,
+    );
+    assert.equal(
+      sampleSpinPlan(plan, plan.phaseTimes.brakeEndMs).phase,
+      'false-finish',
+    );
+    assert.ok(plan.falseFinishHoldDurationMs >= 280);
+    assert.ok(plan.falseFinishHoldDurationMs <= 340);
+    assert.ok(plan.rollbackDurationMs >= 950);
+    assert.ok(plan.rollbackDurationMs <= 1100);
+    assert.equal(
+      sampleSpinPlan(
+        plan,
+        plan.phaseTimes.brakeEndMs + plan.falseFinishHoldDurationMs / 2,
+      ).speed,
+      0,
+    );
+
+    let peakRollbackSpeed = 0;
+    for (
+      let elapsed = plan.phaseTimes.falseFinishEndMs;
+      elapsed <= plan.durationMs;
+      elapsed += 5
+    ) {
+      peakRollbackSpeed = Math.max(
+        peakRollbackSpeed,
+        Math.abs(sampleSpinPlan(plan, elapsed).speed),
+      );
+    }
+    assert.ok(peakRollbackSpeed <= degreesToRadians(8) / 1000);
+
+    const halfwayBack = sampleSpinPlan(
       plan,
-      plan.phaseTimes.brakeEndMs + plan.falseFinishHoldDurationMs / 2,
-    ).speed,
-    0,
-  );
-
-  const halfwayBack = sampleSpinPlan(
-    plan,
-    plan.phaseTimes.falseFinishEndMs
-      + (plan.durationMs - plan.phaseTimes.falseFinishEndMs) / 2,
-  );
-  assert.equal(halfwayBack.phase, 'settle');
-  assert.ok(halfwayBack.speed < 0, 'the wheel must move backwards during recoil');
-  assert.equal(sampleSpinPlan(plan, plan.durationMs).rotation, plan.finalRotation);
+      plan.phaseTimes.falseFinishEndMs + plan.rollbackDurationMs / 2,
+    );
+    assert.equal(halfwayBack.phase, 'settle');
+    assert.ok(halfwayBack.speed < 0, 'the wheel must move backwards during recoil');
+    assert.equal(sampleSpinPlan(plan, plan.durationMs).rotation, plan.finalRotation);
+  }
 });
 
 test('all phases are reachable and main travel is monotonic', () => {
+  const sliceAngle = Math.PI / 5;
+  const recoilDegrees = 3;
+  const naturalRatio = (recoilDegrees / 2) / (sliceAngle * 180 / Math.PI);
   const plan = makePlan({
+    sliceAngle,
+    randomOffset: naturalRatio,
     recoil: true,
     falseFinish: true,
-    falseFinishDepthRatio: 0.15,
+    falseFinishDepthRatio: naturalRatio,
   });
   const phases = new Set();
   let previousMainRotation = plan.startRotation;

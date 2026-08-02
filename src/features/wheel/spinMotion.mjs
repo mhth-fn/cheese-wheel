@@ -1,7 +1,6 @@
 const MAX_RECOIL_SLICE_RATIO = 0.06;
 const RECOIL_CLEARANCE_RATIO = 0.55;
-const MIN_FALSE_FINISH_DEPTH_RATIO = 0.08;
-const MAX_FALSE_FINISH_DEPTH_RATIO = 0.22;
+const MAX_FALSE_FINISH_DEPTH_RATIO = 1 - 1e-6;
 const FULL_CIRCLE = Math.PI * 2;
 
 function clamp(value, minimum, maximum) {
@@ -84,7 +83,7 @@ export function createSpinPlan({
   const resolvedFalseFinishDepthRatio = falseFinishEnabled
     ? clamp(
       requestedFalseFinishDepthRatio,
-      MIN_FALSE_FINISH_DEPTH_RATIO,
+      0,
       MAX_FALSE_FINISH_DEPTH_RATIO,
     )
     : 0;
@@ -97,6 +96,7 @@ export function createSpinPlan({
       ? Math.min(requestedRecoilRatio * slice, maximumSafeRecoil)
       : 0;
   const mainTargetRotation = final + direction * recoilDelta;
+  const recoilDegrees = recoilDelta * 180 / Math.PI;
 
   const anticipationDurationMs = reducedMotion
     ? Math.min(120, duration * 0.04)
@@ -106,11 +106,14 @@ export function createSpinPlan({
     duration * 0.18,
   );
   const falseFinishHoldDurationMs = falseFinishEnabled
-    ? Math.min(clamp(duration * 0.1, 420, 600), duration * 0.12)
+    ? Math.min(clamp(duration * 0.06, 280, 340), duration * 0.08)
     : 0;
   const rollbackDurationMs = recoilDelta > 0
     ? falseFinishEnabled
-      ? Math.min(clamp(duration * 0.13, 650, 900), duration * 0.17)
+      ? Math.min(
+        clamp(950 + 75 * (recoilDegrees - 2), 950, 1100),
+        duration * 0.24,
+      )
       : Math.min(clamp(duration * 0.12, 450, 750), duration * 0.14)
     : Math.min(clamp(duration * 0.035, 120, 220), duration * 0.06);
   const settleDurationMs = falseFinishHoldDurationMs + rollbackDurationMs;
@@ -145,6 +148,7 @@ export function createSpinPlan({
     recoil: recoilDelta > 0,
     recoilRatio: requestedRecoilRatio,
     recoilDelta,
+    recoilDegrees,
     maximumRecoil,
     requestedFalseFinish: Boolean(falseFinish),
     falseFinish: falseFinishEnabled,
@@ -153,6 +157,7 @@ export function createSpinPlan({
       ? 1 - resolvedFalseFinishDepthRatio
       : null,
     falseFinishHoldDurationMs,
+    rollbackDurationMs,
     direction,
     mainTargetRotation,
     anticipationAngle: reducedMotion ? 0 : Math.min(slice * 0.16, 0.14),

@@ -108,18 +108,18 @@ export function playBrakeSound() {
 export function playRecoilSound() {
   if (!audioContext) return;
   const t = audioContext.currentTime;
-  [0, 0.075].forEach((delay, index) => {
+  [0, 0.14].forEach((delay, index) => {
     const osc = audioContext.createOscillator();
     const gain = audioContext.createGain();
-    osc.type = index === 0 ? 'square' : 'triangle';
-    osc.frequency.setValueAtTime(index === 0 ? 180 : 245, t + delay);
-    osc.frequency.exponentialRampToValueAtTime(index === 0 ? 115 : 190, t + delay + 0.12);
-    gain.gain.setValueAtTime(index === 0 ? 0.045 : 0.035, t + delay);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.14);
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(index === 0 ? 150 : 190, t + delay);
+    osc.frequency.exponentialRampToValueAtTime(index === 0 ? 118 : 155, t + delay + 0.2);
+    gain.gain.setValueAtTime(index === 0 ? 0.025 : 0.018, t + delay);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.22);
     osc.connect(gain);
     gain.connect(audioContext.destination);
     osc.start(t + delay);
-    osc.stop(t + delay + 0.15);
+    osc.stop(t + delay + 0.23);
   });
 }
 
