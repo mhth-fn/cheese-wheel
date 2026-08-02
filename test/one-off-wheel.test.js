@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { io: createSocket } = require('socket.io-client');
-const { createFalseFinishGeometry } = require('../server/socket-handlers');
+const { createNaturalRecoilGeometry } = require('../server/socket-handlers');
 const {
   delay,
   login,
@@ -17,24 +17,24 @@ const {
 
 const fsp = fs.promises;
 
-test('server false-finish geometry stays within 2-4 degrees at wheel size limits', () => {
-  for (const { movieCount, recoilDegrees, winnerShare } of [
-    { movieCount: 2, recoilDegrees: 2, winnerShare: 0.45 },
-    { movieCount: 2, recoilDegrees: 4, winnerShare: 0.55 },
-    { movieCount: 60, recoilDegrees: 2, winnerShare: 0.45 },
-    { movieCount: 60, recoilDegrees: 4, winnerShare: 0.55 },
+test('server recoil geometry follows the random landing point instead of forcing a boundary', () => {
+  for (const { movieCount, randomOffset, recoilDegrees, crossesBoundary } of [
+    { movieCount: 2, randomOffset: 0.5, recoilDegrees: 4, crossesBoundary: false },
+    { movieCount: 2, randomOffset: 0.02, recoilDegrees: 4, crossesBoundary: true },
+    { movieCount: 60, randomOffset: 0.5, recoilDegrees: 2, crossesBoundary: false },
+    { movieCount: 60, randomOffset: 0.2, recoilDegrees: 2, crossesBoundary: true },
   ]) {
-    const geometry = createFalseFinishGeometry(movieCount, recoilDegrees, winnerShare);
+    const geometry = createNaturalRecoilGeometry(
+      movieCount,
+      randomOffset,
+      recoilDegrees,
+    );
     const sliceDegrees = 360 / movieCount;
-    const measuredRecoilDegrees = (
-      geometry.randomOffset + geometry.falseFinishDepthRatio
-    ) * sliceDegrees;
+    const measuredRecoilDegrees = geometry.recoilRatio * sliceDegrees;
 
     assert.ok(Math.abs(measuredRecoilDegrees - recoilDegrees) < 1e-10);
-    assert.ok(geometry.winnerOffsetDegrees >= 0.9);
-    assert.ok(geometry.winnerOffsetDegrees <= 2.2);
-    assert.ok(geometry.falseFinishDepthDegrees >= 0.9);
-    assert.ok(geometry.falseFinishDepthDegrees <= 2.2);
+    assert.equal(geometry.crossesBoundary, crossesBoundary);
+    assert.equal(geometry.boundaryOvershootDegrees > 0, crossesBoundary);
     assert.ok(measuredRecoilDegrees < sliceDegrees);
   }
 });
@@ -56,36 +56,29 @@ function assertCartoonAnimation(spin) {
   const { animation } = spin;
   assert.equal(animation?.profile, 'cartoon');
   assert.equal(typeof animation.recoil, 'boolean');
-  assert.equal(typeof animation.falseFinish, 'boolean');
-  assert.equal(animation.recoil, animation.falseFinish);
+  assert.equal(typeof animation.crossesBoundary, 'boolean');
   assert.ok(Number.isSafeInteger(animation.effectSeed));
   assert.ok(animation.effectSeed >= 0);
-  if (animation.falseFinish) {
-    assert.ok(spin.movies.length > 1);
-    const sliceDegrees = 360 / spin.movies.length;
-    const winnerOffsetDegrees = spin.randomOffset * sliceDegrees;
-    const falseFinishDepthDegrees = animation.falseFinishDepthRatio * sliceDegrees;
-    const recoilDegrees = winnerOffsetDegrees + falseFinishDepthDegrees;
+  assert.ok(spin.randomOffset >= 0.02);
+  assert.ok(spin.randomOffset <= 0.98);
+  const sliceDegrees = 360 / spin.movies.length;
 
+  if (animation.recoil) {
+    const measuredRecoilDegrees = animation.recoilRatio * sliceDegrees;
+    const boundaryDistanceDegrees = spin.randomOffset * sliceDegrees;
     assert.ok(animation.recoilDegrees >= 2);
     assert.ok(animation.recoilDegrees <= 4);
-    assert.ok(animation.winnerOffsetDegrees > 0);
-    assert.ok(animation.falseFinishDepthDegrees > 0);
-    assert.ok(Math.abs(animation.winnerOffsetDegrees - winnerOffsetDegrees) < 1e-10);
-    assert.ok(Math.abs(animation.falseFinishDepthDegrees - falseFinishDepthDegrees) < 1e-10);
-    assert.ok(Math.abs(animation.recoilDegrees - recoilDegrees) < 1e-10);
-    assert.ok(animation.winnerOffsetDegrees / animation.recoilDegrees >= 0.45);
-    assert.ok(animation.winnerOffsetDegrees / animation.recoilDegrees <= 0.55);
-    assert.equal(animation.recoilRatio, animation.falseFinishDepthRatio);
-    assert.ok(recoilDegrees >= 2);
-    assert.ok(recoilDegrees <= 4);
-    assert.ok(recoilDegrees < sliceDegrees);
+    assert.ok(Math.abs(animation.recoilDegrees - measuredRecoilDegrees) < 1e-10);
+    assert.equal(
+      animation.crossesBoundary,
+      spin.movies.length > 1 && animation.recoilDegrees > boundaryDistanceDegrees,
+    );
+    assert.equal(animation.boundaryOvershootDegrees > 0, animation.crossesBoundary);
   } else {
     assert.equal(animation.recoilRatio, 0);
     assert.equal(animation.recoilDegrees, 0);
-    assert.equal(animation.winnerOffsetDegrees, 0);
-    assert.equal(animation.falseFinishDepthDegrees, 0);
-    assert.equal(animation.falseFinishDepthRatio, 0);
+    assert.equal(animation.crossesBoundary, false);
+    assert.equal(animation.boundaryOvershootDegrees, 0);
   }
 }
 

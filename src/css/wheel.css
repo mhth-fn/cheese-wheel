@@ -363,25 +363,9 @@
   animation: cartoonSpeedLines 0.5s linear infinite;
 }
 
-.cheese-wheel-stage.is-cartoon.spin-phase-false-finish {
-  filter: drop-shadow(0 16px 36px rgba(231, 147, 24, 0.42));
-}
-
-.cheese-wheel-stage.is-cartoon.spin-phase-false-finish canvas {
-  animation: cartoonFalseFinishHold var(--false-finish-hold-duration, 0.32s) ease-out both;
-}
-
-.cheese-wheel-stage.is-cartoon.spin-phase-false-finish .wheel-pointer {
-  animation: cartoonFalseFinishPointer var(--false-finish-hold-duration, 0.32s) ease-out both;
-}
-
-.cheese-wheel-stage.is-cartoon.spin-phase-false-finish .wheel-finish-pop {
-  animation: cartoonFalseFinishPop var(--false-finish-hold-duration, 0.32s) ease-out both;
-}
-
 .cheese-wheel-stage.is-cartoon.spin-phase-settle canvas {
   animation:
-    cartoonWheelSettle var(--false-finish-settle-duration, 0.95s)
+    cartoonWheelSettle var(--recoil-settle-duration, 0.2s)
     cubic-bezier(0.2, 1.18, 0.42, 1) both;
 }
 
@@ -713,26 +697,6 @@
 @keyframes cartoonBrakeGlow {
   0%, 100% { filter: drop-shadow(0 13px 28px rgba(120, 69, 7, 0.24)); }
   50% { filter: drop-shadow(0 16px 34px rgba(207, 123, 20, 0.34)); }
-}
-
-@keyframes cartoonFalseFinishHold {
-  0% { transform: scale(1.012); filter: brightness(1.08); }
-  32% { transform: scaleX(0.982) scaleY(1.018); filter: brightness(1.16); }
-  72% { transform: scaleX(1.007) scaleY(0.994); filter: brightness(1.09); }
-  100% { transform: scale(1); filter: brightness(1.04); }
-}
-
-@keyframes cartoonFalseFinishPointer {
-  0% { transform: translateX(-50%) rotate(0deg); }
-  30% { transform: translateX(-50%) rotate(13deg) scaleY(0.86); }
-  68% { transform: translateX(-50%) rotate(-5deg) scaleY(1.05); }
-  100% { transform: translateX(-50%) rotate(0deg); }
-}
-
-@keyframes cartoonFalseFinishPop {
-  0% { opacity: 0; transform: translateX(-50%) scale(0.2) rotate(-12deg); }
-  38% { opacity: 0.92; transform: translateX(-50%) scale(0.92) rotate(3deg); }
-  100% { opacity: 0; transform: translateX(-50%) scale(1.28) rotate(8deg); }
 }
 
 @keyframes cartoonWheelSettle {

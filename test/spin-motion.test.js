@@ -19,8 +19,6 @@ function makePlan(overrides = {}) {
     randomOffset: 0.5,
     recoil: false,
     recoilRatio: 0.04,
-    falseFinish: false,
-    falseFinishDepthRatio: 0.15,
     ...overrides,
   });
 }
@@ -59,77 +57,39 @@ test('recoil happens only when its flag is enabled', () => {
   assert.ok(withFlag.mainTargetRotation > withFlag.finalRotation);
 });
 
-test('regular recoil remains inside the selected slice', () => {
-  const sliceAngle = 0.8;
-  const randomOffset = 0.02;
-  const plan = makePlan({
-    sliceAngle,
-    randomOffset,
-    recoil: true,
-    recoilRatio: 1,
-  });
-  const clearanceLimit = 0.55 * Math.min(randomOffset, 1 - randomOffset) * sliceAngle;
-
-  assert.equal(plan.falseFinish, false);
-  assert.ok(plan.recoilDelta <= clearanceLimit + Number.EPSILON);
-  assert.ok(plan.recoilDelta <= 0.06 * sliceAngle + Number.EPSILON);
-});
-
-test('false finish moves only 2-4 degrees for both wide and narrow slices', () => {
-  for (const { movieCount, recoilDegrees, winnerShare } of [
-    { movieCount: 2, recoilDegrees: 2, winnerShare: 0.45 },
-    { movieCount: 60, recoilDegrees: 4, winnerShare: 0.55 },
+test('natural recoil keeps the requested real-world angle for wide and narrow slices', () => {
+  for (const { movieCount, recoilDegrees } of [
+    { movieCount: 2, recoilDegrees: 2 },
+    { movieCount: 60, recoilDegrees: 4 },
   ]) {
     const sliceAngle = (Math.PI * 2) / movieCount;
     const sliceDegrees = 360 / movieCount;
-    const winnerOffsetDegrees = recoilDegrees * winnerShare;
-    const randomOffset = winnerOffsetDegrees / sliceDegrees;
-    const falseFinishDepthRatio = (recoilDegrees - winnerOffsetDegrees) / sliceDegrees;
+    const recoilRatio = recoilDegrees / sliceDegrees;
     const plan = makePlan({
       sliceAngle,
-      randomOffset,
+      randomOffset: 0.8,
       recoil: true,
-      falseFinish: true,
-      falseFinishDepthRatio,
+      recoilRatio,
     });
-    const firstBoundary = randomOffset * sliceAngle;
-    const secondBoundary = (randomOffset + 1) * sliceAngle;
     const expectedDelta = degreesToRadians(recoilDegrees);
 
-    assert.equal(plan.falseFinish, true);
     assert.ok(Math.abs(plan.recoilDelta - expectedDelta) < 1e-12);
     assert.ok(plan.recoilDegrees >= 2 && plan.recoilDegrees <= 4);
-    assert.ok(
-      plan.recoilDelta > firstBoundary,
-      'the overshoot must temporarily put the pointer into the adjacent slice',
-    );
-    assert.ok(
-      plan.recoilDelta < secondBoundary,
-      'the overshoot must not skip past the adjacent slice',
-    );
+    assert.equal(plan.crossesBoundary, false);
     assert.equal(
       sampleSpinPlan(plan, plan.phaseTimes.brakeEndMs).rotation,
       plan.mainTargetRotation,
     );
     assert.equal(
       sampleSpinPlan(plan, plan.phaseTimes.brakeEndMs).phase,
-      'false-finish',
+      'settle',
     );
-    assert.ok(plan.falseFinishHoldDurationMs >= 280);
-    assert.ok(plan.falseFinishHoldDurationMs <= 340);
-    assert.ok(plan.rollbackDurationMs >= 950);
-    assert.ok(plan.rollbackDurationMs <= 1100);
-    assert.equal(
-      sampleSpinPlan(
-        plan,
-        plan.phaseTimes.brakeEndMs + plan.falseFinishHoldDurationMs / 2,
-      ).speed,
-      0,
-    );
+    assert.ok(plan.rollbackDurationMs >= 850);
+    assert.ok(plan.rollbackDurationMs <= 1000);
 
     let peakRollbackSpeed = 0;
     for (
-      let elapsed = plan.phaseTimes.falseFinishEndMs;
+      let elapsed = plan.phaseTimes.brakeEndMs;
       elapsed <= plan.durationMs;
       elapsed += 5
     ) {
@@ -142,11 +102,32 @@ test('false finish moves only 2-4 degrees for both wide and narrow slices', () =
 
     const halfwayBack = sampleSpinPlan(
       plan,
-      plan.phaseTimes.falseFinishEndMs + plan.rollbackDurationMs / 2,
+      plan.phaseTimes.brakeEndMs + plan.rollbackDurationMs / 2,
     );
     assert.equal(halfwayBack.phase, 'settle');
     assert.ok(halfwayBack.speed < 0, 'the wheel must move backwards during recoil');
     assert.equal(sampleSpinPlan(plan, plan.durationMs).rotation, plan.finalRotation);
+  }
+});
+
+test('recoil crosses a boundary only when the random landing point is naturally close', () => {
+  for (const { movieCount, randomOffset, recoilDegrees, crossesBoundary } of [
+    { movieCount: 2, randomOffset: 0.5, recoilDegrees: 4, crossesBoundary: false },
+    { movieCount: 2, randomOffset: 0.02, recoilDegrees: 4, crossesBoundary: true },
+    { movieCount: 60, randomOffset: 0.5, recoilDegrees: 2, crossesBoundary: false },
+    { movieCount: 60, randomOffset: 0.2, recoilDegrees: 2, crossesBoundary: true },
+  ]) {
+    const sliceAngle = (Math.PI * 2) / movieCount;
+    const recoilRatio = recoilDegrees / (360 / movieCount);
+    const plan = makePlan({
+      sliceAngle,
+      randomOffset,
+      recoil: true,
+      recoilRatio,
+    });
+
+    assert.equal(plan.crossesBoundary, crossesBoundary);
+    assert.ok(Math.abs(plan.recoilDegrees - recoilDegrees) < 1e-10);
   }
 });
 
@@ -156,10 +137,9 @@ test('all phases are reachable and main travel is monotonic', () => {
   const naturalRatio = (recoilDegrees / 2) / (sliceAngle * 180 / Math.PI);
   const plan = makePlan({
     sliceAngle,
-    randomOffset: naturalRatio,
+    randomOffset: 0.5,
     recoil: true,
-    falseFinish: true,
-    falseFinishDepthRatio: naturalRatio,
+    recoilRatio: naturalRatio * 2,
   });
   const phases = new Set();
   let previousMainRotation = plan.startRotation;
@@ -179,11 +159,6 @@ test('all phases are reachable and main travel is monotonic', () => {
       previousMainRotation = sample.rotation;
     }
 
-    if (sample.phase === 'false-finish') {
-      assert.equal(sample.rotation, plan.mainTargetRotation);
-      assert.equal(sample.speed, 0);
-    }
-
     if (sample.phase === 'settle') {
       assert.ok(sample.rotation <= previousSettleRotation + 1e-12);
       assert.ok(sample.rotation >= plan.finalRotation - 1e-12);
@@ -193,14 +168,13 @@ test('all phases are reachable and main travel is monotonic', () => {
 
   assert.deepEqual(
     [...phases],
-    ['anticipation', 'launch', 'cruise', 'brake', 'false-finish', 'settle'],
+    ['anticipation', 'launch', 'cruise', 'brake', 'settle'],
   );
 });
 
 test('reduced motion keeps timing but removes anticipation and recoil', () => {
   const plan = makePlan({
     recoil: true,
-    falseFinish: true,
     reducedMotion: true,
   });
 
@@ -215,18 +189,16 @@ test('reduced motion keeps timing but removes anticipation and recoil', () => {
   assert.equal(sampleSpinPlan(plan, plan.durationMs).rotation, plan.finalRotation);
 });
 
-test('a one-slice wheel cannot show a false neighbouring finish', () => {
+test('a one-slice wheel may recoil but cannot cross into a neighbouring slice', () => {
   const plan = makePlan({
     sliceAngle: Math.PI * 2,
     recoil: true,
-    falseFinish: true,
-    falseFinishDepthRatio: 0.16,
+    recoilRatio: 3 / 360,
   });
 
-  assert.equal(plan.falseFinish, false);
-  assert.equal(plan.recoil, false);
-  assert.equal(plan.recoilDelta, 0);
-  assert.equal(plan.mainTargetRotation, plan.finalRotation);
+  assert.equal(plan.recoil, true);
+  assert.equal(plan.crossesBoundary, false);
+  assert.ok(Math.abs(plan.recoilDegrees - 3) < 1e-10);
 });
 
 test('a normal long spin does not sit still for seconds before completion', () => {

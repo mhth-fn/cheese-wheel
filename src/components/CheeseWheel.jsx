@@ -401,8 +401,6 @@ const CheeseWheel = forwardRef(function CheeseWheel({
         randomOffset,
         recoil: Boolean(animationOptions.recoil),
         recoilRatio: Number(animationOptions.recoilRatio) || 0,
-        falseFinish: Boolean(animationOptions.falseFinish),
-        falseFinishDepthRatio: Number(animationOptions.falseFinishDepthRatio) || 0,
         reducedMotion,
       })
       : null;
@@ -421,18 +419,13 @@ const CheeseWheel = forwardRef(function CheeseWheel({
     const stage = stageRef.current;
     if (stage) {
       stage.style.setProperty('--spin-energy', '0');
-      if (spinPlan?.falseFinish) {
+      if (spinPlan?.recoil) {
         stage.style.setProperty(
-          '--false-finish-hold-duration',
-          `${spinPlan.falseFinishHoldDurationMs}ms`,
-        );
-        stage.style.setProperty(
-          '--false-finish-settle-duration',
+          '--recoil-settle-duration',
           `${spinPlan.rollbackDurationMs}ms`,
         );
       } else {
-        stage.style.removeProperty('--false-finish-hold-duration');
-        stage.style.removeProperty('--false-finish-settle-duration');
+        stage.style.removeProperty('--recoil-settle-duration');
       }
     }
 
@@ -452,10 +445,6 @@ const CheeseWheel = forwardRef(function CheeseWheel({
       setSpinPhase(phase);
       if (phase === 'launch') playSpinLaunch();
       if (phase === 'brake') playBrakeSound();
-      if (phase === 'false-finish') {
-        setPointerTick(value => value + 1);
-        playClick(0.35);
-      }
       if (phase === 'settle' && spinPlan.recoil) playRecoilSound();
     };
 

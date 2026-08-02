@@ -1,6 +1,4 @@
-const MAX_RECOIL_SLICE_RATIO = 0.06;
-const RECOIL_CLEARANCE_RATIO = 0.55;
-const MAX_FALSE_FINISH_DEPTH_RATIO = 1 - 1e-6;
+const MAX_NATURAL_RECOIL_RADIANS = 4 * Math.PI / 180;
 const FULL_CIRCLE = Math.PI * 2;
 
 function clamp(value, minimum, maximum) {
@@ -35,9 +33,9 @@ function smootherStepIntegral(value) {
 /**
  * Builds an immutable description of one wheel spin.
  *
- * A regular `recoilRatio` is clamped inside the selected slice. When
- * `falseFinish` is enabled, the wheel deliberately crosses one boundary,
- * pauses inside the neighbouring slice, then rolls back to `finalRotation`.
+ * The landing point and recoil distance are independent. This lets a small
+ * physical rollback stay inside a slice most of the time and cross a boundary
+ * only when the randomly chosen landing point happens to be close to it.
  */
 export function createSpinPlan({
   startRotation,
@@ -47,8 +45,6 @@ export function createSpinPlan({
   randomOffset = 0.5,
   recoil = false,
   recoilRatio = 0,
-  falseFinish = false,
-  falseFinishDepthRatio = 0,
   reducedMotion = false,
 }) {
   const start = finiteNumber(startRotation, 'startRotation');
@@ -65,38 +61,20 @@ export function createSpinPlan({
 
   const offset = clamp(finiteNumber(randomOffset, 'randomOffset'), 0, 1);
   const requestedRecoilRatio = Math.max(0, finiteNumber(recoilRatio, 'recoilRatio'));
-  const requestedFalseFinishDepthRatio = Math.max(
-    0,
-    finiteNumber(falseFinishDepthRatio, 'falseFinishDepthRatio'),
-  );
   const direction = Math.sign(final - start) || 1;
-  const boundaryClearance = Math.min(offset, 1 - offset) * slice;
-  const maximumSafeRecoil = Math.min(
-    RECOIL_CLEARANCE_RATIO * boundaryClearance,
-    MAX_RECOIL_SLICE_RATIO * slice,
+  const maximumRecoil = Math.min(
+    MAX_NATURAL_RECOIL_RADIANS,
+    Math.max(0, slice - Number.EPSILON),
   );
-  const falseFinishEnabled = Boolean(
-    falseFinish
-    && !reducedMotion
-    && slice < FULL_CIRCLE - Number.EPSILON,
-  );
-  const resolvedFalseFinishDepthRatio = falseFinishEnabled
-    ? clamp(
-      requestedFalseFinishDepthRatio,
-      0,
-      MAX_FALSE_FINISH_DEPTH_RATIO,
-    )
+  const recoilDelta = recoil && !reducedMotion
+    ? Math.min(requestedRecoilRatio * slice, maximumRecoil)
     : 0;
-  const maximumRecoil = falseFinishEnabled
-    ? (offset + MAX_FALSE_FINISH_DEPTH_RATIO) * slice
-    : maximumSafeRecoil;
-  const recoilDelta = falseFinishEnabled
-    ? (offset + resolvedFalseFinishDepthRatio) * slice
-    : recoil && !falseFinish && !reducedMotion
-      ? Math.min(requestedRecoilRatio * slice, maximumSafeRecoil)
-      : 0;
   const mainTargetRotation = final + direction * recoilDelta;
   const recoilDegrees = recoilDelta * 180 / Math.PI;
+  const crossesBoundary = Boolean(
+    recoilDelta > offset * slice
+    && slice < FULL_CIRCLE - Number.EPSILON,
+  );
 
   const anticipationDurationMs = reducedMotion
     ? Math.min(120, duration * 0.04)
@@ -105,18 +83,13 @@ export function createSpinPlan({
     clamp(duration * 0.12, 420, 650),
     duration * 0.18,
   );
-  const falseFinishHoldDurationMs = falseFinishEnabled
-    ? Math.min(clamp(duration * 0.06, 280, 340), duration * 0.08)
-    : 0;
   const rollbackDurationMs = recoilDelta > 0
-    ? falseFinishEnabled
-      ? Math.min(
-        clamp(950 + 75 * (recoilDegrees - 2), 950, 1100),
-        duration * 0.24,
-      )
-      : Math.min(clamp(duration * 0.12, 450, 750), duration * 0.14)
+    ? Math.min(
+      clamp(850 + 75 * (recoilDegrees - 2), 850, 1000),
+      duration * 0.22,
+    )
     : Math.min(clamp(duration * 0.035, 120, 220), duration * 0.06);
-  const settleDurationMs = falseFinishHoldDurationMs + rollbackDurationMs;
+  const settleDurationMs = rollbackDurationMs;
   const mainDurationMs = Math.max(
     1,
     duration - anticipationDurationMs - launchDurationMs - settleDurationMs,
@@ -127,10 +100,6 @@ export function createSpinPlan({
   const launchEndMs = anticipationEndMs + launchDurationMs;
   const cruiseEndMs = launchEndMs + cruiseDurationMs;
   const brakeEndMs = Math.min(duration, cruiseEndMs + brakeDurationMs);
-  const falseFinishEndMs = Math.min(
-    duration,
-    brakeEndMs + falseFinishHoldDurationMs,
-  );
   const velocityAreaMs = (
     launchDurationMs * 0.5
     + cruiseDurationMs
@@ -144,19 +113,13 @@ export function createSpinPlan({
     sliceAngle: slice,
     randomOffset: offset,
     reducedMotion: Boolean(reducedMotion),
-    requestedRecoil: Boolean(recoil || falseFinish),
+    requestedRecoil: Boolean(recoil),
     recoil: recoilDelta > 0,
     recoilRatio: requestedRecoilRatio,
     recoilDelta,
     recoilDegrees,
     maximumRecoil,
-    requestedFalseFinish: Boolean(falseFinish),
-    falseFinish: falseFinishEnabled,
-    falseFinishDepthRatio: resolvedFalseFinishDepthRatio,
-    falseFinishTargetOffset: falseFinishEnabled
-      ? 1 - resolvedFalseFinishDepthRatio
-      : null,
-    falseFinishHoldDurationMs,
+    crossesBoundary,
     rollbackDurationMs,
     direction,
     mainTargetRotation,
@@ -166,7 +129,6 @@ export function createSpinPlan({
       launchEndMs,
       cruiseEndMs,
       brakeEndMs,
-      falseFinishEndMs,
       endMs: duration,
     }),
     velocityAreaMs,
@@ -228,7 +190,7 @@ function sampleMainTravel(plan, elapsedMs, phase) {
 }
 
 function sampleSettle(plan, elapsedMs) {
-  const startMs = plan.phaseTimes.falseFinishEndMs;
+  const startMs = plan.phaseTimes.brakeEndMs;
   const duration = plan.durationMs - startMs;
   const t = duration > 0 ? (elapsedMs - startMs) / duration : 1;
   const distance = plan.finalRotation - plan.mainTargetRotation;
@@ -288,9 +250,6 @@ export function sampleSpinPlan(plan, elapsedMs) {
   } else if (elapsed < plan.phaseTimes.brakeEndMs) {
     phase = 'brake';
     motion = sampleMainTravel(plan, elapsed, phase);
-  } else if (elapsed < plan.phaseTimes.falseFinishEndMs) {
-    phase = 'false-finish';
-    motion = { rotation: plan.mainTargetRotation, speed: 0 };
   } else {
     phase = 'settle';
     motion = sampleSettle(plan, elapsed);
