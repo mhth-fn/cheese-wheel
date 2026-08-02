@@ -2,6 +2,42 @@
 
 const crypto = require('node:crypto');
 
+const CARTOON_EFFECT_SEED_LIMIT = 0x1_0000_0000;
+const ONE_OFF_POST_SPIN_LOCK_MS = 1000;
+const FALSE_FINISH_CHANCE_PERCENT = 28;
+const FALSE_FINISH_MIN_OFFSET = 0.08;
+const FALSE_FINISH_OFFSET_STEPS = 401;
+const FALSE_FINISH_MIN_DEPTH_RATIO = 0.12;
+const FALSE_FINISH_DEPTH_STEPS = 601;
+
+function createCartoonAnimation(movieCount) {
+  const effectSeed = crypto.randomInt(CARTOON_EFFECT_SEED_LIMIT);
+  const falseFinish = movieCount > 1
+    && crypto.randomInt(100) < FALSE_FINISH_CHANCE_PERCENT;
+  const falseFinishDepthRatio = falseFinish
+    ? FALSE_FINISH_MIN_DEPTH_RATIO + crypto.randomInt(FALSE_FINISH_DEPTH_STEPS) / 10000
+    : 0;
+
+  return {
+    profile: 'cartoon',
+    recoil: falseFinish,
+    recoilRatio: falseFinishDepthRatio,
+    falseFinish,
+    falseFinishDepthRatio,
+    effectSeed,
+  };
+}
+
+function createCartoonRandomOffset(animation) {
+  if (animation.falseFinish) {
+    // Keep the real winner close to the crossed boundary. The wheel can then
+    // convincingly stop on its neighbour and return only 20-30% of a slice.
+    return FALSE_FINISH_MIN_OFFSET
+      + crypto.randomInt(FALSE_FINISH_OFFSET_STEPS) / 10000;
+  }
+  return 0.08 + crypto.randomInt(8401) / 10000;
+}
+
 function registerSocketHandlers(context) {
   const {
     MAX_SPIN_DURATION,
@@ -26,6 +62,21 @@ function registerSocketHandlers(context) {
     stmts,
     stopOneOffElimination,
   } = context;
+
+let activeOneOffSpinTimer = null;
+
+function rememberActiveOneOffSpin(payload) {
+  spinState.activeOneOffSpin = payload;
+  spinState.activeOneOffSpinUntil = payload.nextSpinAt;
+  if (activeOneOffSpinTimer) clearTimeout(activeOneOffSpinTimer);
+  activeOneOffSpinTimer = setTimeout(() => {
+    activeOneOffSpinTimer = null;
+    if (spinState.activeOneOffSpin?.spinId === payload.spinId) {
+      spinState.activeOneOffSpin = null;
+    }
+  }, Math.max(0, payload.nextSpinAt - Date.now()));
+  activeOneOffSpinTimer.unref();
+}
 
 const onlineUsers = new Map(); // socketId -> { userId, userName }
 
@@ -92,7 +143,8 @@ function performOneOffSpin(initiatorSocketId) {
   const spinDuration = state.spin_duration;
   const selectedIndex = crypto.randomInt(state.movies.length);
   const selectedMovie = state.movies[selectedIndex];
-  const randomOffset = 0.08 + (crypto.randomInt(8401) / 10000);
+  const animation = createCartoonAnimation(state.movies.length);
+  const randomOffset = createCartoonRandomOffset(animation);
   const turns = 12 + crypto.randomInt(7);
   const spinId = crypto.randomUUID();
   let outcome;
@@ -135,11 +187,12 @@ function performOneOffSpin(initiatorSocketId) {
     return { ok: false, error: 'Не удалось сохранить результат' };
   }
 
-  spinState.activeOneOffSpinUntil = Date.now() + spinDuration * 1000;
+  const spinStartedAt = Date.now();
+  const spinCompleteAt = spinStartedAt + spinDuration * 1000;
+  const nextSpinAt = spinCompleteAt + ONE_OFF_POST_SPIN_LOCK_MS;
   const shouldContinue = outcome.type === 'eliminated';
   spinState.oneOffEliminationActive = shouldContinue;
-
-  io.emit('one-off-spinning', {
+  const spinPayload = {
     spinId,
     movies: state.movies,
     winnerIndex: selectedIndex,
@@ -150,7 +203,13 @@ function performOneOffSpin(initiatorSocketId) {
     mode: state.mode,
     outcome,
     initiatorSocketId,
-  });
+    animation,
+    spinStartedAt,
+    spinCompleteAt,
+    nextSpinAt,
+  };
+  rememberActiveOneOffSpin(spinPayload);
+  io.emit('one-off-spinning', { ...spinPayload, resumeElapsedMs: 0 });
   broadcastOneOffState();
 
   if (!shouldContinue) {
@@ -178,6 +237,16 @@ io.on('connection', (socket) => {
   }
   socket.emit('online-users', currentUsers);
   if (onlineUsers.has(socket.id)) broadcastOnlineUsers();
+  const activeOneOffSpin = spinState.activeOneOffSpin;
+  if (activeOneOffSpin?.spinCompleteAt > Date.now()) {
+    socket.emit('one-off-spinning', {
+      ...activeOneOffSpin,
+      resumeElapsedMs: Math.min(
+        Math.max(0, Date.now() - activeOneOffSpin.spinStartedAt),
+        activeOneOffSpin.spinDuration * 1000,
+      ),
+    });
+  }
 
   socket.on('spin-wheel', (data) => {
     const tokenData = getTokenData(socket.data.authToken);
@@ -278,6 +347,7 @@ io.on('connection', (socket) => {
       randomOffset,
       turns,
       initiatorSocketId: socket.id,
+      animation: createCartoonAnimation(movies.length),
     });
   });
 

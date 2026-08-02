@@ -29,6 +29,42 @@ function waitForSocket(socket, event, timeout = 5_000) {
   });
 }
 
+function assertCartoonAnimation(spin) {
+  const { animation } = spin;
+  assert.equal(animation?.profile, 'cartoon');
+  assert.equal(typeof animation.recoil, 'boolean');
+  assert.equal(typeof animation.falseFinish, 'boolean');
+  assert.equal(animation.recoil, animation.falseFinish);
+  assert.ok(Number.isSafeInteger(animation.effectSeed));
+  assert.ok(animation.effectSeed >= 0);
+  if (animation.falseFinish) {
+    assert.ok(spin.movies.length > 1);
+    assert.ok(spin.randomOffset >= 0.08);
+    assert.ok(spin.randomOffset <= 0.12);
+    assert.ok(animation.falseFinishDepthRatio >= 0.12);
+    assert.ok(animation.falseFinishDepthRatio <= 0.18);
+    assert.equal(animation.recoilRatio, animation.falseFinishDepthRatio);
+    const crossedDistance = spin.randomOffset + animation.falseFinishDepthRatio;
+    assert.ok(crossedDistance >= 0.2);
+    assert.ok(crossedDistance <= 0.3);
+  } else {
+    assert.equal(animation.recoilRatio, 0);
+    assert.equal(animation.falseFinishDepthRatio, 0);
+  }
+}
+
+function assertServerSelectedMovie(spin) {
+  const selectedMovie = spin.movies[spin.winnerIndex];
+  assert.ok(selectedMovie, 'winnerIndex must refer to the server movie snapshot');
+  assert.equal(selectedMovie.id, spin.winnerMovieId);
+  assert.equal(spin.outcome.movie.id, spin.winnerMovieId);
+}
+
+function withoutResumeElapsed(spin) {
+  const { resumeElapsedMs, ...stablePayload } = spin;
+  return stablePayload;
+}
+
 async function connect(instance, cookie) {
   const socket = createSocket(instance.baseUrl, {
     transports: ['websocket'],
@@ -125,12 +161,23 @@ test('one-off wheel is admin-published and elimination rounds start manually', a
   assert.match((await rejectedPromise).error, /администратор/);
 
   const selectionSpinPromise = waitForSocket(adminSocket, 'one-off-spinning');
+  const memberSelectionSpinPromise = waitForSocket(memberSocket, 'one-off-spinning');
   adminSocket.emit('spin-one-off');
-  const selectionSpin = await selectionSpinPromise;
+  const [selectionSpin, memberSelectionSpin] = await Promise.all([
+    selectionSpinPromise,
+    memberSelectionSpinPromise,
+  ]);
   assert.equal(selectionSpin.mode, 'selection');
   assert.equal(selectionSpin.spinDuration, 6);
   assert.equal(selectionSpin.movies.length, 2);
   assert.equal(selectionSpin.outcome.type, 'winner');
+  assertCartoonAnimation(selectionSpin);
+  assertServerSelectedMovie(selectionSpin);
+  assert.deepEqual(
+    memberSelectionSpin,
+    selectionSpin,
+    'all connected viewers must receive the same winner and animation payload',
+  );
 
   const selectedState = await request(instance, '/api/one-off-wheel', {
     cookie: admin.cookie,
@@ -147,7 +194,7 @@ test('one-off wheel is admin-published and elimination rounds start manually', a
   assert.equal(skipped.payload.state.result, null);
   assert.equal(skipped.payload.state.movies.length, 1);
 
-  await delay(6_600);
+  await delay(7_200);
   const eliminationSettings = await request(instance, '/api/one-off-wheel/settings', {
     method: 'PATCH',
     cookie: admin.cookie,
@@ -169,6 +216,10 @@ test('one-off wheel is admin-published and elimination rounds start manually', a
   assert.equal(eliminationSpin.mode, 'elimination');
   assert.equal(eliminationSpin.spinDuration, 5);
   assert.equal(eliminationSpin.outcome.type, 'eliminated');
+  assert.equal(eliminationSpin.resumeElapsedMs, 0);
+  assert.equal(eliminationSpin.nextSpinAt - eliminationSpin.spinCompleteAt, 1_000);
+  assertCartoonAnimation(eliminationSpin);
+  assertServerSelectedMovie(eliminationSpin);
   const eliminationInProgress = await request(instance, '/api/one-off-wheel', {
     cookie: admin.cookie,
   });
@@ -176,14 +227,43 @@ test('one-off wheel is admin-published and elimination rounds start manually', a
   assert.equal(eliminationInProgress.payload.elimination_active, true);
   assert.equal(eliminationInProgress.payload.movies.length, 2);
 
+  const replaySocket = createSocket(instance.baseUrl, {
+    autoConnect: false,
+    transports: ['websocket'],
+    forceNew: true,
+    reconnection: false,
+    extraHeaders: {
+      Cookie: peter.cookie,
+      Origin: instance.baseUrl,
+    },
+  });
+  sockets.push(replaySocket);
+  const replayConnectPromise = waitForSocket(replaySocket, 'connect');
+  const replaySpinPromise = waitForSocket(replaySocket, 'one-off-spinning');
+  replaySocket.connect();
+  await replayConnectPromise;
+  const replaySpin = await replaySpinPromise;
+  assert.deepEqual(
+    withoutResumeElapsed(replaySpin),
+    withoutResumeElapsed(eliminationSpin),
+    'a reconnecting viewer must replay the same winner and animation payload',
+  );
+  assert.ok(replaySpin.resumeElapsedMs >= 0);
+  assert.ok(replaySpin.resumeElapsedMs < replaySpin.spinDuration * 1000);
+
   let automaticSpin = null;
   const captureAutomaticSpin = payload => {
     automaticSpin = payload;
   };
   adminSocket.on('one-off-spinning', captureAutomaticSpin);
-  await delay(5_800);
+  await delay(5_200);
   adminSocket.off('one-off-spinning', captureAutomaticSpin);
   assert.equal(automaticSpin, null, 'next elimination round must not start automatically');
+
+  const earlySpinRejectionPromise = waitForSocket(adminSocket, 'one-off-spin-rejected');
+  adminSocket.emit('spin-one-off');
+  assert.match((await earlySpinRejectionPromise).error, /вращается/);
+  await delay(1_100);
 
   const waitingForManualSpin = await request(instance, '/api/one-off-wheel', {
     cookie: admin.cookie,
@@ -197,6 +277,8 @@ test('one-off wheel is admin-published and elimination rounds start manually', a
   const finalEliminationSpin = await finalEliminationSpinPromise;
   assert.equal(finalEliminationSpin.mode, 'elimination');
   assert.equal(finalEliminationSpin.outcome.type, 'eliminated-and-winner');
+  assertCartoonAnimation(finalEliminationSpin);
+  assertServerSelectedMovie(finalEliminationSpin);
   assert.notEqual(
     finalEliminationSpin.outcome.movie.id,
     finalEliminationSpin.outcome.winner.id

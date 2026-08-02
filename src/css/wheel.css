@@ -32,11 +32,11 @@
   height: 100%;
 }
 
-.cheese-wheel-stage.is-spinning {
+.cheese-wheel-stage.is-spinning:not(.is-cartoon) {
   animation: wheelGlow 0.48s ease-in-out infinite;
 }
 
-.cheese-wheel-stage.is-spinning canvas {
+.cheese-wheel-stage.is-spinning:not(.is-cartoon) canvas {
   animation: wheelPulse 0.48s ease-in-out infinite;
 }
 
@@ -68,6 +68,327 @@
 
 .wheel-pointer.bounce {
   animation: pointerBounce 0.16s ease;
+}
+
+.wheel-cartoon-effects {
+  position: absolute;
+  z-index: 7;
+  inset: -2%;
+  overflow: visible;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.wheel-speed-lines {
+  position: absolute;
+  inset: -1%;
+  border-radius: 50%;
+  background:
+    repeating-conic-gradient(
+      from 8deg,
+      transparent 0deg 7deg,
+      rgba(255, 255, 255, 0.9) 8deg 9.2deg,
+      rgba(174, 92, 8, 0.28) 9.5deg 10deg,
+      transparent 10.7deg 15deg
+  );
+  opacity: 0;
+  transform: scale(1.03);
+  -webkit-mask: radial-gradient(circle, transparent 0 72%, #000 75% 87%, transparent 90%);
+  mask: radial-gradient(circle, transparent 0 72%, #000 75% 87%, transparent 90%);
+}
+
+.cheese-wheel-stage[data-theme='samurai'] .wheel-speed-lines {
+  background: repeating-conic-gradient(
+    from 8deg,
+    transparent 0deg 8deg,
+    rgba(255, 229, 197, 0.7) 9deg 9.7deg,
+    transparent 10.8deg 17deg
+  );
+}
+
+.cheese-wheel-stage[data-theme='newyear'] .wheel-speed-lines {
+  background: repeating-conic-gradient(
+    from 8deg,
+    transparent 0deg 7deg,
+    rgba(255, 239, 142, 0.82) 8deg 8.8deg,
+    transparent 9.6deg 15deg
+  );
+}
+
+.cheese-wheel-stage[data-theme='spring'] .wheel-speed-lines {
+  background: repeating-conic-gradient(
+    from 8deg,
+    transparent 0deg 7deg,
+    rgba(255, 194, 217, 0.78) 8deg 8.8deg,
+    transparent 9.6deg 15deg
+  );
+}
+
+.wheel-runner-orbit {
+  position: absolute;
+  inset: 1.5%;
+  border-radius: 50%;
+  opacity: 0;
+  transform: rotate(-18deg);
+}
+
+.wheel-cheese-runner {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  width: 54px;
+  height: 55px;
+  filter: drop-shadow(0 3px 2px rgba(91, 50, 4, 0.24));
+  transform: translateX(-50%) rotate(8deg);
+}
+
+.wheel-runner-body {
+  position: absolute;
+  z-index: 2;
+  top: 3px;
+  left: 3px;
+  width: 47px;
+  height: 34px;
+  border: 2px solid #a76910;
+  border-radius: 45% 48% 30% 26%;
+  background: linear-gradient(145deg, #fff08a 4%, #ffd84e 58%, #eba92b 100%);
+  clip-path: polygon(0 100%, 10% 24%, 100% 48%, 96% 100%);
+}
+
+.wheel-runner-body::before {
+  position: absolute;
+  top: 16px;
+  left: 13px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #cd8e1d;
+  box-shadow: 17px -5px 0 1px #cd8e1d, 24px 8px 0 #cd8e1d;
+  content: '';
+}
+
+.wheel-runner-body::after {
+  position: absolute;
+  top: 15px;
+  right: 7px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #613706;
+  box-shadow: 8px 0 0 #613706, 4px 7px 0 -0.5px #613706;
+  content: '';
+}
+
+.wheel-runner-arm,
+.wheel-runner-leg {
+  position: absolute;
+  z-index: 1;
+  width: 4px;
+  border-radius: 999px;
+  background: #74420b;
+  transform-origin: 50% 0;
+}
+
+.wheel-runner-arm {
+  top: 24px;
+  height: 16px;
+}
+
+.wheel-runner-arm.is-left {
+  left: 4px;
+  transform: rotate(54deg);
+}
+
+.wheel-runner-arm.is-right {
+  right: 1px;
+  transform: rotate(-58deg);
+}
+
+.wheel-runner-leg {
+  top: 34px;
+  height: 18px;
+}
+
+.wheel-runner-leg.is-left {
+  left: 17px;
+}
+
+.wheel-runner-leg.is-right {
+  right: 13px;
+}
+
+.wheel-runner-dust {
+  position: absolute;
+  top: 18px;
+  left: calc(50% - 33px);
+  width: 12px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(255, 247, 205, 0.88);
+  box-shadow: -10px 5px 0 -2px rgba(255, 247, 205, 0.64), -19px 8px 0 -4px rgba(255, 247, 205, 0.48);
+  opacity: 0;
+}
+
+.wheel-crumb {
+  position: absolute;
+  top: 2.5%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  border: 1px solid rgba(132, 76, 7, 0.28);
+  border-radius: 42%;
+  background: #ffd85a;
+  opacity: 0;
+}
+
+.wheel-crumb.is-two {
+  width: 4px;
+  height: 4px;
+}
+
+.wheel-crumb.is-three {
+  width: 5px;
+  height: 5px;
+}
+
+.wheel-finish-pop {
+  position: absolute;
+  top: -2.5%;
+  left: 50%;
+  width: 74px;
+  height: 74px;
+  border: 4px solid rgba(255, 232, 88, 0.94);
+  border-radius: 50%;
+  opacity: 0;
+  transform: translateX(-50%) scale(0.3);
+}
+
+.wheel-finish-pop::before,
+.wheel-finish-pop::after {
+  position: absolute;
+  inset: -15px;
+  border-radius: 50%;
+  background: repeating-conic-gradient(
+    transparent 0deg 20deg,
+    rgba(255, 226, 76, 0.95) 21deg 24deg,
+    transparent 25deg 44deg
+  );
+  content: '';
+  -webkit-mask: radial-gradient(circle, transparent 0 61%, #000 63% 72%, transparent 74%);
+  mask: radial-gradient(circle, transparent 0 61%, #000 63% 72%, transparent 74%);
+}
+
+.wheel-finish-pop::after {
+  inset: -7px;
+  transform: rotate(17deg);
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-anticipation canvas {
+  animation: cartoonWheelAnticipation 0.32s ease-in-out both;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-anticipation .wheel-pointer {
+  animation: cartoonPointerTense 0.32s ease-in-out both;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-launch {
+  animation: cartoonLaunchGlow 0.5s ease-out both;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-launch canvas {
+  animation: cartoonWheelLaunch 0.58s cubic-bezier(0.2, 0.9, 0.28, 1) both;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-launch .wheel-speed-lines,
+.cheese-wheel-stage.is-cartoon.spin-phase-cruise .wheel-speed-lines {
+  opacity: clamp(0, var(--spin-energy, 0.72), 0.76);
+  animation: cartoonSpeedLines 0.22s linear infinite;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-launch .wheel-runner-orbit {
+  opacity: 1;
+  animation: cartoonRunnerOrbit 0.56s linear infinite;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-launch .wheel-cheese-runner {
+  animation: cartoonRunnerCounterOrbit 0.56s linear infinite;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-launch .wheel-runner-leg {
+  animation: cartoonRunnerLeg 0.14s ease-in-out infinite alternate;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-launch .wheel-runner-leg.is-right {
+  animation-direction: alternate-reverse;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-launch .wheel-runner-arm {
+  animation: cartoonRunnerArm 0.14s ease-in-out infinite alternate;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-launch .wheel-runner-arm.is-right {
+  animation-direction: alternate-reverse;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-launch .wheel-runner-dust {
+  animation: cartoonDust 0.34s ease-out infinite;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-launch .wheel-crumb {
+  animation: cartoonCrumb 0.7s ease-out infinite;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-launch .wheel-crumb.is-two {
+  animation-delay: -0.24s;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-launch .wheel-crumb.is-three {
+  animation-delay: -0.47s;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-cruise canvas {
+  animation: cartoonWheelCruise 0.72s ease-in-out infinite;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-brake {
+  animation: cartoonBrakeGlow 0.7s ease-in-out infinite;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-brake canvas {
+  animation: cartoonWheelBrake 0.54s ease-in-out infinite;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-brake .wheel-speed-lines {
+  opacity: clamp(0, var(--spin-energy, 0.18), 0.32);
+  animation: cartoonSpeedLines 0.5s linear infinite;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-false-finish {
+  filter: drop-shadow(0 16px 36px rgba(231, 147, 24, 0.42));
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-false-finish canvas {
+  animation: cartoonFalseFinishHold 0.5s ease-out both;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-false-finish .wheel-pointer {
+  animation: cartoonFalseFinishPointer 0.5s ease-out both;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-false-finish .wheel-finish-pop {
+  animation: cartoonFalseFinishPop 0.5s ease-out both;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-settle canvas {
+  animation: cartoonWheelSettle 0.58s cubic-bezier(0.2, 1.5, 0.42, 1) both;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-celebrate .wheel-finish-pop {
+  animation: cartoonFinishPop 0.82s ease-out both;
+}
+
+.cheese-wheel-stage.is-cartoon.spin-phase-celebrate canvas {
+  animation: cartoonWinnerPulse 0.72s ease-out both;
 }
 
 .wheel-center-btn {
@@ -350,9 +671,139 @@
   50% { transform: scale(1.008); }
 }
 
+@keyframes cartoonWheelAnticipation {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  42% { transform: scaleX(1.025) scaleY(0.975) rotate(-0.7deg); }
+  72% { transform: scaleX(0.985) scaleY(1.018) rotate(0.35deg); }
+}
+
+@keyframes cartoonPointerTense {
+  0%, 100% { transform: translateX(-50%) rotate(0deg); }
+  50% { transform: translateX(-50%) rotate(-10deg) scaleY(0.9); }
+}
+
+@keyframes cartoonLaunchGlow {
+  0% { filter: drop-shadow(0 12px 24px rgba(100, 60, 0, 0.2)); }
+  48% { filter: drop-shadow(0 18px 38px rgba(237, 151, 28, 0.46)); }
+  100% { filter: drop-shadow(0 14px 30px rgba(196, 105, 18, 0.3)); }
+}
+
+@keyframes cartoonWheelLaunch {
+  0% { transform: scaleX(0.97) scaleY(1.035); }
+  34% { transform: scaleX(1.026) scaleY(0.982); }
+  68% { transform: scaleX(0.992) scaleY(1.012); }
+  100% { transform: scale(1); }
+}
+
+@keyframes cartoonWheelCruise {
+  0%, 100% { transform: translate(0, 0) scale(1.002); }
+  25% { transform: translate(0.5px, -0.6px) scale(1.005); }
+  50% { transform: translate(-0.6px, 0.3px) scale(1.002); }
+  75% { transform: translate(0.3px, 0.6px) scale(1.004); }
+}
+
+@keyframes cartoonWheelBrake {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  32% { transform: translateX(1.2px) rotate(0.18deg); }
+  68% { transform: translateX(-0.8px) rotate(-0.12deg); }
+}
+
+@keyframes cartoonBrakeGlow {
+  0%, 100% { filter: drop-shadow(0 13px 28px rgba(120, 69, 7, 0.24)); }
+  50% { filter: drop-shadow(0 16px 34px rgba(207, 123, 20, 0.34)); }
+}
+
+@keyframes cartoonFalseFinishHold {
+  0% { transform: scale(1.012); filter: brightness(1.08); }
+  32% { transform: scaleX(0.982) scaleY(1.018); filter: brightness(1.16); }
+  72% { transform: scaleX(1.007) scaleY(0.994); filter: brightness(1.09); }
+  100% { transform: scale(1); filter: brightness(1.04); }
+}
+
+@keyframes cartoonFalseFinishPointer {
+  0% { transform: translateX(-50%) rotate(0deg); }
+  30% { transform: translateX(-50%) rotate(13deg) scaleY(0.86); }
+  68% { transform: translateX(-50%) rotate(-5deg) scaleY(1.05); }
+  100% { transform: translateX(-50%) rotate(0deg); }
+}
+
+@keyframes cartoonFalseFinishPop {
+  0% { opacity: 0; transform: translateX(-50%) scale(0.2) rotate(-12deg); }
+  38% { opacity: 0.92; transform: translateX(-50%) scale(0.92) rotate(3deg); }
+  100% { opacity: 0; transform: translateX(-50%) scale(1.28) rotate(8deg); }
+}
+
+@keyframes cartoonWheelSettle {
+  0% { transform: scale(1); }
+  32% { transform: scaleX(1.012) scaleY(0.988); }
+  70% { transform: scaleX(0.994) scaleY(1.006); }
+  100% { transform: scale(1); }
+}
+
+@keyframes cartoonSpeedLines {
+  from { transform: scale(1.03) rotate(0deg); }
+  to { transform: scale(1.03) rotate(30deg); }
+}
+
+@keyframes cartoonRunnerOrbit {
+  from { transform: rotate(-18deg); }
+  to { transform: rotate(342deg); }
+}
+
+@keyframes cartoonRunnerCounterOrbit {
+  from { transform: translateX(-50%) rotate(26deg); }
+  to { transform: translateX(-50%) rotate(-334deg); }
+}
+
+@keyframes cartoonRunnerLeg {
+  from { transform: rotate(48deg); }
+  to { transform: rotate(-54deg); }
+}
+
+@keyframes cartoonRunnerArm {
+  from { transform: rotate(64deg); }
+  to { transform: rotate(-52deg); }
+}
+
+@keyframes cartoonDust {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.45); }
+  22% { opacity: 0.9; }
+  100% { opacity: 0; transform: translate(-23px, 10px) scale(1.35); }
+}
+
+@keyframes cartoonCrumb {
+  0% { opacity: 0; transform: translate(-10px, 16px) rotate(0deg); }
+  20% { opacity: 0.92; }
+  100% { opacity: 0; transform: translate(-60px, 45px) rotate(210deg); }
+}
+
+@keyframes cartoonFinishPop {
+  0% { opacity: 0; transform: translateX(-50%) scale(0.25) rotate(-16deg); }
+  24% { opacity: 1; transform: translateX(-50%) scale(1.12) rotate(4deg); }
+  70% { opacity: 0.72; transform: translateX(-50%) scale(1.38) rotate(10deg); }
+  100% { opacity: 0; transform: translateX(-50%) scale(1.56) rotate(14deg); }
+}
+
+@keyframes cartoonWinnerPulse {
+  0% { transform: scale(1); filter: brightness(1); }
+  28% { transform: scale(1.018); filter: brightness(1.12) saturate(1.08); }
+  62% { transform: scale(0.997); filter: brightness(1.03); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cheese-wheel-stage.is-spinning,
-  .cheese-wheel-stage.is-spinning canvas {
+  .cheese-wheel-stage.is-spinning canvas,
+  .cheese-wheel-stage.is-cartoon .wheel-cartoon-effects,
+  .cheese-wheel-stage.is-cartoon.spin-phase-celebrate canvas {
+    animation: none;
+  }
+
+  .cheese-wheel-stage.is-cartoon .wheel-cartoon-effects {
+    display: none;
+  }
+
+  .cheese-wheel-stage.is-cartoon .wheel-pointer.bounce {
     animation: none;
   }
 }

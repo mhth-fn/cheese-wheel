@@ -47,10 +47,14 @@ export default function OneOffWheelPanel() {
   const wheelRef = useRef(null);
   const fileRef = useRef(null);
   const startedSpinIdRef = useRef(null);
+  const eliminationRevealTimerRef = useRef(null);
+  const [revealedEliminatedMovieId, setRevealedEliminatedMovieId] = useState(null);
 
   const movies = Array.isArray(oneOffState.movies) ? oneOffState.movies : [];
   const spinSnapshot = activeSpin || remoteOneOffSpin;
-  const displayMovies = spinSnapshot?.movies?.length ? spinSnapshot.movies : movies;
+  const displayMovies = Array.isArray(spinSnapshot?.movies)
+    ? spinSnapshot.movies
+    : movies;
   const result = oneOffState.result;
   const eliminationActive = Boolean(oneOffState.elimination_active);
   const modeLabel = oneOffState.mode === 'elimination'
@@ -95,24 +99,58 @@ export default function OneOffWheelPanel() {
       showToast('Состав разового колеса изменился', 'error');
       return;
     }
-    startedSpinIdRef.current = activeSpin.spinId;
-    wheelRef.current?.spin(
+    const started = wheelRef.current?.spin(
       selectedIndex,
       activeSpin.spinDuration,
       activeSpin.randomOffset,
-      activeSpin.turns
+      activeSpin.turns,
+      {
+        ...(activeSpin.animation || {}),
+        outcomeType: activeSpin.outcome?.type,
+        replaceActive: true,
+        resumeElapsedMs: activeSpin.resumeElapsedMs,
+      }
     );
+    if (started) startedSpinIdRef.current = activeSpin.spinId;
   }, [activeSpin, setOneOffIsSpinning, showToast]);
+
+  useEffect(() => {
+    if (eliminationRevealTimerRef.current !== null) {
+      window.clearTimeout(eliminationRevealTimerRef.current);
+      eliminationRevealTimerRef.current = null;
+    }
+    setRevealedEliminatedMovieId(null);
+
+    return () => {
+      if (eliminationRevealTimerRef.current !== null) {
+        window.clearTimeout(eliminationRevealTimerRef.current);
+        eliminationRevealTimerRef.current = null;
+      }
+    };
+  }, [activeSpin?.spinId]);
 
   useEffect(() => () => setOneOffIsSpinning(false), [setOneOffIsSpinning]);
 
   const handleSpinComplete = useCallback(() => {
     if (!activeSpin) return;
-    if (activeSpin.outcome?.type === 'eliminated') {
+    const outcomeType = activeSpin.outcome?.type;
+    if (outcomeType === 'eliminated') {
       showToast(
         `«${activeSpin.outcome.movie.title}» выбывает. Запустите следующий раунд вручную`,
         'info'
       );
+    }
+    if (outcomeType === 'eliminated' || outcomeType === 'eliminated-and-winner') {
+      setRevealedEliminatedMovieId(activeSpin.outcome.movie.id);
+      if (eliminationRevealTimerRef.current !== null) {
+        window.clearTimeout(eliminationRevealTimerRef.current);
+      }
+      eliminationRevealTimerRef.current = window.setTimeout(() => {
+        eliminationRevealTimerRef.current = null;
+        setActiveSpin(null);
+        setOneOffIsSpinning(false);
+      }, 700);
+      return;
     }
     setActiveSpin(null);
     setOneOffIsSpinning(false);
@@ -278,7 +316,8 @@ export default function OneOffWheelPanel() {
                 movies={displayMovies}
                 onSpinComplete={handleSpinComplete}
                 theme={theme}
-                respectReducedMotion={false}
+                animationProfile="cartoon"
+                respectReducedMotion
               />
               <button
                 type="button"
@@ -419,7 +458,7 @@ export default function OneOffWheelPanel() {
 
         <div className="one-off-table-wrap">
           <table className="one-off-table">
-            <caption>Фильмы: {movies.length}</caption>
+            <caption>Фильмы: {displayMovies.length}</caption>
             <thead>
               <tr>
                 <th>Фильм</th>
@@ -428,14 +467,34 @@ export default function OneOffWheelPanel() {
               </tr>
             </thead>
             <tbody>
-              {movies.map(movie => {
+              {displayMovies.map(movie => {
                 const manageable = (
                   !isGuest
                   && (isAdmin || Number(movie.added_by) === Number(currentUser?.id))
                 );
+                const isRevealedElimination = (
+                  revealedEliminatedMovieId !== null
+                  && Number(movie.id) === Number(revealedEliminatedMovieId)
+                );
                 return (
-                  <tr key={movie.id}>
-                    <td title={movie.title}>{movie.title}</td>
+                  <tr
+                    key={movie.id}
+                    className={isRevealedElimination ? 'is-eliminated' : undefined}
+                  >
+                    <td title={movie.title}>
+                      <span className="one-off-movie-cell-inner">
+                        <span className="one-off-movie-title">{movie.title}</span>
+                        {isRevealedElimination && (
+                          <span
+                            className="one-off-eliminated-badge"
+                            role="status"
+                            aria-live="polite"
+                          >
+                            ВЫБЫЛ
+                          </span>
+                        )}
+                      </span>
+                    </td>
                     <td>{movie.added_by_name}</td>
                     <td>
                       {manageable && (
@@ -454,7 +513,7 @@ export default function OneOffWheelPanel() {
                   </tr>
                 );
               })}
-              {movies.length === 0 && (
+              {displayMovies.length === 0 && (
                 <tr>
                   <td colSpan="3" className="one-off-empty-row">
                     Здесь появятся предложения участников

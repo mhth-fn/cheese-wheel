@@ -16,6 +16,7 @@ function createWheelService({
   const spinState = {
     activeSpinUntil: 0,
     activeOneOffSpinUntil: 0,
+    activeOneOffSpin: null,
     oneOffEliminationActive: false,
   };
 
