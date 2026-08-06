@@ -170,7 +170,10 @@ export function uploadFoodReviewPhoto(reviewId, file) {
   const params = new URLSearchParams({ original_file_name: file.name });
   return apiFetch(`/api/food-reviews/${reviewId}/photos?${params.toString()}`, {
     method: 'POST',
-    headers: { 'Content-Type': file.type },
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      'X-File-Size': String(file.size),
+    },
     body: file,
   });
 }

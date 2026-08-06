@@ -27,7 +27,10 @@ async function allocatePort() {
   return port;
 }
 
-async function startServer(dataDir, { frontend = 'disabled' } = {}) {
+async function startServer(dataDir, {
+  discordWebhookUrl = '',
+  frontend = 'disabled',
+} = {}) {
   if (!['disabled', 'built'].includes(frontend)) {
     throw new Error(`Unsupported test frontend mode: ${frontend}`);
   }
@@ -46,7 +49,7 @@ async function startServer(dataDir, { frontend = 'disabled' } = {}) {
       DEFAULT_PASSWORD: testPassword,
       AUDIT_LOG_PEPPER: 'integration-audit-pepper-with-at-least-32-bytes',
       RATE_LIMIT_PEPPER: 'integration-rate-pepper-with-at-least-32-bytes',
-      DISCORD_WEBHOOK_URL: '',
+      DISCORD_WEBHOOK_URL: discordWebhookUrl,
       TEST_ALLOW_HTTP_COOKIE: '1',
       TEST_FRONTEND_DIST_PATH: frontend === 'disabled'
         ? path.join(dataDir, 'frontend-disabled')

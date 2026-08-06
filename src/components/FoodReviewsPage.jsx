@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   deleteFoodReview,
   fetchFoodReviews,
@@ -7,6 +7,12 @@ import {
 } from '../api';
 import { useApp } from '../app/AppContext';
 import { formatReviewDate } from '../features/reviews/reviewUtils';
+import {
+  FOOD_PHOTO_ACCEPT,
+  MAX_FOOD_PHOTOS,
+  prepareFoodPhoto,
+  validateFoodPhoto,
+} from '../utils/foodPhotos';
 import { readResponse } from '../utils/readResponse';
 
 const IMPRESSIONS = [
@@ -14,9 +20,6 @@ const IMPRESSIONS = [
   { value: 0, label: 'Нормально', className: 'meh' },
   { value: -1, label: 'Не рекомендую', className: 'no' },
 ];
-const PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
-
 function impression(value) {
   return IMPRESSIONS.find(item => item.value === Number(value)) || IMPRESSIONS[1];
 }
@@ -30,6 +33,7 @@ export default function FoodReviewsPage() {
   const [recommend, setRecommend] = useState(1);
   const [photos, setPhotos] = useState([]);
   const [busy, setBusy] = useState(false);
+  const photoInputRef = useRef(null);
 
   const load = useCallback(async ({ quiet = false } = {}) => {
     if (!quiet) setLoadState('loading');
@@ -54,12 +58,16 @@ export default function FoodReviewsPage() {
   }, [load, socket]);
 
   const choosePhotos = event => {
-    const selected = [...(event.target.files || [])].slice(0, 4);
-    const invalid = selected.find(file => (
-      !PHOTO_TYPES.has(file.type) || file.size > MAX_PHOTO_BYTES
-    ));
+    const selected = [...(event.target.files || [])];
+    if (selected.length > MAX_FOOD_PHOTOS) {
+      showToast(`Можно выбрать не больше ${MAX_FOOD_PHOTOS} фотографий`, 'error');
+      event.target.value = '';
+      setPhotos([]);
+      return;
+    }
+    const invalid = selected.find(file => validateFoodPhoto(file));
     if (invalid) {
-      showToast('Фото: JPG, PNG или WebP, не больше 8 МБ каждое', 'error');
+      showToast(`«${invalid.name}»: ${validateFoodPhoto(invalid)}`, 'error');
       event.target.value = '';
       setPhotos([]);
       return;
@@ -72,29 +80,39 @@ export default function FoodReviewsPage() {
     if (!title.trim() || !content.trim() || busy) return;
     setBusy(true);
     try {
+      const preparedPhotos = [];
+      for (const photo of photos) {
+        preparedPhotos.push(await prepareFoodPhoto(photo));
+      }
       const created = await readResponse(await postFoodReview({
         title: title.trim(),
         content: content.trim(),
         recommend,
       }));
       let uploaded = 0;
-      for (const photo of photos) {
+      const uploadErrors = [];
+      for (const photo of preparedPhotos) {
         try {
           await readResponse(await uploadFoodReviewPhoto(created.id, photo));
           uploaded += 1;
         } catch (error) {
-          showToast(`Обзор сохранён, но фото «${photo.name}» не загрузилось`, 'error');
+          uploadErrors.push(`«${photo.name}»: ${error.message || 'ошибка загрузки'}`);
         }
       }
       setTitle('');
       setContent('');
       setRecommend(1);
       setPhotos([]);
+      if (photoInputRef.current) photoInputRef.current.value = '';
       await load({ quiet: true });
-      showToast(
-        uploaded > 0 ? `Обзор и фото (${uploaded}) опубликованы` : 'Обзор опубликован',
-        'success'
-      );
+      if (uploadErrors.length > 0) {
+        showToast(`Обзор опубликован, но фото не загрузилось: ${uploadErrors[0]}`, 'error');
+      } else {
+        showToast(
+          uploaded > 0 ? `Обзор и фото (${uploaded}) опубликованы` : 'Обзор опубликован',
+          'success'
+        );
+      }
     } catch (error) {
       showToast(error.message || 'Не удалось опубликовать обзор', 'error');
     } finally {
@@ -170,12 +188,13 @@ export default function FoodReviewsPage() {
               <input
                 className="food-photo-input sr-only"
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                ref={photoInputRef}
+                accept={FOOD_PHOTO_ACCEPT}
                 multiple
                 onChange={choosePhotos}
               />
               <span className="food-photo-button">Выбрать фото</span>
-              <small>До 4 фото, каждое не больше 8 МБ</small>
+              <small>До 4 фото, каждое не больше 10 МБ; HEIC с iPhone поддерживается</small>
             </label>
           </div>
           {photos.length > 0 && (

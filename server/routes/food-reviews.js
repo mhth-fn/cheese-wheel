@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const MAX_PHOTOS = 4;
-const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
+const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 const PHOTO_TYPES = new Map([
   ['image/jpeg', '.jpg'],
   ['image/png', '.png'],
@@ -13,7 +13,17 @@ const PHOTO_TYPES = new Map([
 ]);
 
 function registerFoodReviewRoutes(context) {
-  const { app, db, io, parseIntStrict, sanitizeTitle, stmts, uploadsPath } = context;
+  const {
+    app,
+    db,
+    escapeDiscordMarkdown,
+    io,
+    notifyDiscord,
+    parseIntStrict,
+    sanitizeTitle,
+    stmts,
+    uploadsPath,
+  } = context;
   const photosPath = path.join(uploadsPath, 'food-reviews');
   fs.mkdirSync(photosPath, { recursive: true, mode: 0o750 });
 
@@ -174,6 +184,10 @@ function registerFoodReviewRoutes(context) {
     );
     const created = getSerializedReview(result.lastInsertRowid);
     io.emit('food-reviews-changed', { action: 'created', review_id: created.id });
+    void notifyDiscord(
+      '🍽️ Новый обзор еды *' + escapeDiscordMarkdown(created.title)
+      + '*. Автор — *' + escapeDiscordMarkdown(created.user_name || 'Пользователь') + '*'
+    );
     res.status(201).json(created);
   });
 
@@ -232,12 +246,14 @@ function registerFoodReviewRoutes(context) {
     if (!extension) {
       return res.status(415).json({ error: 'Поддерживаются JPG, PNG и WebP' });
     }
-    const expectedSize = Number(req.headers['content-length']);
+    const expectedSize = Number(
+      req.headers['x-file-size'] || req.headers['content-length']
+    );
     if (!Number.isInteger(expectedSize) || expectedSize < 1) {
       return res.status(400).json({ error: 'Выберите фотографию' });
     }
     if (expectedSize > MAX_PHOTO_BYTES) {
-      return res.status(413).json({ error: 'Фотография больше 8 МБ' });
+      return res.status(413).json({ error: 'Фотография больше 10 МБ' });
     }
     const storageKey = `${crypto.randomUUID()}${extension}`;
     const finalPath = path.join(photosPath, storageKey);
