@@ -111,7 +111,7 @@ test('food photo limit is aligned across the browser, server, and Nginx', () => 
   );
 });
 
-test('food review UI exposes editing, reactions, and non-animated photo links', () => {
+test('food review UI exposes editing, reactions, and non-animated photos', () => {
   const page = fs.readFileSync(
     path.join(__dirname, '..', 'src', 'components', 'FoodReviewsPage.jsx'),
     'utf8'
@@ -136,8 +136,63 @@ test('food review UI exposes editing, reactions, and non-animated photo links', 
   );
   assert.doesNotMatch(
     styles,
-    /\.food-photo-grid a:hover img\s*\{[^}]*transform:\s*scale\(/s,
-    'food photos must not be scaled while their new-tab links retain hover'
+    /\.food-photo-(?:grid\s+a|trigger):hover img\s*\{[^}]*transform:\s*scale\(/s,
+    'food photos must not be scaled while their controls retain hover'
+  );
+});
+
+test('food photos open in an accessible modal lightbox', () => {
+  const page = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'components', 'FoodReviewsPage.jsx'),
+    'utf8'
+  );
+  const dialogA11y = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'hooks', 'useDialogA11y.js'),
+    'utf8'
+  );
+
+  assert.doesNotMatch(
+    page,
+    /target\s*=\s*["']_blank["']/,
+    'food photos must stay in the current tab'
+  );
+  assert.doesNotMatch(
+    page,
+    /<a\b[^>]*href=\{photo\.url\}/s,
+    'food photos must open the lightbox instead of navigating to the raw image'
+  );
+  assert.match(page, /className=["']food-photo-trigger["']/);
+  assert.match(page, /className=["']food-photo-trigger["'][\s\S]{0,120}type=["']button["']/);
+  assert.match(page, /\bsetActivePhoto\s*\(/);
+  assert.match(page, /event\.currentTarget\.focus\(\{\s*preventScroll:\s*true\s*\}\)/);
+  assert.match(page, /<img\b[^>]*src=\{photo\.url\}/s);
+  assert.match(page, /function\s+FoodPhotoLightbox\s*\(/);
+  assert.match(page, /\bcreatePortal\s*\(/);
+  assert.match(page, /\buseDialogA11y\s*\(Boolean\(photo\),\s*onClose\)/);
+  assert.match(page, /className=["']food-photo-lightbox["']/);
+  assert.match(page, /className=["']food-photo-lightbox-dialog["']/);
+  assert.match(page, /role=["']dialog["']/);
+  assert.match(page, /aria-modal=["']true["']/);
+  assert.match(
+    page,
+    /on(?:Click|MouseDown)=\{[^}]*event\.target\s*===\s*event\.currentTarget[^}]*\}/s,
+    'clicking the backdrop must close the lightbox without treating clicks on the photo as backdrop clicks'
+  );
+
+  assert.match(
+    dialogA11y,
+    /event\.key\s*===\s*["']Escape["'][\s\S]{0,160}\bonClose\(\)/,
+    'Escape must close dialogs using the shared accessibility hook'
+  );
+  assert.match(
+    dialogA11y,
+    /document\.body\.style\.overflow\s*=\s*["']hidden["']/,
+    'opening the lightbox must lock background scrolling'
+  );
+  assert.match(
+    dialogA11y,
+    /document\.body\.style\.overflow\s*=\s*previousOverflow/,
+    'closing the lightbox must restore the previous scroll state'
   );
 });
 

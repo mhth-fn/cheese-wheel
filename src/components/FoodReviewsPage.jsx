@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   deleteFoodReview,
   fetchFoodReviews,
@@ -9,6 +10,7 @@ import {
 } from '../api';
 import { useApp } from '../app/AppContext';
 import { formatReviewDate } from '../features/reviews/reviewUtils';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 import {
   FOOD_PHOTO_ACCEPT,
   MAX_FOOD_PHOTOS,
@@ -26,6 +28,42 @@ function impression(value) {
   return IMPRESSIONS.find(item => item.value === Number(value)) || IMPRESSIONS[1];
 }
 
+function FoodPhotoLightbox({ photo, onClose }) {
+  const dialogRef = useDialogA11y(Boolean(photo), onClose);
+  if (!photo) return null;
+
+  return createPortal(
+    <div
+      className="food-photo-lightbox"
+      onClick={event => event.target === event.currentTarget && onClose()}
+    >
+      <section
+        ref={dialogRef}
+        className="food-photo-lightbox-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Фотография к обзору «${photo.reviewTitle}»`}
+        tabIndex={-1}
+      >
+        <button
+          className="food-photo-lightbox-close"
+          type="button"
+          onClick={onClose}
+          aria-label="Закрыть фотографию"
+        >
+          Закрыть
+        </button>
+        <img
+          className="food-photo-lightbox-image"
+          src={photo.url}
+          alt={`${photo.reviewTitle}: фото`}
+        />
+      </section>
+    </div>,
+    document.body
+  );
+}
+
 export default function FoodReviewsPage() {
   const { currentUser, isAdmin, isGuest, showToast, socket } = useApp();
   const [reviews, setReviews] = useState([]);
@@ -41,7 +79,9 @@ export default function FoodReviewsPage() {
     content: '',
     recommend: 1,
   });
+  const [activePhoto, setActivePhoto] = useState(null);
   const photoInputRef = useRef(null);
+  const closePhoto = useCallback(() => setActivePhoto(null), []);
 
   const load = useCallback(async ({ quiet = false } = {}) => {
     if (!quiet) setLoadState('loading');
@@ -312,10 +352,22 @@ export default function FoodReviewsPage() {
             <article className="review-card food-review-card" key={review.id}>
               {review.photos?.length > 0 && (
                 <div className={`food-photo-grid count-${Math.min(review.photos.length, 4)}`}>
-                  {review.photos.map(photo => (
-                    <a href={photo.url} target="_blank" rel="noreferrer" key={photo.id}>
+                  {review.photos.map((photo, index) => (
+                    <button
+                      className="food-photo-trigger"
+                      type="button"
+                      key={photo.id}
+                      onClick={event => {
+                        event.currentTarget.focus({ preventScroll: true });
+                        setActivePhoto({
+                          reviewTitle: review.title,
+                          url: photo.url,
+                        });
+                      }}
+                      aria-label={`Открыть фото ${index + 1} к обзору «${review.title}»`}
+                    >
                       <img src={photo.url} alt={`${review.title}: фото`} loading="lazy" />
-                    </a>
+                    </button>
                   ))}
                 </div>
               )}
@@ -449,6 +501,7 @@ export default function FoodReviewsPage() {
           );
         })}
       </div>
+      <FoodPhotoLightbox photo={activePhoto} onClose={closePhoto} />
     </div>
   );
 }

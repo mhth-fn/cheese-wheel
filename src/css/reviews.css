@@ -1138,9 +1138,14 @@
   grid-template-columns: 1fr;
 }
 
-.food-photo-grid a {
+.food-photo-trigger {
+  display: block;
+  width: 100%;
   min-height: 180px;
   overflow: hidden;
+  padding: 0;
+  border: 0;
+  appearance: none;
   background: var(--color-surface-muted);
   -webkit-tap-highlight-color: transparent;
   cursor: zoom-in;
@@ -1155,6 +1160,68 @@
   object-fit: cover;
   transform: none;
   transition: none;
+}
+
+.food-photo-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  display: grid;
+  padding:
+    max(16px, env(safe-area-inset-top))
+    max(16px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom))
+    max(16px, env(safe-area-inset-left));
+  place-items: center;
+  background: rgba(16, 12, 5, 0.88);
+  cursor: zoom-out;
+}
+
+.food-photo-lightbox-dialog {
+  position: relative;
+  display: grid;
+  width: fit-content;
+  max-width: 100%;
+  max-height: 100%;
+  place-items: center;
+  outline: none;
+  cursor: default;
+}
+
+.food-photo-lightbox-image {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  border-radius: var(--radius-large);
+  background: #100c05;
+  box-shadow: var(--shadow-modal);
+  object-fit: contain;
+  transform: none;
+  transition: none;
+}
+
+.food-photo-lightbox-close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: 1;
+  min-height: 40px;
+  padding: 7px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: var(--radius-pill);
+  background: rgba(16, 12, 5, 0.8);
+  color: #fff;
+  box-shadow: var(--shadow-small);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.food-photo-lightbox-close:hover {
+  background: rgba(16, 12, 5, 0.96);
 }
 
 .food-review-card .review-edit-btn,
@@ -1174,8 +1241,22 @@
     grid-template-columns: 1fr;
   }
 
-  .food-photo-grid a,
+  .food-photo-trigger,
   .food-photo-grid img {
     min-height: 130px;
+  }
+
+  .food-photo-lightbox {
+    padding:
+      max(var(--space-2), env(safe-area-inset-top))
+      max(var(--space-2), env(safe-area-inset-right))
+      max(var(--space-2), env(safe-area-inset-bottom))
+      max(var(--space-2), env(safe-area-inset-left));
+  }
+
+  .food-photo-lightbox-image {
+    max-width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+    border-radius: var(--radius-medium);
   }
 }
