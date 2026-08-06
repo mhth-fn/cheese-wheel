@@ -111,7 +111,7 @@ test('food photo limit is aligned across the browser, server, and Nginx', () => 
   );
 });
 
-test('food review UI exposes editing, reactions, and touch-safe photo hover', () => {
+test('food review UI exposes editing, reactions, and non-animated photo links', () => {
   const page = fs.readFileSync(
     path.join(__dirname, '..', 'src', 'components', 'FoodReviewsPage.jsx'),
     'utf8'
@@ -125,7 +125,20 @@ test('food review UI exposes editing, reactions, and touch-safe photo hover', ()
   assert.match(page, /\bpostReviewReaction\('food', reviewId, reaction\)/);
   assert.match(page, /socket\.on\('review-reaction-updated', updateReaction\)/);
   assert.match(page, /socket\.off\('review-reaction-updated', updateReaction\)/);
-  assert.match(styles, /@media \(hover: hover\) and \(pointer: fine\)\s*\{[\s\S]*?\.food-photo-grid a:hover img\s*\{[\s\S]*?transform:\s*scale\(1\.02\)/);
+  assert.match(
+    styles,
+    /\.food-photo-grid img\s*\{[^}]*transform:\s*none;[^}]*transition:\s*none;/s
+  );
+  assert.doesNotMatch(
+    styles,
+    /\.food-photo-grid img\s*\{[^}]*transition:\s*transform\b/s,
+    'food photos must not start a composited transform transition on desktop Safari'
+  );
+  assert.doesNotMatch(
+    styles,
+    /\.food-photo-grid a:hover img\s*\{[^}]*transform:\s*scale\(/s,
+    'food photos must not be scaled while their new-tab links retain hover'
+  );
 });
 
 test('food reviews accept bounded photos and preserve ownership', async t => {

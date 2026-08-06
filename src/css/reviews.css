@@ -1143,6 +1143,7 @@
   overflow: hidden;
   background: var(--color-surface-muted);
   -webkit-tap-highlight-color: transparent;
+  cursor: zoom-in;
 }
 
 .food-photo-grid img {
@@ -1166,16 +1167,6 @@
 
 .food-review-edit-actions {
   justify-content: flex-end;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .food-photo-grid img {
-    transition: transform 0.2s ease;
-  }
-
-  .food-photo-grid a:hover img {
-    transform: scale(1.02);
-  }
 }
 
 @media (max-width: 680px) {
