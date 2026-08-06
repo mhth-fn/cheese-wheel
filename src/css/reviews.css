@@ -1142,6 +1142,7 @@
   min-height: 180px;
   overflow: hidden;
   background: var(--color-surface-muted);
+  -webkit-tap-highlight-color: transparent;
 }
 
 .food-photo-grid img {
@@ -1151,11 +1152,30 @@
   min-height: 180px;
   max-height: 280px;
   object-fit: cover;
-  transition: transform 0.2s ease;
+  transform: none;
+  transition: none;
 }
 
-.food-photo-grid a:hover img {
-  transform: scale(1.02);
+.food-review-card .review-edit-btn,
+.food-review-card .review-delete-btn {
+  padding: 5px 8px;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.food-review-edit-actions {
+  justify-content: flex-end;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .food-photo-grid img {
+    transition: transform 0.2s ease;
+  }
+
+  .food-photo-grid a:hover img {
+    transform: scale(1.02);
+  }
 }
 
 @media (max-width: 680px) {

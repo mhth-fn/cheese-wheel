@@ -6,6 +6,7 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const Database = require('better-sqlite3');
 const {
   login,
   request,
@@ -110,6 +111,23 @@ test('food photo limit is aligned across the browser, server, and Nginx', () => 
   );
 });
 
+test('food review UI exposes editing, reactions, and touch-safe photo hover', () => {
+  const page = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'components', 'FoodReviewsPage.jsx'),
+    'utf8'
+  );
+  const styles = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'css', 'reviews.css'),
+    'utf8'
+  );
+
+  assert.match(page, /\bpatchFoodReview\(editingId,/);
+  assert.match(page, /\bpostReviewReaction\('food', reviewId, reaction\)/);
+  assert.match(page, /socket\.on\('review-reaction-updated', updateReaction\)/);
+  assert.match(page, /socket\.off\('review-reaction-updated', updateReaction\)/);
+  assert.match(styles, /@media \(hover: hover\) and \(pointer: fine\)\s*\{[\s\S]*?\.food-photo-grid a:hover img\s*\{[\s\S]*?transform:\s*scale\(1\.02\)/);
+});
+
 test('food reviews accept bounded photos and preserve ownership', async t => {
   const dataDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'cheese-wheel-food-test-'));
   const discord = await startDiscordWebhook();
@@ -148,11 +166,87 @@ test('food reviews accept bounded photos and preserve ownership', async t => {
   assert.deepEqual(discordMessage.allowed_mentions, { parse: [] });
   assert.equal(discordMessage.content.includes('Хрустящие снаружи'), false);
   assert.deepEqual(created.payload.photos, []);
+  assert.equal(created.payload.likes, 0);
+  assert.equal(created.payload.dislikes, 0);
+  assert.deepEqual(created.payload.reactions, []);
   assert.equal((await request(instance, `/api/food-reviews/${created.payload.id}`, {
     method: 'PATCH',
     cookie: peter.cookie,
     body: { title: 'Чужая правка', content: 'Нет доступа', recommend: -1 },
   })).status, 403);
+
+  const authorEdit = await request(
+    instance,
+    `/api/food-reviews/${created.payload.id}`,
+    {
+      method: 'PATCH',
+      cookie: anton.cookie,
+      body: {
+        title: 'Сырники со сметаной',
+        content: 'Автор уточнил впечатления.',
+        recommend: 1,
+      },
+    }
+  );
+  assert.equal(authorEdit.status, 200, JSON.stringify(authorEdit.payload));
+  assert.equal(authorEdit.payload.title, 'Сырники со сметаной');
+  assert.equal(authorEdit.payload.content, 'Автор уточнил впечатления.');
+
+  assert.equal((await request(instance, '/api/review-reactions', {
+    method: 'POST',
+    cookie: anton.cookie,
+    body: { review_type: 'food', review_id: created.payload.id, reaction: 1 },
+  })).status, 403);
+  const foodLike = await request(instance, '/api/review-reactions', {
+    method: 'POST',
+    cookie: peter.cookie,
+    body: { review_type: 'food', review_id: created.payload.id, reaction: 1 },
+  });
+  assert.equal(foodLike.status, 200, JSON.stringify(foodLike.payload));
+  assert.equal(foodLike.payload.review_type, 'food');
+  assert.equal(foodLike.payload.likes, 1);
+  assert.equal(foodLike.payload.dislikes, 0);
+  assert.deepEqual(foodLike.payload.reactions, [
+    { user_id: peter.user.id, reaction: 1 },
+  ]);
+
+  const removedFoodLike = await request(instance, '/api/review-reactions', {
+    method: 'POST',
+    cookie: peter.cookie,
+    body: { review_type: 'food', review_id: created.payload.id, reaction: 1 },
+  });
+  assert.equal(removedFoodLike.status, 200, JSON.stringify(removedFoodLike.payload));
+  assert.equal(removedFoodLike.payload.likes, 0);
+  assert.deepEqual(removedFoodLike.payload.reactions, []);
+
+  const foodDislike = await request(instance, '/api/review-reactions', {
+    method: 'POST',
+    cookie: peter.cookie,
+    body: { review_type: 'food', review_id: created.payload.id, reaction: -1 },
+  });
+  assert.equal(foodDislike.status, 200, JSON.stringify(foodDislike.payload));
+  assert.equal(foodDislike.payload.likes, 0);
+  assert.equal(foodDislike.payload.dislikes, 1);
+
+  const adminEdit = await request(
+    instance,
+    `/api/food-reviews/${created.payload.id}`,
+    {
+      method: 'PATCH',
+      cookie: sergey.cookie,
+      body: {
+        title: 'Сырники со сметаной',
+        content: 'Администратор исправил опечатку.',
+        recommend: 1,
+      },
+    }
+  );
+  assert.equal(adminEdit.status, 200, JSON.stringify(adminEdit.payload));
+  assert.equal(adminEdit.payload.content, 'Администратор исправил опечатку.');
+  assert.equal(adminEdit.payload.dislikes, 1);
+  assert.deepEqual(adminEdit.payload.reactions, [
+    { user_id: peter.user.id, reaction: -1 },
+  ]);
 
   const fakePng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   const photo = await uploadPhoto(
@@ -206,6 +300,11 @@ test('food reviews accept bounded photos and preserve ownership', async t => {
   assert.equal(listed.status, 200);
   assert.equal(listed.payload.length, 1);
   assert.equal(listed.payload[0].photos.length, 3);
+  assert.equal(listed.payload[0].likes, 0);
+  assert.equal(listed.payload[0].dislikes, 1);
+  assert.deepEqual(listed.payload[0].reactions, [
+    { user_id: peter.user.id, reaction: -1 },
+  ]);
   const servedPhoto = await fetch(`${instance.baseUrl}${listed.payload[0].photos[0].url}`);
   assert.equal(servedPhoto.status, 200);
   assert.equal(Buffer.from(await servedPhoto.arrayBuffer()).equals(fakePng), true);
@@ -218,6 +317,16 @@ test('food reviews accept bounded photos and preserve ownership', async t => {
     (await request(instance, '/api/food-reviews', { cookie: anton.cookie })).payload,
     []
   );
+  const storedDb = new Database(path.join(dataDir, 'cheese_wheel.db'), {
+    readonly: true,
+  });
+  const remainingReactions = storedDb.prepare(`
+    SELECT COUNT(*) AS count
+    FROM review_reactions
+    WHERE review_type = 'food' AND review_id = ?
+  `).get(created.payload.id).count;
+  storedDb.close();
+  assert.equal(remainingReactions, 0);
   assert.equal(
     await fsp.access(path.join(
       dataDir,

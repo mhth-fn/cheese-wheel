@@ -141,7 +141,7 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS review_reactions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    review_type TEXT NOT NULL CHECK(review_type IN ('movie', 'wine', 'music')),
+    review_type TEXT NOT NULL CHECK(review_type IN ('movie', 'wine', 'music', 'food')),
     review_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
     reaction INTEGER NOT NULL CHECK(reaction IN (-1, 1)),
@@ -291,21 +291,21 @@ db.exec(`
   );
 `);
 
-// Старое ограничение review_reactions знало только кино и вино. SQLite не
-// умеет расширять CHECK через ALTER COLUMN, поэтому атомарно пересобираем
+// Старое ограничение review_reactions не знало часть типов обзоров. SQLite
+// не умеет расширять CHECK через ALTER COLUMN, поэтому атомарно пересобираем
 // таблицу, сохраняя все существующие реакции.
 const reviewReactionsSchema = db.prepare(`
   SELECT sql FROM sqlite_master
   WHERE type = 'table' AND name = 'review_reactions'
 `).get()?.sql || '';
-if (!reviewReactionsSchema.includes("'music'")) {
+if (!reviewReactionsSchema.includes("'food'")) {
   const migrateReviewReactionTypes = db.transaction(() => {
     db.exec(`
-      ALTER TABLE review_reactions RENAME TO review_reactions_before_music;
+      ALTER TABLE review_reactions RENAME TO review_reactions_before_food;
 
       CREATE TABLE review_reactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        review_type TEXT NOT NULL CHECK(review_type IN ('movie', 'wine', 'music')),
+        review_type TEXT NOT NULL CHECK(review_type IN ('movie', 'wine', 'music', 'food')),
         review_id INTEGER NOT NULL,
         user_id INTEGER NOT NULL,
         reaction INTEGER NOT NULL CHECK(reaction IN (-1, 1)),
@@ -315,9 +315,9 @@ if (!reviewReactionsSchema.includes("'music'")) {
 
       INSERT INTO review_reactions (id, review_type, review_id, user_id, reaction)
       SELECT id, review_type, review_id, user_id, reaction
-      FROM review_reactions_before_music;
+      FROM review_reactions_before_food;
 
-      DROP TABLE review_reactions_before_music;
+      DROP TABLE review_reactions_before_food;
     `);
   });
   migrateReviewReactionTypes();

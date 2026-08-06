@@ -727,7 +727,7 @@ test('startup preserves legacy duplicate reviews while enforcing one linked revi
       FROM sqlite_master
       WHERE type = 'table' AND name = 'review_reactions'
     `).get().sql,
-    /'music'/
+    /'food'/
   );
   assert.match(
     migratedDb.prepare(`

@@ -83,9 +83,13 @@ function registerFoodReviewRoutes(context) {
   }
 
   function serializeReview(review) {
+    const reactions = stmts.getReviewReactions.all('food', review.id);
     return {
       ...review,
       recommend: Number(review.recommend),
+      likes: reactions.filter(item => item.reaction === 1).length,
+      dislikes: reactions.filter(item => item.reaction === -1).length,
+      reactions,
       photos: statements.listPhotos.all(review.id).map(serializePhoto),
     };
   }
@@ -216,7 +220,11 @@ function registerFoodReviewRoutes(context) {
       return res.status(403).json({ error: 'Можно удалить только свой обзор' });
     }
     const photos = statements.listPhotos.all(id);
-    statements.delete.run(id);
+    const removeReview = db.transaction(() => {
+      stmts.deleteReviewReactions.run('food', id);
+      return statements.delete.run(id);
+    });
+    removeReview();
     photos.forEach(photo => {
       try {
         fs.unlinkSync(path.join(photosPath, photo.storage_key));

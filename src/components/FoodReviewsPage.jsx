@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   deleteFoodReview,
   fetchFoodReviews,
+  patchFoodReview,
   postFoodReview,
+  postReviewReaction,
   uploadFoodReviewPhoto,
 } from '../api';
 import { useApp } from '../app/AppContext';
@@ -33,6 +35,12 @@ export default function FoodReviewsPage() {
   const [recommend, setRecommend] = useState(1);
   const [photos, setPhotos] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editFields, setEditFields] = useState({
+    title: '',
+    content: '',
+    recommend: 1,
+  });
   const photoInputRef = useRef(null);
 
   const load = useCallback(async ({ quiet = false } = {}) => {
@@ -53,8 +61,20 @@ export default function FoodReviewsPage() {
   useEffect(() => {
     if (!socket) return undefined;
     const refresh = () => load({ quiet: true });
+    const updateReaction = ({ dislikes, likes, reactions, review_id, review_type }) => {
+      if (review_type !== 'food') return;
+      setReviews(previous => previous.map(review => (
+        Number(review.id) === Number(review_id)
+          ? { ...review, dislikes, likes, reactions }
+          : review
+      )));
+    };
     socket.on('food-reviews-changed', refresh);
-    return () => socket.off('food-reviews-changed', refresh);
+    socket.on('review-reaction-updated', updateReaction);
+    return () => {
+      socket.off('food-reviews-changed', refresh);
+      socket.off('review-reaction-updated', updateReaction);
+    };
   }, [load, socket]);
 
   const choosePhotos = event => {
@@ -125,11 +145,64 @@ export default function FoodReviewsPage() {
     setBusy(true);
     try {
       await readResponse(await deleteFoodReview(review.id));
+      setReviews(previous => previous.filter(item => item.id !== review.id));
+      if (editingId === review.id) setEditingId(null);
       showToast('Обзор удалён', 'info');
     } catch (error) {
       showToast(error.message || 'Не удалось удалить обзор', 'error');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const startEdit = review => {
+    setEditingId(review.id);
+    setEditFields({
+      title: review.title || '',
+      content: review.content || '',
+      recommend: Number(review.recommend),
+    });
+  };
+
+  const saveEdit = async event => {
+    event.preventDefault();
+    if (!editingId || !editFields.title.trim() || !editFields.content.trim() || busy) return;
+    setBusy(true);
+    try {
+      const updated = await readResponse(await patchFoodReview(editingId, {
+        title: editFields.title.trim(),
+        content: editFields.content.trim(),
+        recommend: editFields.recommend,
+      }));
+      setReviews(previous => previous.map(review => (
+        review.id === editingId ? updated : review
+      )));
+      setEditingId(null);
+      showToast('Обзор обновлён', 'success');
+    } catch (error) {
+      showToast(error.message || 'Не удалось сохранить изменения', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reactToReview = async (reviewId, reaction) => {
+    try {
+      const updated = await readResponse(
+        await postReviewReaction('food', reviewId, reaction)
+      );
+      setReviews(previous => previous.map(review => (
+        Number(review.id) === Number(reviewId)
+          ? {
+              ...review,
+              likes: updated.likes,
+              dislikes: updated.dislikes,
+              reactions: updated.reactions,
+            }
+          : review
+      )));
+    } catch (error) {
+      showToast(error.message || 'Не удалось сохранить реакцию', 'error');
     }
   };
 
@@ -232,6 +305,9 @@ export default function FoodReviewsPage() {
           const canManage = !isGuest && (
             Number(review.user_id) === Number(currentUser?.id) || isAdmin
           );
+          const ownReaction = (review.reactions || []).find(
+            item => Number(item.user_id) === Number(currentUser?.id)
+          )?.reaction;
           return (
             <article className="review-card food-review-card" key={review.id}>
               {review.photos?.length > 0 && (
@@ -244,26 +320,129 @@ export default function FoodReviewsPage() {
                 </div>
               )}
               <div className="food-review-card-body">
-                <header className="review-card-header">
-                  <span className="review-card-title">{review.title}</span>
-                  <span className={`review-badge ${result.className}`}>{result.label}</span>
-                </header>
-                <div className="review-card-meta">
-                  <span className="review-author">{review.user_name}</span>
-                  <span className="review-date">{formatReviewDate(review.created_at)}</span>
-                </div>
-                <p className="review-content">{review.content}</p>
-                {canManage && (
-                  <div className="review-card-actions">
-                    <button
-                      className="review-delete-btn"
-                      type="button"
-                      onClick={() => remove(review)}
-                      disabled={busy}
-                    >
-                      Удалить
-                    </button>
-                  </div>
+                {editingId === review.id ? (
+                  <form className="review-edit-form food-review-edit-form" onSubmit={saveEdit}>
+                    <label className="review-form-field">
+                      <span>Что пробовали</span>
+                      <input
+                        className="review-form-input"
+                        value={editFields.title}
+                        onChange={event => setEditFields(previous => ({
+                          ...previous,
+                          title: event.target.value,
+                        }))}
+                        maxLength={200}
+                        required
+                        autoFocus
+                      />
+                    </label>
+                    <label className="review-form-field">
+                      <span>Впечатления</span>
+                      <textarea
+                        className="review-form-textarea"
+                        value={editFields.content}
+                        onChange={event => setEditFields(previous => ({
+                          ...previous,
+                          content: event.target.value,
+                        }))}
+                        maxLength={5000}
+                        rows={4}
+                        required
+                      />
+                    </label>
+                    <fieldset className="review-choice-fieldset">
+                      <legend>Итог</legend>
+                      <div className="review-choice-row">
+                        {IMPRESSIONS.map(item => (
+                          <button
+                            key={item.value}
+                            type="button"
+                            className={`review-recommend-toggle ${item.className}${editFields.recommend === item.value ? ' active' : ''}`}
+                            aria-pressed={editFields.recommend === item.value}
+                            onClick={() => setEditFields(previous => ({
+                              ...previous,
+                              recommend: item.value,
+                            }))}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    </fieldset>
+                    <div className="review-form-footer food-review-edit-actions">
+                      <button
+                        className="review-edit-cancel"
+                        type="button"
+                        onClick={() => setEditingId(null)}
+                        disabled={busy}
+                      >
+                        Отмена
+                      </button>
+                      <button
+                        className="review-submit-btn"
+                        type="submit"
+                        disabled={busy || !editFields.title.trim() || !editFields.content.trim()}
+                      >
+                        {busy ? 'Сохраняем…' : 'Сохранить'}
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <header className="review-card-header">
+                      <span className="review-card-title">{review.title}</span>
+                      <span className={`review-badge ${result.className}`}>{result.label}</span>
+                      {canManage && (
+                        <div className="review-card-actions">
+                          <button
+                            className="review-edit-btn"
+                            type="button"
+                            onClick={() => startEdit(review)}
+                            disabled={busy}
+                          >
+                            Редактировать
+                          </button>
+                          <button
+                            className="review-delete-btn"
+                            type="button"
+                            onClick={() => remove(review)}
+                            disabled={busy}
+                          >
+                            Удалить
+                          </button>
+                        </div>
+                      )}
+                    </header>
+                    <div className="review-card-meta">
+                      <span className="review-author">{review.user_name}</span>
+                      <span className="review-date">{formatReviewDate(review.created_at)}</span>
+                    </div>
+                    <p className="review-content">{review.content}</p>
+                    {!isGuest && currentUser && (
+                      <div className="review-reactions">
+                        <button
+                          className={`reaction-btn like${ownReaction === 1 ? ' active' : ''}`}
+                          type="button"
+                          onClick={() => reactToReview(review.id, 1)}
+                          disabled={Number(currentUser.id) === Number(review.user_id)}
+                          aria-label={`Нравится обзор «${review.title}», ${review.likes || 0}`}
+                          aria-pressed={ownReaction === 1}
+                        >
+                          👍 {review.likes || 0}
+                        </button>
+                        <button
+                          className={`reaction-btn dislike${ownReaction === -1 ? ' active' : ''}`}
+                          type="button"
+                          onClick={() => reactToReview(review.id, -1)}
+                          disabled={Number(currentUser.id) === Number(review.user_id)}
+                          aria-label={`Не нравится обзор «${review.title}», ${review.dislikes || 0}`}
+                          aria-pressed={ownReaction === -1}
+                        >
+                          👎 {review.dislikes || 0}
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </article>
