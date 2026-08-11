@@ -1,4 +1,4 @@
-export default function GameMenu({ mode, onModeChange, onPlay }) {
+export default function GameMenu({ mode, onBalda, onModeChange, onPlay }) {
   return (
     <div className="games-container">
       <div className="game-card">
@@ -26,6 +26,17 @@ export default function GameMenu({ mode, onModeChange, onPlay }) {
         </div>
         <button className="game-btn" type="button" onClick={onPlay}>
           ▶️ Играть
+        </button>
+      </div>
+      <div className="game-card">
+        <div className="game-card-icon" aria-hidden="true">БД</div>
+        <div className="game-card-info">
+          <h3>Балда</h3>
+          <p>Собирайте слова на поле 5×5 вдвоём, пока остальные смотрят.</p>
+          <span className="game-card-tag">Онлайн · 2 игрока</span>
+        </div>
+        <button className="game-btn" type="button" onClick={onBalda}>
+          Открыть игру
         </button>
       </div>
     </div>

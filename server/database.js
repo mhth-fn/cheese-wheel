@@ -256,6 +256,38 @@ db.exec(`
     FOREIGN KEY (review_id) REFERENCES food_reviews(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS balda_games (
+    id INTEGER PRIMARY KEY CHECK(id = 1),
+    player_one_id INTEGER,
+    player_two_id INTEGER,
+    board_json TEXT NOT NULL,
+    used_words_json TEXT NOT NULL,
+    scores_json TEXT NOT NULL,
+    moves_json TEXT NOT NULL,
+    current_player_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'waiting'
+      CHECK(status IN ('waiting', 'playing', 'finished')),
+    winner_id INTEGER,
+    pending_word_json TEXT,
+    consecutive_passes INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (player_one_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (player_two_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (current_player_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (winner_id) REFERENCES users(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS balda_dictionary (
+    word TEXT PRIMARY KEY,
+    source TEXT NOT NULL DEFAULT 'players'
+      CHECK(source IN ('built-in', 'players')),
+    added_by INTEGER,
+    approved_by INTEGER,
+    added_at INTEGER NOT NULL,
+    FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_sigame_pack_reviews_pack
     ON sigame_pack_reviews(pack_id, created_at DESC);
 

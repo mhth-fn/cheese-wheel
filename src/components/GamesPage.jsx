@@ -10,6 +10,7 @@ import { createMinigunHand, removeMinigunHand, updateMinigun, cleanupMinigun } f
 import GameMenu from '../features/game/GameMenu';
 import GameOver from '../features/game/GameOver';
 import GameScreen from '../features/game/GameScreen';
+import BaldaGame from '../features/game/BaldaGame';
 
 export default function GamesPage() {
   const [mode, setMode] = useState('topdown');
@@ -22,6 +23,7 @@ export default function GamesPage() {
   const [time, setTime] = useState('0:00');
   const [nearbyEnemies, setNearbyEnemies] = useState(0);
   const [bossHp, setBossHp] = useState(null);
+  const [activeGame, setActiveGame] = useState('menu');
 
   const canvas2dRef = useRef(null);
   const canvas3dRef = useRef(null);
@@ -524,9 +526,18 @@ export default function GamesPage() {
   }
 
   // === RENDER ===
+  if (activeGame === 'balda') {
+    return <BaldaGame onClose={() => setActiveGame('menu')} />;
+  }
+
   if (!playing) {
     return (
-      <GameMenu mode={mode} onModeChange={setMode} onPlay={handlePlay} />
+      <GameMenu
+        mode={mode}
+        onBalda={() => setActiveGame('balda')}
+        onModeChange={setMode}
+        onPlay={handlePlay}
+      />
     );
   }
 

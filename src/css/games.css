@@ -1,5 +1,5 @@
 /* ========== СТРАНИЦА ИГР ========== */
-.games-container { max-width: 800px; margin: 0 auto; padding-top: 24px; }
+.games-container { max-width: 800px; margin: 0 auto; padding-top: 24px; display: grid; gap: 18px; }
 
 .games-title {
   font-family: 'Caveat', cursive;
@@ -38,6 +38,18 @@
 .game-card-info { flex: 1; }
 .game-card-info h3 { font-size: 1.3rem; color: var(--text); margin-bottom: 5px; }
 .game-card-info p { color: var(--text-light); font-size: 0.95rem; }
+
+.game-card-tag {
+  display: inline-flex;
+  margin-top: 10px;
+  padding: 4px 9px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-pill);
+  color: var(--color-primary);
+  background: var(--color-surface-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
 
 .game-mode-select {
   display: flex;
@@ -228,9 +240,330 @@
   background: var(--theme-btn-hover);
 }
 
+/* ========== БАЛДА ========== */
+.balda-shell {
+  display: grid;
+  max-width: 960px;
+  margin: 0 auto;
+  gap: 16px;
+}
+
+.balda-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px 24px;
+}
+
+.balda-header h1 {
+  margin-top: 5px;
+  color: var(--color-text);
+  font-family: 'Caveat', cursive;
+  font-size: clamp(2.1rem, 6vw, 3.2rem);
+  line-height: 1;
+}
+
+.balda-header p {
+  margin-top: 7px;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.balda-back,
+.balda-text-btn {
+  padding: 3px 0;
+  border: 0;
+  color: var(--color-primary);
+  background: transparent;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.balda-back:hover,
+.balda-text-btn:hover:not(:disabled) { text-decoration: underline; }
+
+.balda-viewers {
+  flex: 0 0 auto;
+  padding: 7px 11px;
+  border-radius: var(--radius-pill);
+  color: var(--color-text-muted);
+  background: var(--color-surface-muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.balda-scoreboard {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.balda-player {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  min-height: 72px;
+  padding: 12px 16px;
+  overflow: hidden;
+  transition: border-color 0.18s ease, transform 0.18s ease;
+}
+
+.balda-player.is-active {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
+.balda-player.is-active::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: var(--color-primary);
+  content: '';
+}
+
+.balda-player-slot {
+  grid-column: 1;
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.balda-player strong { grid-column: 1; }
+
+.balda-score {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  color: var(--color-primary);
+  font-size: 1.8rem;
+  font-weight: 800;
+}
+
+.balda-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 16px;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.balda-status strong { color: var(--color-text); font-size: 0.95rem; }
+
+.balda-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  align-items: start;
+  gap: 16px;
+}
+
+.balda-play-column,
+.balda-sidebar { display: grid; gap: 14px; }
+
+.balda-board {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  width: min(100%, 570px);
+  padding: 12px;
+  gap: 7px;
+  justify-self: center;
+}
+
+.balda-cell {
+  position: relative;
+  display: grid;
+  aspect-ratio: 1;
+  place-items: center;
+  min-width: 0;
+  border: 2px solid var(--color-border-soft);
+  border-radius: 12px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-muted);
+  font-size: clamp(1.4rem, 6vw, 2.35rem);
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+
+.balda-cell:disabled { cursor: default; opacity: 1; }
+.balda-cell:not(:disabled):hover { border-color: var(--color-primary); transform: translateY(-1px); }
+.balda-cell.is-filled { color: var(--color-text); background: var(--color-surface); }
+.balda-cell.is-placement { border-color: var(--color-info); border-style: dashed; color: var(--color-info-text); }
+.balda-cell.is-in-path {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--feature-accent-surface);
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+
+.balda-cell small {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+  font-size: 0.62rem;
+}
+
+.balda-move-panel,
+.balda-word-vote,
+.balda-history,
+.balda-rules { padding: 16px; }
+
+.balda-move-panel {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.6fr) minmax(160px, 1fr);
+  gap: 12px 16px;
+}
+
+.balda-move-panel label {
+  display: grid;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.balda-move-panel input {
+  width: 100%;
+  height: 52px;
+  border: 2px solid var(--color-border);
+  border-radius: 10px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  text-align: center;
+  font-size: 1.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.balda-word-preview {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 2px dashed var(--color-border);
+  border-radius: 10px;
+  color: var(--color-primary);
+  background: var(--color-surface-muted);
+  font-size: clamp(1.1rem, 4vw, 1.7rem);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.balda-move-panel p {
+  grid-column: 1 / -1;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.balda-move-actions,
+.balda-vote-actions,
+.balda-lobby-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.balda-secondary-btn,
+.balda-danger-btn {
+  min-height: 44px;
+  padding: 9px 14px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 10px;
+  background: var(--color-surface-muted);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.balda-secondary-btn:hover:not(:disabled) { background: var(--color-surface-hover); }
+.balda-danger-btn { border-color: var(--color-danger-border); color: var(--color-danger-text); background: var(--color-danger-surface); }
+
+.balda-word-vote {
+  border: 2px solid var(--color-warning-border);
+  background: var(--color-warning-surface);
+}
+
+.balda-word-vote > strong {
+  display: block;
+  margin: 4px 0;
+  color: var(--color-warning-text);
+  font-size: 1.8rem;
+  letter-spacing: 0.08em;
+}
+
+.balda-word-vote p { margin-bottom: 12px; color: var(--color-warning-text); font-size: 0.88rem; }
+.balda-kicker { color: var(--color-warning); font-size: 0.68rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+
+.balda-error {
+  padding: 10px 13px;
+  border: 1px solid var(--color-danger-border);
+  border-radius: 10px;
+  color: var(--color-danger-text);
+  background: var(--color-danger-surface);
+  font-size: 0.84rem;
+}
+
+.balda-lobby-actions { justify-content: center; min-height: 44px; }
+.balda-spectator-note { color: var(--color-text-muted); font-size: 0.82rem; }
+.balda-history h2 { margin-bottom: 10px; font-size: 1rem; }
+.balda-history ol { display: grid; max-height: 440px; gap: 3px; overflow-y: auto; list-style: none; }
+
+.balda-history li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--color-border-soft);
+  font-size: 0.76rem;
+}
+
+.balda-history li span { overflow: hidden; color: var(--color-text-muted); text-overflow: ellipsis; white-space: nowrap; }
+.balda-history li strong { color: var(--color-text); }
+.balda-history li b { color: var(--color-success); }
+.balda-history li em { color: var(--color-text-muted); font-style: normal; }
+.balda-empty { color: var(--color-text-muted); font-size: 0.8rem; }
+.balda-rules summary { color: var(--color-text); font-weight: 800; cursor: pointer; }
+.balda-dictionary-note { margin-top: 10px; color: var(--color-info-text); font-size: 0.76rem; font-weight: 700; }
+.balda-rules ol { display: grid; margin: 12px 0 0 18px; gap: 8px; color: var(--color-text-muted); font-size: 0.77rem; }
+.balda-loading { display: grid; min-height: 280px; place-items: center; color: var(--color-text-muted); }
+
 @media (max-width: 768px) {
   .game-card { flex-direction: column; text-align: center; padding: 15px; }
   .game-card-icon { width: 60px; height: 60px; font-size: 2rem; }
   .hp-bar { width: 100px; }
   .game-controls-info { flex-wrap: wrap; gap: 10px; font-size: 0.75rem; }
+  .balda-layout { grid-template-columns: 1fr; }
+  .balda-sidebar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .balda-history ol { max-height: 260px; }
+}
+
+@media (max-width: 520px) {
+  .balda-header { padding: 16px; }
+  .balda-header p { font-size: 0.78rem; }
+  .balda-scoreboard { gap: 8px; }
+  .balda-player { min-height: 64px; padding: 9px 11px; }
+  .balda-player strong { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.84rem; }
+  .balda-score { font-size: 1.45rem; }
+  .balda-status { align-items: flex-start; flex-direction: column; }
+  .balda-board { padding: 7px; gap: 4px; }
+  .balda-cell { border-radius: 8px; }
+  .balda-cell small { top: 2px; right: 3px; width: 15px; height: 15px; }
+  .balda-move-panel { grid-template-columns: 92px minmax(0, 1fr); padding: 12px; }
+  .balda-move-actions .game-btn { flex: 1 1 100%; }
+  .balda-sidebar { grid-template-columns: 1fr; }
 }

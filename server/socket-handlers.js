@@ -54,6 +54,7 @@ function registerSocketHandlers(context) {
   const {
     MAX_SPIN_DURATION,
     MIN_SPIN_DURATION,
+    baldaService,
     broadcastOneOffState,
     claimPendingSpin,
     consumeRateLimit,
@@ -259,6 +260,82 @@ io.on('connection', (socket) => {
     });
   }
 
+  const replyToBaldaAction = (ack, result) => {
+    if (typeof ack === 'function') ack(result);
+  };
+
+  const runBaldaMutation = (scope, ack, mutation) => {
+    const tokenData = getTokenData(socket.data.authToken);
+    if (!isMemberToken(tokenData)) {
+      replyToBaldaAction(ack, {
+        ok: false,
+        error: 'Игровые места доступны только пользователям',
+      });
+      return;
+    }
+    const limit = consumeRateLimit(
+      `socket-balda-${scope}`,
+      tokenData.userId,
+      60,
+      60 * 1000,
+    );
+    if (!limit.allowed) {
+      replyToBaldaAction(ack, { ok: false, error: 'Слишком много запросов' });
+      return;
+    }
+    try {
+      replyToBaldaAction(ack, mutation(Number(tokenData.userId)));
+    } catch (error) {
+      console.error('[cheese-wheel] Balda action failed:', error.message);
+      replyToBaldaAction(ack, { ok: false, error: 'Не удалось изменить партию' });
+    }
+  };
+
+  socket.on('balda:watch', (ack) => {
+    if (socket.rooms.has(baldaService.roomName)) {
+      replyToBaldaAction(ack, { ok: true, state: baldaService.getState() });
+      return;
+    }
+    socket.join(baldaService.roomName);
+    const state = baldaService.broadcast();
+    replyToBaldaAction(ack, { ok: true, state });
+  });
+
+  socket.on('balda:unwatch', (ack) => {
+    const wasWatching = socket.rooms.has(baldaService.roomName);
+    socket.leave(baldaService.roomName);
+    replyToBaldaAction(ack, { ok: true });
+    if (wasWatching) baldaService.broadcast();
+  });
+
+  socket.on('balda:join', (ack) => {
+    runBaldaMutation('seat', ack, userId => baldaService.join(userId));
+  });
+
+  socket.on('balda:leave', (ack) => {
+    runBaldaMutation('seat', ack, userId => baldaService.leave(userId));
+  });
+
+  socket.on('balda:submit-move', (data, ack) => {
+    runBaldaMutation('move', ack, userId => baldaService.submitMove(userId, data));
+  });
+
+  socket.on('balda:resolve-word', (data, ack) => {
+    runBaldaMutation(
+      'word',
+      ack,
+      userId => baldaService.resolveWord(userId, data?.accepted),
+    );
+  });
+
+  socket.on('balda:pass', (ack) => {
+    runBaldaMutation('move', ack, userId => baldaService.pass(userId));
+  });
+
+  socket.on('balda:new-game', (ack) => {
+    runBaldaMutation('game', ack, userId => baldaService.newGame(userId));
+  });
+
   socket.on('spin-wheel', (data) => {
     const tokenData = getTokenData(socket.data.authToken);
     if (!isMemberToken(tokenData)) {
@@ -396,6 +473,7 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     onlineUsers.delete(socket.id);
     broadcastOnlineUsers();
+    setImmediate(() => baldaService.broadcast());
   });
 });
 
