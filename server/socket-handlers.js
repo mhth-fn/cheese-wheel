@@ -336,6 +336,25 @@ io.on('connection', (socket) => {
     runBaldaMutation('move', ack, userId => baldaService.submitMove(userId, data));
   });
 
+  socket.on('balda:propose-word', (data, ack) => {
+    runBaldaMutation('move', ack, userId => baldaService.proposeWord(userId, data));
+  });
+
+  socket.on('balda:check-word', (data, ack) => {
+    const tokenData = getTokenData(socket.data.authToken);
+    const limit = consumeRateLimit(
+      'socket-balda-dictionary',
+      tokenData?.userId || socket.id,
+      120,
+      60 * 1000,
+    );
+    if (!limit.allowed) {
+      replyToBaldaAction(ack, { ok: false, error: 'Слишком много запросов' });
+      return;
+    }
+    replyToBaldaAction(ack, baldaService.checkWord(data?.word));
+  });
+
   socket.on('balda:resolve-word', (data, ack) => {
     runBaldaMutation(
       'word',

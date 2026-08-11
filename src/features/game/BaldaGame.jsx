@@ -20,6 +20,10 @@ export default function BaldaGame({ onClose }) {
   const [placement, setPlacement] = useState(null);
   const [letter, setLetter] = useState('');
   const [path, setPath] = useState([]);
+  const [unknownDraft, setUnknownDraft] = useState(null);
+  const [dictionaryOpen, setDictionaryOpen] = useState(false);
+  const [dictionaryWord, setDictionaryWord] = useState('');
+  const [dictionaryResult, setDictionaryResult] = useState(null);
   const [clockNow, setClockNow] = useState(Date.now());
 
   useEffect(() => {
@@ -102,6 +106,10 @@ export default function BaldaGame({ onClose }) {
     ? Math.max(0, Math.ceil((Number(state.turnDeadline) - clockNow) / 1000))
     : null;
 
+  useEffect(() => {
+    if (!isMyTurn) setUnknownDraft(null);
+  }, [isMyTurn]);
+
   const pathPositions = useMemo(() => new Map(
     path.map((cell, index) => [cellKey(cell.row, cell.column), index + 1])
   ), [path]);
@@ -120,11 +128,13 @@ export default function BaldaGame({ onClose }) {
     setPlacement(null);
     setLetter('');
     setPath([]);
+    setUnknownDraft(null);
   }, []);
 
   const handleCellClick = (row, column) => {
     if (!canEdit || !state) return;
     setActionError('');
+    setUnknownDraft(null);
     const index = (row * BOARD_SIZE) + column;
     const key = cellKey(row, column);
     const isCurrentPlacement = placement?.row === row && placement?.column === column;
@@ -153,13 +163,30 @@ export default function BaldaGame({ onClose }) {
   const handleSubmit = async event => {
     event.preventDefault();
     if (!placement || !letter || path.length < 2) return;
-    const result = await perform('balda:submit-move', {
+    const move = {
       row: placement.row,
       column: placement.column,
       letter,
       path,
-    });
+    };
+    const result = await perform('balda:submit-move', move);
+    if (result?.unknown) {
+      setUnknownDraft({ ...move, word: result.word });
+    } else if (result?.ok) {
+      resetDraft();
+    }
+  };
+
+  const handleProposeWord = async () => {
+    if (!unknownDraft) return;
+    const result = await perform('balda:propose-word', unknownDraft);
     if (result?.ok) resetDraft();
+  };
+
+  const handleDictionaryCheck = async event => {
+    event.preventDefault();
+    const result = await perform('balda:check-word', { word: dictionaryWord });
+    if (result?.ok) setDictionaryResult(result);
   };
 
   const handleLeave = async () => {
@@ -172,7 +199,7 @@ export default function BaldaGame({ onClose }) {
 
   const handleRemoveBot = async () => {
     if (state?.status === 'playing' && !window.confirm(
-      'Убрать Борхеса? Партия завершится в вашу пользу.'
+      'Убрать Борхеса? Текущая партия будет аннулирована.'
     )) return;
     await perform('balda:remove-bot');
     resetDraft();
@@ -248,11 +275,9 @@ export default function BaldaGame({ onClose }) {
         <div className="balda-turn-controls">
           {state.status === 'playing' && (
             <span className={`balda-turn-clock${remainingSeconds !== null && remainingSeconds <= 10 ? ' is-urgent' : ''}`}>
-              {state.pendingWord
-                ? '⏸ Таймер остановлен'
-                : remainingSeconds === null
-                  ? '⏱ —'
-                  : `⏱ ${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, '0')}`}
+              {remainingSeconds === null
+                ? '⏱ —'
+                : `⏱ ${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, '0')}`}
             </span>
           )}
           <label className="balda-turn-duration">
@@ -266,6 +291,9 @@ export default function BaldaGame({ onClose }) {
               <option value={30}>30 секунд</option>
               <option value={60}>1 минута</option>
               <option value={120}>2 минуты</option>
+              <option value={180}>3 минуты</option>
+              <option value={240}>4 минуты</option>
+              <option value={300}>5 минут</option>
             </select>
           </label>
         </div>
@@ -317,6 +345,7 @@ export default function BaldaGame({ onClose }) {
                       .slice(-1);
                     setLetter(nextLetter);
                     setPath([]);
+                    setUnknownDraft(null);
                   }}
                   aria-describedby="balda-move-hint"
                   inputMode="text"
@@ -355,6 +384,7 @@ export default function BaldaGame({ onClose }) {
                 {' '}{Number(state.pendingWord.responderId) === currentUserId
                   ? 'Решение за вами.'
                   : `Ждём решения игрока ${pendingResponder?.user?.name || ''}.`}
+                {' '}Таймер предлагающего продолжает идти.
               </p>
               {Number(state.pendingWord.responderId) === currentUserId && (
                 <div className="balda-vote-actions">
@@ -379,9 +409,26 @@ export default function BaldaGame({ onClose }) {
             </div>
           )}
 
+          {unknownDraft && isMyTurn && !state.pendingWord && (
+            <div className="balda-unknown-word surface" role="status">
+              <span className="balda-kicker">Слова нет в словаре</span>
+              <strong>{unknownDraft.word}</strong>
+              <p>Можно изменить слово или отдельно предложить сопернику засчитать его.</p>
+              <button className="game-btn" type="button" disabled={Boolean(busy)} onClick={handleProposeWord}>
+                Предложить сопернику
+              </button>
+            </div>
+          )}
+
           {actionError && <div className="balda-error" role="alert">{actionError}</div>}
 
           <div className="balda-lobby-actions">
+            <button className="balda-secondary-btn" type="button" onClick={() => {
+              setDictionaryOpen(true);
+              setDictionaryResult(null);
+            }}>
+              Проверить слово
+            </button>
             {!myPlayer && !isGuest && emptySeatAvailable && (
               <button className="game-btn" type="button" disabled={Boolean(busy) || !connected} onClick={() => perform('balda:join')}>
                 Занять место
@@ -469,13 +516,46 @@ export default function BaldaGame({ onClose }) {
               <li>Соберите новое слово, переходя по сторонам клеток без повторов.</li>
               <li>За слово начисляется столько очков, сколько в нём букв.</li>
               <li>Если слова нет в словаре, соперник может принять его. Тогда оно сохранится для будущих партий.</li>
-              <li>На ход даётся 30 секунд, 1 или 2 минуты. По истечении времени ход пропускается.</li>
+              <li>Неизвестное слово отправляется сопернику только отдельной кнопкой; таймер при этом не останавливается.</li>
+              <li>На ход даётся от 30 секунд до 5 минут. По истечении времени ход пропускается.</li>
               <li>Партия заканчивается при заполнении поля или после двух пропусков подряд.</li>
               <li>На свободное место можно добавить бота Борхеса; он играет по тому же словарю и правилам.</li>
             </ol>
           </details>
         </aside>
       </div>
+
+      {dictionaryOpen && (
+        <div className="balda-dictionary-overlay" role="presentation" onMouseDown={event => {
+          if (event.target === event.currentTarget) setDictionaryOpen(false);
+        }}>
+          <section className="balda-dictionary-dialog surface" role="dialog" aria-modal="true" aria-labelledby="balda-dictionary-title">
+            <button className="balda-dictionary-close" type="button" aria-label="Закрыть проверку слова" onClick={() => setDictionaryOpen(false)}>×</button>
+            <h2 id="balda-dictionary-title">Проверить слово</h2>
+            <p>Проверка не совершает ход и не влияет на таймер.</p>
+            <form onSubmit={handleDictionaryCheck}>
+              <label htmlFor="balda-dictionary-input">Русское существительное</label>
+              <input
+                id="balda-dictionary-input"
+                autoFocus
+                value={dictionaryWord}
+                maxLength={25}
+                onChange={event => {
+                  setDictionaryWord(event.target.value.toLocaleUpperCase('ru-RU').replace(/[^А-ЯЁ]/gu, ''));
+                  setDictionaryResult(null);
+                }}
+              />
+              <button className="game-btn" type="submit" disabled={Boolean(busy) || dictionaryWord.length < 2}>Проверить</button>
+            </form>
+            {dictionaryResult && (
+              <div className={`balda-dictionary-result ${dictionaryResult.exists ? 'exists' : 'missing'}`} role="status">
+                <strong>{dictionaryResult.word}</strong>
+                <span>{dictionaryResult.exists ? 'есть в словаре' : 'нет в словаре'}</span>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
     </section>
   );
 }

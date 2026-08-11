@@ -259,6 +259,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS balda_games (
     id INTEGER PRIMARY KEY CHECK(id = 1),
     round_id TEXT,
+    initial_word TEXT NOT NULL DEFAULT 'СЫРОК',
     bot_slot INTEGER CHECK(bot_slot IN (1, 2)),
     player_one_id INTEGER,
     player_two_id INTEGER,
@@ -331,6 +332,9 @@ db.exec(`
 const baldaGameColumns = db.prepare('PRAGMA table_info(balda_games)').all();
 if (!baldaGameColumns.some(column => column.name === 'round_id')) {
   db.exec('ALTER TABLE balda_games ADD COLUMN round_id TEXT');
+}
+if (!baldaGameColumns.some(column => column.name === 'initial_word')) {
+  db.exec("ALTER TABLE balda_games ADD COLUMN initial_word TEXT NOT NULL DEFAULT 'СЫРОК'");
 }
 if (!baldaGameColumns.some(column => column.name === 'bot_slot')) {
   db.exec('ALTER TABLE balda_games ADD COLUMN bot_slot INTEGER CHECK(bot_slot IN (1, 2))');

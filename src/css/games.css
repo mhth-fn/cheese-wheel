@@ -469,6 +469,7 @@
 
 .balda-move-panel,
 .balda-word-vote,
+.balda-unknown-word,
 .balda-statistics,
 .balda-history,
 .balda-rules { padding: 16px; }
@@ -551,6 +552,21 @@
   background: var(--color-warning-surface);
 }
 
+.balda-unknown-word {
+  border: 2px solid var(--color-warning-border);
+  background: var(--color-warning-surface);
+}
+
+.balda-unknown-word > strong {
+  display: block;
+  margin: 4px 0;
+  color: var(--color-warning-text);
+  font-size: 1.45rem;
+  letter-spacing: 0.07em;
+}
+
+.balda-unknown-word p { margin-bottom: 12px; color: var(--color-warning-text); font-size: 0.82rem; }
+
 .balda-word-vote > strong {
   display: block;
   margin: 4px 0;
@@ -611,6 +627,62 @@
 .balda-rules ol { display: grid; margin: 12px 0 0 18px; gap: 8px; color: var(--color-text-muted); font-size: 0.77rem; }
 .balda-loading { display: grid; min-height: 280px; place-items: center; color: var(--color-text-muted); }
 
+.balda-dictionary-overlay {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: grid;
+  padding: 20px;
+  place-items: center;
+  background: rgb(0 0 0 / 48%);
+}
+
+.balda-dictionary-dialog {
+  position: relative;
+  width: min(100%, 430px);
+  padding: 22px;
+}
+
+.balda-dictionary-dialog h2 { margin-bottom: 5px; font-size: 1.2rem; }
+.balda-dictionary-dialog > p { margin-bottom: 16px; color: var(--color-text-muted); font-size: 0.8rem; }
+.balda-dictionary-dialog form { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.balda-dictionary-dialog label { grid-column: 1 / -1; color: var(--color-text-muted); font-size: 0.72rem; font-weight: 700; }
+.balda-dictionary-dialog input {
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  font-size: 1rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.balda-dictionary-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  color: var(--color-text-muted);
+  background: transparent;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+.balda-dictionary-result {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding: 11px 13px;
+  border-radius: 9px;
+  font-size: 0.82rem;
+}
+.balda-dictionary-result.exists { color: var(--color-success-text); background: var(--color-success-surface); }
+.balda-dictionary-result.missing { color: var(--color-warning-text); background: var(--color-warning-surface); }
+
 @media (max-width: 768px) {
   .game-card { flex-direction: column; text-align: center; padding: 15px; }
   .game-card-icon { width: 60px; height: 60px; font-size: 2rem; }
@@ -636,4 +708,5 @@
   .balda-move-panel { grid-template-columns: 92px minmax(0, 1fr); padding: 12px; }
   .balda-move-actions .game-btn { flex: 1 1 100%; }
   .balda-sidebar { grid-template-columns: 1fr; }
+  .balda-dictionary-dialog form { grid-template-columns: 1fr; }
 }

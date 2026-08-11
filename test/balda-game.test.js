@@ -9,11 +9,14 @@ const Database = require('better-sqlite3');
 const { io: createSocket } = require('socket.io-client');
 const {
   BOT_ID,
+  chooseInitialWord,
   chooseStartingPlayer,
+  createBoard,
   createDictionaryTrie,
   findBotMove,
   normalizeTurnDuration,
 } = require('../server/balda-service');
+const { loadBuiltInBaldaWords } = require('../server/balda-dictionary');
 const {
   delay,
   login,
@@ -23,6 +26,9 @@ const {
 } = require('./helpers/server-fixture');
 
 const fsp = fs.promises;
+const builtInWords = loadBuiltInBaldaWords();
+const builtInWordSet = new Set(builtInWords);
+const builtInTrie = createDictionaryTrie(builtInWords);
 
 function waitForSocket(socket, event, timeout = 5_000) {
   return new Promise((resolve, reject) => {
@@ -97,13 +103,49 @@ function statsFor(state, userId) {
   return { wins: entry.wins, draws: entry.draws, losses: entry.losses };
 }
 
+function findUnknownMove(board, usedWords, additionalKnownWords = []) {
+  const used = new Set([...usedWords, ...additionalKnownWords]);
+  const letters = [...'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'];
+  for (let row = 0; row < 5; row += 1) {
+    for (let column = 0; column < 5; column += 1) {
+      const existingLetter = board[(row * 5) + column];
+      if (!existingLetter) continue;
+      for (const [rowDelta, columnDelta] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const emptyRow = row + rowDelta;
+        const emptyColumn = column + columnDelta;
+        if (emptyRow < 0 || emptyRow >= 5 || emptyColumn < 0 || emptyColumn >= 5) continue;
+        if (board[(emptyRow * 5) + emptyColumn]) continue;
+        for (const letter of letters) {
+          const word = `${existingLetter}${letter}`;
+          if (builtInWordSet.has(word) || used.has(word)) continue;
+          return {
+            row: emptyRow,
+            column: emptyColumn,
+            letter,
+            path: [{ row, column }, { row: emptyRow, column: emptyColumn }],
+            word,
+          };
+        }
+      }
+    }
+  }
+  throw new Error('Could not construct an unknown Balda word');
+}
+
 test('Balda starter selection and turn-duration validation cover every option', () => {
   assert.equal(chooseStartingPlayer(10, 20, () => 0), 10);
   assert.equal(chooseStartingPlayer(10, 20, () => 1), 20);
   assert.equal(normalizeTurnDuration(30), 30);
   assert.equal(normalizeTurnDuration('60'), 60);
   assert.equal(normalizeTurnDuration(120), 120);
+  assert.equal(normalizeTurnDuration(180), 180);
+  assert.equal(normalizeTurnDuration(240), 240);
+  assert.equal(normalizeTurnDuration(300), 300);
   assert.equal(normalizeTurnDuration(45), 60);
+  assert.equal(chooseInitialWord(['ДОМ', 'АРБУЗ', 'СЫРОК'], () => 0), 'АРБУЗ');
+  assert.equal(chooseInitialWord(['АРБУЗ', 'СЫРОК'], () => 0, 'АРБУЗ'), 'СЫРОК');
+  assert.ok(builtInWords.filter(word => /^[А-ЯЁ]{5}$/u.test(word)).length > 1_000);
+  assert.equal(createBoard('АРБУЗ').slice(10, 15).join(''), 'АРБУЗ');
 
   const board = Array(25).fill('');
   board[12] = 'А';
@@ -161,6 +203,7 @@ test('старая схема партии безопасно получает �
   migratedDb.close();
   for (const column of [
     'round_id',
+    'initial_word',
     'bot_slot',
     'winner_is_bot',
     'turn_duration_seconds',
@@ -227,8 +270,10 @@ test('Балда полностью ведёт партию, онлайн, та�
   let state = await readState(spectator);
   assert.equal(state.status, 'playing');
   assert.equal(state.boardSize, 5);
-  assert.equal(state.board.slice(10, 15).join(''), 'СЫРОК');
-  assert.equal(state.initialWord, 'СЫРОК');
+  assert.match(state.initialWord, /^[А-ЯЁ]{5}$/u);
+  assert.ok(builtInWordSet.has(state.initialWord));
+  assert.equal(state.board.slice(10, 15).join(''), state.initialWord);
+  const firstInitialWord = state.initialWord;
   assert.deepEqual(state.players.map(player => player.user?.id), [1, 2]);
   assert.ok([1, 2].includes(state.currentPlayerId));
   assert.equal(state.turnDurationSeconds, 30);
@@ -236,114 +281,158 @@ test('Балда полностью ведёт партию, онлайн, та�
   assert.equal(state.presenceCount, 4);
   assert.equal(state.spectatorCount, 2);
   assert.ok(state.dictionarySize > 25_000);
+  assert.deepEqual(
+    await emitAck(guest, 'balda:check-word', { word: state.initialWord.toLocaleLowerCase('ru-RU') }),
+    { ok: true, word: state.initialWord, exists: true },
+  );
+  assert.equal((await emitAck(guest, 'balda:check-word', { word: '1' })).ok, false);
 
   const socketById = new Map([[1, first], [2, second]]);
   const starterId = state.currentPlayerId;
   const otherId = starterId === 1 ? 2 : 1;
   const starter = socketById.get(starterId);
   const other = socketById.get(otherId);
+  const knownMovePayload = findBotMove(state.board, state.usedWords, builtInTrie, () => 0);
+  assert.ok(knownMovePayload, `no known move found for ${state.initialWord}`);
 
-  const spectatorMove = await emitAck(spectator, 'balda:submit-move', {
-    row: 1,
-    column: 2,
-    letter: 'А',
-    path: [{ row: 2, column: 4 }, { row: 2, column: 3 }, { row: 2, column: 2 }, { row: 1, column: 2 }],
-  });
+  const spectatorMove = await emitAck(spectator, 'balda:submit-move', knownMovePayload);
   assert.equal(spectatorMove.ok, false);
   assert.match(spectatorMove.error, /другого игрока/);
 
   const diagonalMove = await emitAck(starter, 'balda:submit-move', {
     row: 1,
-    column: 2,
+    column: 0,
     letter: 'А',
-    path: [{ row: 2, column: 3 }, { row: 1, column: 2 }],
+    path: [{ row: 2, column: 1 }, { row: 1, column: 0 }],
   });
   assert.equal(diagonalMove.ok, false);
   assert.match(diagonalMove.error, /по стороне/);
   const missingLetterMove = await emitAck(starter, 'balda:submit-move', {
     row: 1,
-    column: 2,
+    column: 0,
     letter: 'А',
-    path: [{ row: 2, column: 4 }, { row: 2, column: 3 }],
+    path: [{ row: 2, column: 0 }, { row: 2, column: 1 }],
   });
   assert.equal(missingLetterMove.ok, false);
   assert.match(missingLetterMove.error, /новую букву/);
 
-  const knownMove = await emitAck(starter, 'balda:submit-move', {
-    row: 1,
-    column: 2,
-    letter: 'А',
-    path: [
-      { row: 2, column: 4 },
-      { row: 2, column: 3 },
-      { row: 2, column: 2 },
-      { row: 1, column: 2 },
-    ],
+  const knownMove = await emitAck(starter, 'balda:submit-move', knownMovePayload);
+  assert.deepEqual(knownMove, {
+    ok: true,
+    unknown: false,
+    word: knownMovePayload.word,
   });
-  assert.deepEqual(knownMove, { ok: true, pending: false, word: 'КОРА' });
   state = await readState(spectator);
-  assert.equal(state.board[7], 'А');
-  assert.equal(state.players.find(player => player.user?.id === starterId).score, 4);
+  assert.equal(
+    state.board[(knownMovePayload.row * 5) + knownMovePayload.column],
+    knownMovePayload.letter,
+  );
+  assert.equal(
+    state.players.find(player => player.user?.id === starterId).score,
+    knownMovePayload.word.length,
+  );
   assert.equal(state.currentPlayerId, otherId);
   const lockedDuration = await emitAck(starter, 'balda:set-turn-duration', { seconds: 120 });
   assert.equal(lockedDuration.ok, false);
   assert.match(lockedDuration.error, /до первого хода/);
 
-  const proposedMove = await emitAck(other, 'balda:submit-move', {
-    row: 1,
-    column: 3,
-    letter: 'Ф',
-    path: [{ row: 1, column: 2 }, { row: 1, column: 3 }],
+  const acceptedUnknownMove = findUnknownMove(state.board, state.usedWords);
+  assert.deepEqual(
+    await emitAck(guest, 'balda:check-word', { word: acceptedUnknownMove.word }),
+    { ok: true, word: acceptedUnknownMove.word, exists: false },
+  );
+  const deadlineBeforeUnknownWord = state.turnDeadline;
+  const proposedMove = await emitAck(other, 'balda:submit-move', acceptedUnknownMove);
+  assert.deepEqual(proposedMove, {
+    ok: true,
+    unknown: true,
+    word: acceptedUnknownMove.word,
   });
-  assert.deepEqual(proposedMove, { ok: true, pending: true, word: 'АФ' });
   state = await readState(spectator);
-  assert.equal(state.pendingWord.word, 'АФ');
-  assert.equal(state.turnDeadline, null, 'timer pauses while the opponent decides');
-  assert.equal(state.board[8], '');
+  assert.equal(state.pendingWord, null, 'unknown word is not proposed automatically');
+  assert.equal(state.turnDeadline, deadlineBeforeUnknownWord);
+  assert.deepEqual(
+    await emitAck(other, 'balda:propose-word', acceptedUnknownMove),
+    { ok: true, word: acceptedUnknownMove.word },
+  );
+  state = await readState(spectator);
+  assert.equal(state.pendingWord.word, acceptedUnknownMove.word);
+  assert.equal(
+    state.turnDeadline,
+    deadlineBeforeUnknownWord,
+    'unknown word must keep the original turn deadline',
+  );
+  assert.equal(state.board[(acceptedUnknownMove.row * 5) + acceptedUnknownMove.column], '');
 
   const spectatorVote = await emitAck(spectator, 'balda:resolve-word', { accepted: true });
   assert.equal(spectatorVote.ok, false);
   assert.match(spectatorVote.error, /второй игрок/);
   assert.deepEqual(
     await emitAck(starter, 'balda:resolve-word', { accepted: true }),
-    { ok: true, accepted: true, word: 'АФ' },
+    { ok: true, accepted: true, word: acceptedUnknownMove.word },
   );
   state = await readState(spectator);
-  assert.equal(state.board[8], 'Ф');
+  assert.equal(
+    state.board[(acceptedUnknownMove.row * 5) + acceptedUnknownMove.column],
+    acceptedUnknownMove.letter,
+  );
   assert.equal(state.players.find(player => player.user?.id === otherId).score, 2);
   assert.equal(state.currentPlayerId, starterId);
   assert.ok(state.turnDeadline > Date.now());
+  assert.deepEqual(
+    await emitAck(guest, 'balda:check-word', { word: acceptedUnknownMove.word }),
+    { ok: true, word: acceptedUnknownMove.word, exists: true },
+  );
 
-  const rejectedProposal = await emitAck(starter, 'balda:submit-move', {
-    row: 0,
-    column: 2,
-    letter: 'Ц',
-    path: [{ row: 1, column: 2 }, { row: 0, column: 2 }],
+  const rejectedUnknownMove = findUnknownMove(state.board, state.usedWords);
+  const deadlineBeforeRejectedWord = state.turnDeadline;
+  const rejectedProposal = await emitAck(starter, 'balda:submit-move', rejectedUnknownMove);
+  assert.deepEqual(rejectedProposal, {
+    ok: true,
+    unknown: true,
+    word: rejectedUnknownMove.word,
   });
-  assert.deepEqual(rejectedProposal, { ok: true, pending: true, word: 'АЦ' });
+  assert.equal((await readState(spectator)).pendingWord, null);
+  assert.deepEqual(
+    await emitAck(starter, 'balda:propose-word', rejectedUnknownMove),
+    { ok: true, word: rejectedUnknownMove.word },
+  );
+  assert.equal((await readState(spectator)).turnDeadline, deadlineBeforeRejectedWord);
+  await delay(50);
   assert.deepEqual(
     await emitAck(other, 'balda:resolve-word', { accepted: false }),
     { ok: true, accepted: false },
   );
   state = await readState(spectator);
-  assert.equal(state.board[2], '');
+  assert.equal(state.board[(rejectedUnknownMove.row * 5) + rejectedUnknownMove.column], '');
   assert.equal(state.currentPlayerId, starterId);
-  assert.ok(state.turnDeadline > Date.now());
+  assert.equal(
+    state.turnDeadline,
+    deadlineBeforeRejectedWord,
+    'rejecting an unknown word must not restore a full clock',
+  );
 
   assert.equal((await emitAck(starter, 'balda:pass')).ok, true);
   assert.equal((await emitAck(other, 'balda:pass')).ok, true);
   state = await readState(spectator);
   assert.equal(state.status, 'finished');
-  assert.equal(state.winner.id, starterId);
-  assert.deepEqual(statsFor(state, starterId), { wins: 1, draws: 0, losses: 0 });
-  assert.deepEqual(statsFor(state, otherId), { wins: 0, draws: 0, losses: 1 });
-  assert.equal((await emitAck(starter, 'balda:pass')).ok, false);
-  assert.deepEqual(statsFor(await readState(spectator), starterId), { wins: 1, draws: 0, losses: 0 });
-
   const expectedStats = {
-    1: { wins: starterId === 1 ? 1 : 0, draws: 0, losses: starterId === 1 ? 0 : 1 },
-    2: { wins: starterId === 2 ? 1 : 0, draws: 0, losses: starterId === 2 ? 0 : 1 },
+    1: { wins: 0, draws: 0, losses: 0 },
+    2: { wins: 0, draws: 0, losses: 0 },
   };
+  if (knownMovePayload.word.length === acceptedUnknownMove.word.length) {
+    assert.equal(state.winner, null);
+    expectedStats[1].draws += 1;
+    expectedStats[2].draws += 1;
+  } else {
+    assert.equal(state.winner.id, starterId);
+    expectedStats[starterId].wins += 1;
+    expectedStats[otherId].losses += 1;
+  }
+  assert.deepEqual(statsFor(state, 1), expectedStats[1]);
+  assert.deepEqual(statsFor(state, 2), expectedStats[2]);
+  assert.equal((await emitAck(starter, 'balda:pass')).ok, false);
+  assert.deepEqual(statsFor(await readState(spectator), starterId), expectedStats[starterId]);
   assert.deepEqual(
     await emitAck(starter, 'balda:set-turn-duration', { seconds: 120 }),
     { ok: true, turnDurationSeconds: 120 },
@@ -352,6 +441,8 @@ test('Балда полностью ведёт партию, онлайн, та�
   state = await readState(spectator);
   assert.equal(state.status, 'playing');
   assert.equal(state.turnDurationSeconds, 120);
+  assert.notEqual(state.initialWord, firstInitialWord);
+  assert.equal(state.board.slice(10, 15).join(''), state.initialWord);
   assert.ok([1, 2].includes(state.currentPlayerId));
 
   const resigningId = state.currentPlayerId;
@@ -374,7 +465,21 @@ test('Балда полностью ведёт партию, онлайн, та�
     { ok: true, turnDurationSeconds: 30 },
   );
 
-  const timedOutId = (await readState(spectator)).currentPlayerId;
+  state = await readState(spectator);
+  const timedOutId = state.currentPlayerId;
+  const timeoutUnknownMove = findUnknownMove(
+    state.board,
+    state.usedWords,
+    [acceptedUnknownMove.word],
+  );
+  assert.equal(
+    (await emitAck(socketById.get(timedOutId), 'balda:submit-move', timeoutUnknownMove)).unknown,
+    true,
+  );
+  assert.equal(
+    (await emitAck(socketById.get(timedOutId), 'balda:propose-word', timeoutUnknownMove)).ok,
+    true,
+  );
   sockets.forEach(socket => socket.disconnect());
   await stopServer(instance);
   const timerDb = new Database(path.join(dataDir, 'cheese_wheel.db'));
@@ -394,6 +499,7 @@ test('Балда полностью ведёт партию, онлайн, та�
   assert.equal(state.moves.at(-1).userId, timedOutId);
   assert.equal(state.moves.at(-1).timedOut, true);
   assert.equal(state.consecutivePasses, 1);
+  assert.equal(state.pendingWord, null, 'timeout cancels an unresolved word proposal');
   const currentAfterTimeout = state.currentPlayerId;
   const reconnectedById = new Map([[1, firstReconnected], [2, secondReconnected]]);
   assert.equal((await emitAck(reconnectedById.get(currentAfterTimeout), 'balda:pass')).ok, true);
@@ -408,7 +514,7 @@ test('Балда полностью ведёт партию, онлайн, та�
   const persistedDb = new Database(path.join(dataDir, 'cheese_wheel.db'));
   const learnedWord = persistedDb.prepare(
     'SELECT source, added_by, approved_by FROM balda_dictionary WHERE word = ?'
-  ).get('АФ');
+  ).get(acceptedUnknownMove.word);
   const results = persistedDb.prepare(
     'SELECT round_id, finish_reason FROM balda_results ORDER BY id'
   ).all();
@@ -472,20 +578,20 @@ test('Борхес занимает свободное место, играет 
   const botMove = state.moves.find(move => move.userId === BOT_ID && move.word);
   assert.equal(botMove.userName, 'Борхес');
   assert.ok(botMove.score >= 2);
+  assert.ok(botMove.word.length <= 6, `Борхес сыграл слишком длинное слово: ${botMove.word}`);
   assert.equal(state.currentPlayerId, 1);
 
   assert.equal((await emitAck(socket, 'balda:remove-bot')).ok, true);
   state = await readState(socket);
-  assert.equal(state.status, 'finished');
-  assert.equal(state.winner.id, 1);
-  assert.deepEqual(statsFor(state, 1), { wins: 1, draws: 0, losses: 0 });
+  assertInitialWordHidden(state);
+  assert.deepEqual(statsFor(state, 1), { wins: 0, draws: 0, losses: 0 });
   assert.equal(state.players.some(player => player.user?.isBot), false);
 
   assert.equal((await emitAck(socket, 'balda:add-bot')).ok, true);
   assert.equal((await emitAck(socket, 'balda:leave')).ok, true);
   state = await readState(socket);
   assertInitialWordHidden(state);
-  assert.deepEqual(statsFor(state, 1), { wins: 1, draws: 0, losses: 1 });
+  assert.deepEqual(statsFor(state, 1), { wins: 0, draws: 0, losses: 1 });
 
   const resultDb = new Database(path.join(dataDir, 'cheese_wheel.db'));
   const botResults = resultDb.prepare(`
@@ -493,6 +599,6 @@ test('Борхес занимает свободное место, играет 
     FROM balda_results ORDER BY id
   `).all();
   resultDb.close();
-  assert.equal(botResults.length, 2);
+  assert.equal(botResults.length, 1);
   assert.ok(botResults.every(result => result.player_one_is_bot || result.player_two_is_bot));
 });
