@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useApp } from '../../app/AppContext';
 
 const BOARD_SIZE = 5;
@@ -25,6 +25,11 @@ export default function BaldaGame({ onClose }) {
   const [dictionaryWord, setDictionaryWord] = useState('');
   const [dictionaryResult, setDictionaryResult] = useState(null);
   const [clockNow, setClockNow] = useState(Date.now());
+
+  useLayoutEffect(() => {
+    document.body.classList.add('balda-game-active');
+    return () => document.body.classList.remove('balda-game-active');
+  }, []);
 
   useEffect(() => {
     const onState = nextState => {

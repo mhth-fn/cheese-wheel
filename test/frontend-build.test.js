@@ -40,6 +40,30 @@ test('Safari mobile dock follows the viewport without scroll-position JavaScript
   );
 });
 
+test('mobile navigation stays hidden while Balda is open', () => {
+  const baldaComponent = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'features', 'game', 'BaldaGame.jsx'),
+    'utf8'
+  );
+  const navCss = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'css', 'nav.css'),
+    'utf8'
+  );
+
+  assert.match(
+    baldaComponent,
+    /document\.body\.classList\.add\(['"]balda-game-active['"]\)/
+  );
+  assert.match(
+    baldaComponent,
+    /classList\.remove\(['"]balda-game-active['"]\)/
+  );
+  assert.match(
+    navCss,
+    /@media[\s\S]*body\.balda-game-active \.nav-pages\s*\{[^}]*display:\s*none;/
+  );
+});
+
 test('desktop navigation fills the header with equal menu targets', () => {
   const navComponent = fs.readFileSync(
     path.join(__dirname, '..', 'src', 'components', 'Nav.jsx'),

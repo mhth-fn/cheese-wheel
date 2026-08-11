@@ -536,6 +536,14 @@
     max-height: calc(100dvh - 160px);
     overflow-y: auto;
   }
+
+  body.balda-game-active .nav-pages {
+    display: none;
+  }
+
+  body.balda-game-active .app-container {
+    padding-bottom: max(var(--space-3), env(safe-area-inset-bottom));
+  }
 }
 
 @keyframes navDockEnter {
