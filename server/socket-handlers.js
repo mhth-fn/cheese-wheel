@@ -248,6 +248,7 @@ io.on('connection', (socket) => {
     }
   }
   socket.emit('online-users', currentUsers);
+  socket.emit('balda:presence', { onlineCount: baldaService.getPresenceCount() });
   if (onlineUsers.has(socket.id)) broadcastOnlineUsers();
   const activeOneOffSpin = spinState.activeOneOffSpin;
   if (activeOneOffSpin?.spinCompleteAt > Date.now()) {
@@ -301,6 +302,13 @@ io.on('connection', (socket) => {
     replyToBaldaAction(ack, { ok: true, state });
   });
 
+  socket.on('balda:get-presence', (ack) => {
+    replyToBaldaAction(ack, {
+      ok: true,
+      onlineCount: baldaService.getPresenceCount(),
+    });
+  });
+
   socket.on('balda:unwatch', (ack) => {
     const wasWatching = socket.rooms.has(baldaService.roomName);
     socket.leave(baldaService.roomName);
@@ -310,6 +318,14 @@ io.on('connection', (socket) => {
 
   socket.on('balda:join', (ack) => {
     runBaldaMutation('seat', ack, userId => baldaService.join(userId));
+  });
+
+  socket.on('balda:add-bot', (ack) => {
+    runBaldaMutation('seat', ack, userId => baldaService.addBot(userId));
+  });
+
+  socket.on('balda:remove-bot', (ack) => {
+    runBaldaMutation('seat', ack, userId => baldaService.removeBot(userId));
   });
 
   socket.on('balda:leave', (ack) => {
@@ -334,6 +350,14 @@ io.on('connection', (socket) => {
 
   socket.on('balda:new-game', (ack) => {
     runBaldaMutation('game', ack, userId => baldaService.newGame(userId));
+  });
+
+  socket.on('balda:set-turn-duration', (data, ack) => {
+    runBaldaMutation(
+      'game',
+      ack,
+      userId => baldaService.setTurnDuration(userId, data?.seconds),
+    );
   });
 
   socket.on('spin-wheel', (data) => {

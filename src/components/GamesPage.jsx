@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { TOTAL_ENEMIES, BOSS } from '../game/constants.js';
 import { initTopDownMode, updateTopDown, renderTopDown } from '../game/topdown.js';
+import { useApp } from '../app/AppContext';
 import { initScene, createPlayerHand, spawnHorses, initPlayer3D, setupInputHandlers, createDuckMesh, createSpearHand } from '../game/scene.js';
 import { updatePlayer3D, updatePunchAnimation } from '../game/player3d.js';
 import { updateHorseAI, updateRagdolls, triggerHorseDeath } from '../game/horseAI.js';
@@ -13,6 +14,7 @@ import GameScreen from '../features/game/GameScreen';
 import BaldaGame from '../features/game/BaldaGame';
 
 export default function GamesPage() {
+  const { socket } = useApp();
   const [mode, setMode] = useState('topdown');
   const [playing, setPlaying] = useState(false);
   const [gameOver, setGameOver] = useState(false);
@@ -24,6 +26,7 @@ export default function GamesPage() {
   const [nearbyEnemies, setNearbyEnemies] = useState(0);
   const [bossHp, setBossHp] = useState(null);
   const [activeGame, setActiveGame] = useState('menu');
+  const [baldaOnlineCount, setBaldaOnlineCount] = useState(0);
 
   const canvas2dRef = useRef(null);
   const canvas3dRef = useRef(null);
@@ -88,6 +91,25 @@ export default function GamesPage() {
     return () => cleanupGame();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const applyPresence = payload => {
+      setBaldaOnlineCount(Math.max(0, Number(payload?.onlineCount) || 0));
+    };
+    const refreshPresence = () => {
+      socket.timeout(5000).emit('balda:get-presence', (error, result) => {
+        if (!error && result?.ok) applyPresence(result);
+      });
+    };
+
+    socket.on('balda:presence', applyPresence);
+    socket.on('connect', refreshPresence);
+    if (socket.connected) refreshPresence();
+    return () => {
+      socket.off('balda:presence', applyPresence);
+      socket.off('connect', refreshPresence);
+    };
+  }, [socket]);
 
   // Key handlers
   useEffect(() => {
@@ -533,6 +555,7 @@ export default function GamesPage() {
   if (!playing) {
     return (
       <GameMenu
+        baldaOnlineCount={baldaOnlineCount}
         mode={mode}
         onBalda={() => setActiveGame('balda')}
         onModeChange={setMode}

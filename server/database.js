@@ -258,6 +258,8 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS balda_games (
     id INTEGER PRIMARY KEY CHECK(id = 1),
+    round_id TEXT,
+    bot_slot INTEGER CHECK(bot_slot IN (1, 2)),
     player_one_id INTEGER,
     player_two_id INTEGER,
     board_json TEXT NOT NULL,
@@ -268,8 +270,11 @@ db.exec(`
     status TEXT NOT NULL DEFAULT 'waiting'
       CHECK(status IN ('waiting', 'playing', 'finished')),
     winner_id INTEGER,
+    winner_is_bot INTEGER NOT NULL DEFAULT 0 CHECK(winner_is_bot IN (0, 1)),
     pending_word_json TEXT,
     consecutive_passes INTEGER NOT NULL DEFAULT 0,
+    turn_duration_seconds INTEGER NOT NULL DEFAULT 60,
+    turn_started_at INTEGER,
     updated_at INTEGER NOT NULL,
     FOREIGN KEY (player_one_id) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (player_two_id) REFERENCES users(id) ON DELETE SET NULL,
@@ -288,6 +293,28 @@ db.exec(`
     FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
   );
 
+  CREATE TABLE IF NOT EXISTS balda_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    round_id TEXT NOT NULL UNIQUE,
+    player_one_id INTEGER,
+    player_two_id INTEGER,
+    player_one_is_bot INTEGER NOT NULL DEFAULT 0 CHECK(player_one_is_bot IN (0, 1)),
+    player_two_is_bot INTEGER NOT NULL DEFAULT 0 CHECK(player_two_is_bot IN (0, 1)),
+    player_one_score INTEGER NOT NULL,
+    player_two_score INTEGER NOT NULL,
+    winner_slot INTEGER CHECK(winner_slot IN (1, 2)),
+    finish_reason TEXT NOT NULL
+      CHECK(finish_reason IN ('board_full', 'two_passes', 'resignation')),
+    finished_at INTEGER NOT NULL,
+    FOREIGN KEY (player_one_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (player_two_id) REFERENCES users(id) ON DELETE CASCADE,
+    CHECK((player_one_id IS NOT NULL) != (player_one_is_bot = 1)),
+    CHECK((player_two_id IS NOT NULL) != (player_two_is_bot = 1))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_balda_results_players
+    ON balda_results(player_one_id, player_two_id, finished_at DESC);
+
   CREATE INDEX IF NOT EXISTS idx_sigame_pack_reviews_pack
     ON sigame_pack_reviews(pack_id, created_at DESC);
 
@@ -300,6 +327,34 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_sigame_pack_tags_tag
     ON sigame_pack_tags(tag);
 `);
+
+const baldaGameColumns = db.prepare('PRAGMA table_info(balda_games)').all();
+if (!baldaGameColumns.some(column => column.name === 'round_id')) {
+  db.exec('ALTER TABLE balda_games ADD COLUMN round_id TEXT');
+}
+if (!baldaGameColumns.some(column => column.name === 'bot_slot')) {
+  db.exec('ALTER TABLE balda_games ADD COLUMN bot_slot INTEGER CHECK(bot_slot IN (1, 2))');
+}
+if (!baldaGameColumns.some(column => column.name === 'winner_is_bot')) {
+  db.exec('ALTER TABLE balda_games ADD COLUMN winner_is_bot INTEGER NOT NULL DEFAULT 0 CHECK(winner_is_bot IN (0, 1))');
+}
+if (!baldaGameColumns.some(column => column.name === 'turn_duration_seconds')) {
+  db.exec('ALTER TABLE balda_games ADD COLUMN turn_duration_seconds INTEGER NOT NULL DEFAULT 60');
+}
+if (!baldaGameColumns.some(column => column.name === 'turn_started_at')) {
+  db.exec('ALTER TABLE balda_games ADD COLUMN turn_started_at INTEGER');
+}
+db.prepare(`
+  UPDATE balda_games
+  SET round_id = lower(hex(randomblob(16)))
+  WHERE round_id IS NULL OR round_id = ''
+`).run();
+db.prepare(`
+  UPDATE balda_games
+  SET turn_started_at = ?
+  WHERE status = 'playing' AND current_player_id IS NOT NULL
+    AND pending_word_json IS NULL AND turn_started_at IS NULL
+`).run(Date.now());
 
 // VPN v2: один и тот же аппарат может иметь отдельные VLESS и AmneziaWG
 // конфигурации на одном сервере. Старые записи однозначно являются VLESS.

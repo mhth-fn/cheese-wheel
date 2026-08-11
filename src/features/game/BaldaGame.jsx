@@ -20,6 +20,7 @@ export default function BaldaGame({ onClose }) {
   const [placement, setPlacement] = useState(null);
   const [letter, setLetter] = useState('');
   const [path, setPath] = useState([]);
+  const [clockNow, setClockNow] = useState(Date.now());
 
   useEffect(() => {
     const onState = nextState => {
@@ -46,6 +47,13 @@ export default function BaldaGame({ onClose }) {
     };
   }, [socket]);
 
+  useEffect(() => {
+    setClockNow(Date.now());
+    if (!state?.turnDeadline) return undefined;
+    const interval = window.setInterval(() => setClockNow(Date.now()), 250);
+    return () => window.clearInterval(interval);
+  }, [state?.turnDeadline]);
+
   const perform = useCallback((event, payload) => new Promise(resolve => {
     setBusy(event);
     setActionError('');
@@ -70,6 +78,7 @@ export default function BaldaGame({ onClose }) {
   const currentUserId = Number(currentUser?.id);
   const players = state?.players || [];
   const myPlayer = players.find(player => Number(player.user?.id) === currentUserId);
+  const botPlayer = players.find(player => player.user?.isBot);
   const currentPlayer = players.find(
     player => Number(player.user?.id) === Number(state?.currentPlayerId)
   );
@@ -86,6 +95,12 @@ export default function BaldaGame({ onClose }) {
   );
   const canEdit = isMyTurn && !state?.pendingWord && !busy && connected;
   const emptySeatAvailable = players.some(player => !player.user);
+  const turnDurationLocked = state?.status === 'playing'
+    && (state.moves.length > 0 || Boolean(state.pendingWord));
+  const canSetTurnDuration = Boolean(myPlayer && !turnDurationLocked && !busy && connected);
+  const remainingSeconds = state?.turnDeadline
+    ? Math.max(0, Math.ceil((Number(state.turnDeadline) - clockNow) / 1000))
+    : null;
 
   const pathPositions = useMemo(() => new Map(
     path.map((cell, index) => [cellKey(cell.row, cell.column), index + 1])
@@ -155,6 +170,14 @@ export default function BaldaGame({ onClose }) {
     resetDraft();
   };
 
+  const handleRemoveBot = async () => {
+    if (state?.status === 'playing' && !window.confirm(
+      'Убрать Борхеса? Партия завершится в вашу пользу.'
+    )) return;
+    await perform('balda:remove-bot');
+    resetDraft();
+  };
+
   const submitReady = Boolean(
     placement
     && letter
@@ -187,8 +210,8 @@ export default function BaldaGame({ onClose }) {
           <h1>Балда</h1>
           <p>Добавьте букву и соберите слово по соседним клеткам.</p>
         </div>
-        <div className="balda-viewers" title="Зрители сейчас">
-          <span aria-hidden="true">👁</span> {state.spectatorCount}
+        <div className="balda-viewers" title="Людей сейчас в игре">
+          <span aria-hidden="true">👥</span> {state.presenceCount}
         </div>
       </header>
 
@@ -201,7 +224,15 @@ export default function BaldaGame({ onClose }) {
               key={player.slot}
             >
               <span className="balda-player-slot">Игрок {player.slot}</span>
-              <strong>{player.user?.name || 'Свободное место'}</strong>
+              <strong>
+                {player.user?.name || 'Свободное место'}
+                {player.user?.isBot && <small className="balda-bot-badge">бот</small>}
+              </strong>
+              {player.user && (
+                <span className="balda-player-stats">
+                  В {player.stats.wins} · Н {player.stats.draws} · П {player.stats.losses}
+                </span>
+              )}
               <span className="balda-score">{player.score}</span>
             </article>
           );
@@ -214,6 +245,30 @@ export default function BaldaGame({ onClose }) {
         {state.status === 'playing' && state.consecutivePasses === 1 && (
           <span>Один ход пропущен. Ещё один пропуск завершит партию.</span>
         )}
+        <div className="balda-turn-controls">
+          {state.status === 'playing' && (
+            <span className={`balda-turn-clock${remainingSeconds !== null && remainingSeconds <= 10 ? ' is-urgent' : ''}`}>
+              {state.pendingWord
+                ? '⏸ Таймер остановлен'
+                : remainingSeconds === null
+                  ? '⏱ —'
+                  : `⏱ ${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, '0')}`}
+            </span>
+          )}
+          <label className="balda-turn-duration">
+            На ход
+            <select
+              value={state.turnDurationSeconds}
+              disabled={!canSetTurnDuration}
+              title={turnDurationLocked ? 'Время меняется до первого хода или между партиями' : undefined}
+              onChange={event => perform('balda:set-turn-duration', { seconds: Number(event.target.value) })}
+            >
+              <option value={30}>30 секунд</option>
+              <option value={60}>1 минута</option>
+              <option value={120}>2 минуты</option>
+            </select>
+          </label>
+        </div>
       </div>
 
       <div className="balda-layout">
@@ -332,6 +387,16 @@ export default function BaldaGame({ onClose }) {
                 Занять место
               </button>
             )}
+            {myPlayer && emptySeatAvailable && !botPlayer && (
+              <button className="balda-secondary-btn" type="button" disabled={Boolean(busy) || !connected} onClick={() => perform('balda:add-bot')}>
+                Добавить Борхеса
+              </button>
+            )}
+            {myPlayer && botPlayer && (
+              <button className="balda-text-btn" type="button" disabled={Boolean(busy)} onClick={handleRemoveBot}>
+                Убрать Борхеса
+              </button>
+            )}
             {!myPlayer && (isGuest || !emptySeatAvailable) && (
               <span className="balda-spectator-note">
                 {isGuest ? 'Вы смотрите как гость.' : 'Вы смотрите партию.'}
@@ -351,6 +416,27 @@ export default function BaldaGame({ onClose }) {
         </div>
 
         <aside className="balda-sidebar">
+          <section className="balda-statistics surface">
+            <h2>Статистика</h2>
+            <div className="balda-statistics-scroll">
+              <table>
+                <thead>
+                  <tr><th>Игрок</th><th title="Победы">В</th><th title="Ничьи">Н</th><th title="Поражения">П</th></tr>
+                </thead>
+                <tbody>
+                  {state.leaderboard.map(entry => (
+                    <tr key={entry.user.id}>
+                      <td>{entry.user.name}</td>
+                      <td>{entry.wins}</td>
+                      <td>{entry.draws}</td>
+                      <td>{entry.losses}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
           <section className="balda-history surface">
             <h2>Ходы</h2>
             {state.moves.length === 0 ? (
@@ -362,7 +448,9 @@ export default function BaldaGame({ onClose }) {
                   return (
                     <li key={`${move.createdAt}:${index}`}>
                       <span>{move.userName || player?.user?.name || 'Игрок'}</span>
-                      {move.pass ? <em>пропуск</em> : <><strong>{move.word}</strong><b>+{move.score}</b></>}
+                      {move.pass
+                        ? <em>{move.timedOut ? 'время вышло' : 'пропуск'}</em>
+                        : <><strong>{move.word}</strong><b>+{move.score}</b></>}
                     </li>
                   );
                 })}
@@ -381,7 +469,9 @@ export default function BaldaGame({ onClose }) {
               <li>Соберите новое слово, переходя по сторонам клеток без повторов.</li>
               <li>За слово начисляется столько очков, сколько в нём букв.</li>
               <li>Если слова нет в словаре, соперник может принять его. Тогда оно сохранится для будущих партий.</li>
+              <li>На ход даётся 30 секунд, 1 или 2 минуты. По истечении времени ход пропускается.</li>
               <li>Партия заканчивается при заполнении поля или после двух пропусков подряд.</li>
+              <li>На свободное место можно добавить бота Борхеса; он играет по тому же словарю и правилам.</li>
             </ol>
           </details>
         </aside>

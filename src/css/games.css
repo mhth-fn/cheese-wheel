@@ -333,9 +333,27 @@
 }
 
 .balda-player strong { grid-column: 1; }
+.balda-bot-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 5px;
+  border-radius: var(--radius-pill);
+  color: var(--color-info-text);
+  background: var(--color-info-surface);
+  font-size: 0.55rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+.balda-player-stats {
+  grid-column: 1;
+  color: var(--color-text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
 
 .balda-score {
-  grid-row: 1 / span 2;
+  grid-row: 1 / span 3;
   grid-column: 2;
   color: var(--color-primary);
   font-size: 1.8rem;
@@ -353,6 +371,41 @@
 }
 
 .balda-status strong { color: var(--color-text); font-size: 0.95rem; }
+
+.balda-turn-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.balda-turn-clock {
+  min-width: 76px;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  text-align: right;
+}
+
+.balda-turn-clock.is-urgent { color: var(--color-danger-text); }
+
+.balda-turn-duration {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.balda-turn-duration select {
+  min-height: 34px;
+  padding: 4px 25px 4px 8px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  font: inherit;
+  font-weight: 700;
+}
 
 .balda-layout {
   display: grid;
@@ -416,6 +469,7 @@
 
 .balda-move-panel,
 .balda-word-vote,
+.balda-statistics,
 .balda-history,
 .balda-rules { padding: 16px; }
 
@@ -519,7 +573,22 @@
 
 .balda-lobby-actions { justify-content: center; min-height: 44px; }
 .balda-spectator-note { color: var(--color-text-muted); font-size: 0.82rem; }
+.balda-statistics h2,
 .balda-history h2 { margin-bottom: 10px; font-size: 1rem; }
+.balda-statistics-scroll { max-height: 230px; overflow: auto; }
+.balda-statistics table { width: 100%; border-collapse: collapse; font-size: 0.74rem; }
+.balda-statistics th,
+.balda-statistics td { padding: 6px 5px; border-bottom: 1px solid var(--color-border-soft); text-align: center; }
+.balda-statistics th:first-child,
+.balda-statistics td:first-child {
+  max-width: 135px;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.balda-statistics th { color: var(--color-text-muted); font-size: 0.65rem; text-transform: uppercase; }
+.balda-statistics td { color: var(--color-text); font-variant-numeric: tabular-nums; }
 .balda-history ol { display: grid; max-height: 440px; gap: 3px; overflow-y: auto; list-style: none; }
 
 .balda-history li {
@@ -560,6 +629,7 @@
   .balda-player strong { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.84rem; }
   .balda-score { font-size: 1.45rem; }
   .balda-status { align-items: flex-start; flex-direction: column; }
+  .balda-turn-controls { width: 100%; justify-content: space-between; margin-left: 0; }
   .balda-board { padding: 7px; gap: 4px; }
   .balda-cell { border-radius: 8px; }
   .balda-cell small { top: 2px; right: 3px; width: 15px; height: 15px; }

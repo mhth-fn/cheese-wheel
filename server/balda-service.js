@@ -1,10 +1,15 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const { loadBuiltInBaldaWords } = require('./balda-dictionary');
 
 const BOARD_SIZE = 5;
 const INITIAL_WORD = 'СЫРОК';
 const ROOM_NAME = 'balda';
+const TURN_DURATIONS = new Set([30, 60, 120]);
+const BOT_ID = -1;
+const BOT_NAME = 'Борхес';
+const BOT_MOVE_DELAY_MS = 650;
 
 function emptyBoard() {
   const board = Array(BOARD_SIZE * BOARD_SIZE).fill('');
@@ -29,7 +34,103 @@ function parseJson(value, fallback) {
   }
 }
 
-function createBaldaService({ db, io }) {
+function chooseStartingPlayer(playerOneId, playerTwoId, randomInt = crypto.randomInt) {
+  return randomInt(2) === 0 ? playerOneId : playerTwoId;
+}
+
+function normalizeTurnDuration(value) {
+  const duration = Number(value);
+  return TURN_DURATIONS.has(duration) ? duration : 60;
+}
+
+function createDictionaryTrie(words) {
+  const root = { children: new Map(), word: null };
+  for (const word of words) {
+    let node = root;
+    for (const letter of word) {
+      if (!node.children.has(letter)) {
+        node.children.set(letter, { children: new Map(), word: null });
+      }
+      node = node.children.get(letter);
+    }
+    node.word = word;
+  }
+  return root;
+}
+
+function findBotMove(board, usedWords, trie, randomInt = crypto.randomInt) {
+  const used = new Set(usedWords);
+  let bestLength = 0;
+  let candidates = [];
+
+  function remember(node, path, placement) {
+    if (!node.word || !placement || used.has(node.word)) return;
+    const move = { ...placement, path: path.map(cell => ({ ...cell })), word: node.word };
+    if (node.word.length > bestLength) {
+      bestLength = node.word.length;
+      candidates = [move];
+    } else if (node.word.length === bestLength && candidates.length < 256) {
+      candidates.push(move);
+    }
+  }
+
+  function visit(row, column, node, path, seen, placement) {
+    const nextPath = [...path, { row, column }];
+    const key = `${row}:${column}`;
+    const nextSeen = new Set(seen);
+    nextSeen.add(key);
+    remember(node, nextPath, placement);
+
+    for (const [rowDelta, columnDelta] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+      const nextRow = row + rowDelta;
+      const nextColumn = column + columnDelta;
+      if (nextRow < 0 || nextRow >= BOARD_SIZE || nextColumn < 0 || nextColumn >= BOARD_SIZE) continue;
+      if (nextSeen.has(`${nextRow}:${nextColumn}`)) continue;
+      const nextIndex = (nextRow * BOARD_SIZE) + nextColumn;
+      const boardLetter = board[nextIndex];
+      if (boardLetter) {
+        const child = node.children.get(boardLetter);
+        if (child) visit(nextRow, nextColumn, child, nextPath, nextSeen, placement);
+      } else if (!placement) {
+        for (const [letter, child] of node.children) {
+          visit(nextRow, nextColumn, child, nextPath, nextSeen, {
+            row: nextRow,
+            column: nextColumn,
+            letter,
+          });
+        }
+      }
+    }
+  }
+
+  for (let row = 0; row < BOARD_SIZE; row += 1) {
+    for (let column = 0; column < BOARD_SIZE; column += 1) {
+      const boardLetter = board[(row * BOARD_SIZE) + column];
+      if (boardLetter) {
+        const child = trie.children.get(boardLetter);
+        if (child) visit(row, column, child, [], new Set(), null);
+      } else {
+        for (const [letter, child] of trie.children) {
+          visit(row, column, child, [], new Set(), { row, column, letter });
+        }
+      }
+    }
+  }
+
+  if (candidates.length === 0) return null;
+  return candidates[randomInt(candidates.length)];
+}
+
+function createBaldaService({
+  db,
+  io,
+  randomInt = crypto.randomInt,
+  randomUUID = crypto.randomUUID,
+}) {
+  let turnTimer = null;
+  let botTimer = null;
+  const builtInWords = loadBuiltInBaldaWords();
+  const dictionaryTrie = createDictionaryTrie(builtInWords);
   const getGameStmt = db.prepare('SELECT * FROM balda_games WHERE id = 1');
   const getUserStmt = db.prepare('SELECT id, name FROM users WHERE id = ?');
   const findWordStmt = db.prepare('SELECT word FROM balda_dictionary WHERE word = ?');
@@ -39,8 +140,72 @@ function createBaldaService({ db, io }) {
       word, source, added_by, approved_by, added_at
     ) VALUES (?, ?, ?, ?, ?)
   `);
+  const getUserStatsStmt = db.prepare(`
+    SELECT
+      COALESCE(SUM(CASE
+        WHEN (result.player_one_id = user.id AND result.winner_slot = 1)
+          OR (result.player_two_id = user.id AND result.winner_slot = 2)
+        THEN 1 ELSE 0 END), 0) AS wins,
+      COALESCE(SUM(CASE WHEN result.id IS NOT NULL AND result.winner_slot IS NULL THEN 1 ELSE 0 END), 0) AS draws,
+      COALESCE(SUM(CASE
+        WHEN result.id IS NOT NULL AND result.winner_slot IS NOT NULL
+          AND (
+            (result.player_one_id = user.id AND result.winner_slot != 1)
+            OR (result.player_two_id = user.id AND result.winner_slot != 2)
+          ) THEN 1 ELSE 0 END), 0) AS losses
+    FROM users AS user
+    LEFT JOIN balda_results AS result
+      ON result.player_one_id = user.id OR result.player_two_id = user.id
+    WHERE user.id = ?
+    GROUP BY user.id
+  `);
+  const listLeaderboardStmt = db.prepare(`
+    SELECT
+      user.id,
+      user.name,
+      COALESCE(SUM(CASE
+        WHEN (result.player_one_id = user.id AND result.winner_slot = 1)
+          OR (result.player_two_id = user.id AND result.winner_slot = 2)
+        THEN 1 ELSE 0 END), 0) AS wins,
+      COALESCE(SUM(CASE WHEN result.id IS NOT NULL AND result.winner_slot IS NULL THEN 1 ELSE 0 END), 0) AS draws,
+      COALESCE(SUM(CASE
+        WHEN result.id IS NOT NULL AND result.winner_slot IS NOT NULL
+          AND (
+            (result.player_one_id = user.id AND result.winner_slot != 1)
+            OR (result.player_two_id = user.id AND result.winner_slot != 2)
+          ) THEN 1 ELSE 0 END), 0) AS losses
+    FROM users AS user
+    LEFT JOIN balda_results AS result
+      ON result.player_one_id = user.id OR result.player_two_id = user.id
+    GROUP BY user.id
+    ORDER BY wins DESC, draws DESC, losses ASC, user.name COLLATE NOCASE
+  `);
+  const getBotStatsStmt = db.prepare(`
+    SELECT
+      COALESCE(SUM(CASE
+        WHEN (player_one_is_bot = 1 AND winner_slot = 1)
+          OR (player_two_is_bot = 1 AND winner_slot = 2)
+        THEN 1 ELSE 0 END), 0) AS wins,
+      COALESCE(SUM(CASE WHEN winner_slot IS NULL THEN 1 ELSE 0 END), 0) AS draws,
+      COALESCE(SUM(CASE
+        WHEN winner_slot IS NOT NULL AND (
+          (player_one_is_bot = 1 AND winner_slot != 1)
+          OR (player_two_is_bot = 1 AND winner_slot != 2)
+        ) THEN 1 ELSE 0 END), 0) AS losses
+    FROM balda_results
+    WHERE player_one_is_bot = 1 OR player_two_is_bot = 1
+  `);
+  const insertResultStmt = db.prepare(`
+    INSERT OR IGNORE INTO balda_results (
+      round_id, player_one_id, player_two_id, player_one_is_bot, player_two_is_bot,
+      player_one_score, player_two_score,
+      winner_slot, finish_reason, finished_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
   const updateGameStmt = db.prepare(`
     UPDATE balda_games SET
+      round_id = @round_id,
+      bot_slot = @bot_slot,
       player_one_id = @player_one_id,
       player_two_id = @player_two_id,
       board_json = @board_json,
@@ -50,21 +215,24 @@ function createBaldaService({ db, io }) {
       current_player_id = @current_player_id,
       status = @status,
       winner_id = @winner_id,
+      winner_is_bot = @winner_is_bot,
       pending_word_json = @pending_word_json,
       consecutive_passes = @consecutive_passes,
+      turn_duration_seconds = @turn_duration_seconds,
+      turn_started_at = @turn_started_at,
       updated_at = @updated_at
     WHERE id = 1
   `);
 
   db.prepare(`
     INSERT OR IGNORE INTO balda_games (
-      id, board_json, used_words_json, scores_json, moves_json,
+      id, round_id, board_json, used_words_json, scores_json, moves_json,
       status, consecutive_passes, updated_at
-    ) VALUES (1, ?, ?, '{}', '[]', 'waiting', 0, ?)
-  `).run(JSON.stringify(emptyBoard()), JSON.stringify([INITIAL_WORD]), Date.now());
+    ) VALUES (1, ?, ?, ?, '{}', '[]', 'waiting', 0, ?)
+  `).run(randomUUID(), JSON.stringify(emptyBoard()), JSON.stringify([INITIAL_WORD]), Date.now());
 
   const seedDictionary = db.transaction(() => {
-    for (const word of loadBuiltInBaldaWords()) {
+    for (const word of builtInWords) {
       insertWordStmt.run(word, 'built-in', null, null, 0);
     }
   });
@@ -82,11 +250,15 @@ function createBaldaService({ db, io }) {
       scores: parseJson(row.scores_json, {}),
       moves: parseJson(row.moves_json, []),
       pendingWord: parseJson(row.pending_word_json, null),
+      turn_duration_seconds: normalizeTurnDuration(row.turn_duration_seconds),
+      turn_started_at: row.turn_started_at ? Number(row.turn_started_at) : null,
     };
   }
 
   function writeGame(game) {
     const row = {
+      round_id: game.round_id || randomUUID(),
+      bot_slot: game.bot_slot || null,
       player_one_id: game.player_one_id ?? null,
       player_two_id: game.player_two_id ?? null,
       board_json: JSON.stringify(game.board),
@@ -96,105 +268,214 @@ function createBaldaService({ db, io }) {
       current_player_id: game.current_player_id ?? null,
       status: game.status,
       winner_id: game.winner_id ?? null,
+      winner_is_bot: game.winner_is_bot ? 1 : 0,
       pending_word_json: game.pendingWord ? JSON.stringify(game.pendingWord) : null,
       consecutive_passes: game.consecutive_passes || 0,
+      turn_duration_seconds: normalizeTurnDuration(game.turn_duration_seconds),
+      turn_started_at: game.turn_started_at || null,
       updated_at: Date.now(),
     };
     updateGameStmt.run(row);
     return readGame();
   }
 
-  function getViewerCount(game) {
+  function getPlayerIds(game) {
+    return [1, 2].map(slot => (
+      Number(game.bot_slot) === slot
+        ? BOT_ID
+        : slot === 1 ? game.player_one_id : game.player_two_id
+    ));
+  }
+
+  function hasTwoPlayers(game) {
+    return getPlayerIds(game).every(playerId => playerId !== null && playerId !== undefined);
+  }
+
+  function getCurrentPlayerId(game) {
+    if (game.status !== 'playing') return null;
+    if (game.current_player_id) return Number(game.current_player_id);
+    return getPlayerIds(game).includes(BOT_ID) ? BOT_ID : null;
+  }
+
+  function setCurrentPlayerId(game, playerId) {
+    game.current_player_id = Number(playerId) === BOT_ID ? null : playerId;
+  }
+
+  function getPlayerName(userId) {
+    if (Number(userId) === BOT_ID) return BOT_NAME;
+    return getUserStmt.get(userId)?.name || 'Игрок';
+  }
+
+  function getRoomVisitors() {
     const socketIds = io.sockets.adapter.rooms.get(ROOM_NAME) || new Set();
-    const playerIds = new Set(
-      [game.player_one_id, game.player_two_id].filter(Boolean).map(Number)
-    );
-    const viewers = new Set();
+    const visitors = new Set();
     for (const socketId of socketIds) {
       const socket = io.sockets.sockets.get(socketId);
       const userId = Number(socket?.data?.tokenData?.userId);
-      if (Number.isInteger(userId)) {
-        if (!playerIds.has(userId)) viewers.add(`user:${userId}`);
-      } else {
-        viewers.add(`guest:${socketId}`);
-      }
+      if (Number.isInteger(userId)) visitors.add(`user:${userId}`);
+      else visitors.add(`guest:${socketId}`);
     }
-    return viewers.size;
+    return visitors;
+  }
+
+  function getPresenceCount() {
+    return getRoomVisitors().size;
+  }
+
+  function getViewerCount(game) {
+    const playerIds = new Set(
+      [game.player_one_id, game.player_two_id].filter(Boolean).map(Number)
+    );
+    const visitors = getRoomVisitors();
+    for (const playerId of playerIds) {
+      visitors.delete(`user:${playerId}`);
+    }
+    return visitors.size;
+  }
+
+  function serializeStats(row = {}) {
+    return {
+      wins: Number(row.wins || 0),
+      draws: Number(row.draws || 0),
+      losses: Number(row.losses || 0),
+    };
   }
 
   function serializeGame(game = readGame()) {
-    const players = [game.player_one_id, game.player_two_id].map((userId, index) => {
-      if (!userId) return { slot: index + 1, user: null, score: 0 };
-      const user = getUserStmt.get(userId);
+    const players = getPlayerIds(game).map((userId, index) => {
+      if (!userId) {
+        return { slot: index + 1, user: null, score: 0, stats: serializeStats() };
+      }
+      const isBot = Number(userId) === BOT_ID;
+      const user = isBot ? { id: BOT_ID, name: BOT_NAME } : getUserStmt.get(userId);
       return {
         slot: index + 1,
-        user: user ? { id: Number(user.id), name: user.name } : null,
+        user: user ? { id: Number(user.id), name: user.name, isBot } : null,
         score: Number(game.scores[String(userId)] || 0),
+        stats: serializeStats(isBot ? getBotStatsStmt.get() : getUserStatsStmt.get(userId)),
       };
     });
-    const winner = game.winner_id ? getUserStmt.get(game.winner_id) : null;
+    const winner = game.winner_is_bot
+      ? { id: BOT_ID, name: BOT_NAME, isBot: true }
+      : game.winner_id ? getUserStmt.get(game.winner_id) : null;
+    const hasStarted = game.status !== 'waiting';
     return {
-      board: game.board,
+      board: hasStarted ? game.board : Array(BOARD_SIZE * BOARD_SIZE).fill(''),
       boardSize: BOARD_SIZE,
       consecutivePasses: game.consecutive_passes || 0,
-      currentPlayerId: game.current_player_id ? Number(game.current_player_id) : null,
+      currentPlayerId: getCurrentPlayerId(game),
       dictionarySize: Number(countWordsStmt.get().count),
-      initialWord: INITIAL_WORD,
-      moves: game.moves,
-      pendingWord: game.pendingWord,
+      initialWord: hasStarted ? INITIAL_WORD : null,
+      leaderboard: listLeaderboardStmt.all().map(row => ({
+        user: { id: Number(row.id), name: row.name },
+        ...serializeStats(row),
+      })),
+      moves: hasStarted ? game.moves : [],
+      pendingWord: hasStarted ? game.pendingWord : null,
       players,
+      presenceCount: getPresenceCount(),
       spectatorCount: getViewerCount(game),
       status: game.status,
+      turnDeadline: game.turn_started_at
+        ? Number(game.turn_started_at) + (normalizeTurnDuration(game.turn_duration_seconds) * 1000)
+        : null,
+      turnDurationSeconds: normalizeTurnDuration(game.turn_duration_seconds),
       updatedAt: Number(game.updated_at),
-      usedWords: game.usedWords,
-      winner: winner ? { id: Number(winner.id), name: winner.name } : null,
+      usedWords: hasStarted ? game.usedWords : [],
+      winner: winner ? {
+        id: Number(winner.id),
+        name: winner.name,
+        isBot: Boolean(winner.isBot),
+      } : null,
     };
+  }
+
+  function broadcastPresence() {
+    const presence = { onlineCount: getPresenceCount() };
+    io.emit('balda:presence', presence);
+    return presence;
   }
 
   function broadcast() {
     const state = serializeGame();
     io.to(ROOM_NAME).emit('balda:state', state);
+    broadcastPresence();
+    scheduleTurnTimer();
+    scheduleBotTurn();
     return state;
   }
 
   function resetGame(game) {
+    const playerIds = getPlayerIds(game);
     const scores = {};
-    if (game.player_one_id) scores[String(game.player_one_id)] = 0;
-    if (game.player_two_id) scores[String(game.player_two_id)] = 0;
-    return {
+    for (const playerId of playerIds.filter(playerId => playerId !== null)) {
+      scores[String(playerId)] = 0;
+    }
+    const bothPlayersReady = hasTwoPlayers(game);
+    const reset = {
       ...game,
       board: emptyBoard(),
       usedWords: [INITIAL_WORD],
       scores,
       moves: [],
-      current_player_id: game.player_one_id || null,
-      status: game.player_one_id && game.player_two_id ? 'playing' : 'waiting',
+      round_id: randomUUID(),
+      status: bothPlayersReady ? 'playing' : 'waiting',
       winner_id: null,
+      winner_is_bot: 0,
       pendingWord: null,
       consecutive_passes: 0,
+      turn_duration_seconds: normalizeTurnDuration(game.turn_duration_seconds),
+      turn_started_at: bothPlayersReady ? Date.now() : null,
     };
+    setCurrentPlayerId(
+      reset,
+      bothPlayersReady ? chooseStartingPlayer(playerIds[0], playerIds[1], randomInt) : null,
+    );
+    return reset;
   }
 
   function otherPlayerId(game, userId) {
-    if (Number(game.player_one_id) === Number(userId)) return game.player_two_id;
-    if (Number(game.player_two_id) === Number(userId)) return game.player_one_id;
+    const playerIds = getPlayerIds(game);
+    if (Number(playerIds[0]) === Number(userId)) return playerIds[1];
+    if (Number(playerIds[1]) === Number(userId)) return playerIds[0];
     return null;
   }
 
   function isSeated(game, userId) {
-    return Number(game.player_one_id) === Number(userId)
-      || Number(game.player_two_id) === Number(userId);
+    return getPlayerIds(game).some(playerId => Number(playerId) === Number(userId));
   }
 
-  function finishGame(game) {
-    const firstScore = Number(game.scores[String(game.player_one_id)] || 0);
-    const secondScore = Number(game.scores[String(game.player_two_id)] || 0);
+  function finishGame(game, finishReason, forcedWinnerId = undefined) {
+    if (game.status !== 'playing') return;
+    const playerIds = getPlayerIds(game);
+    const firstScore = Number(game.scores[String(playerIds[0])] || 0);
+    const secondScore = Number(game.scores[String(playerIds[1])] || 0);
+    const winnerId = forcedWinnerId === undefined
+      ? firstScore === secondScore
+        ? null
+        : firstScore > secondScore ? playerIds[0] : playerIds[1]
+      : forcedWinnerId;
+    const winnerSlot = winnerId === null
+      ? null
+      : playerIds.findIndex(playerId => Number(playerId) === Number(winnerId)) + 1;
     game.status = 'finished';
     game.current_player_id = null;
     game.pendingWord = null;
-    game.winner_id = firstScore === secondScore
-      ? null
-      : firstScore > secondScore ? game.player_one_id : game.player_two_id;
+    game.turn_started_at = null;
+    game.winner_id = Number(winnerId) === BOT_ID ? null : winnerId;
+    game.winner_is_bot = Number(winnerId) === BOT_ID ? 1 : 0;
+    insertResultStmt.run(
+      game.round_id,
+      Number(playerIds[0]) === BOT_ID ? null : playerIds[0],
+      Number(playerIds[1]) === BOT_ID ? null : playerIds[1],
+      Number(playerIds[0]) === BOT_ID ? 1 : 0,
+      Number(playerIds[1]) === BOT_ID ? 1 : 0,
+      firstScore,
+      secondScore,
+      winnerSlot || null,
+      finishReason,
+      Date.now(),
+    );
   }
 
   function join(userId) {
@@ -204,13 +485,15 @@ function createBaldaService({ db, io }) {
       if (game.player_one_id && game.player_two_id) {
         return { ok: false, error: 'Оба места игроков уже заняты' };
       }
-      if (!game.player_one_id) game.player_one_id = userId;
-      else game.player_two_id = userId;
-      if (game.player_one_id && game.player_two_id) game = resetGame(game);
+      if (hasTwoPlayers(game)) return { ok: false, error: 'Оба места игроков уже заняты' };
+      if (!game.player_one_id && Number(game.bot_slot) !== 1) game.player_one_id = userId;
+      else if (!game.player_two_id && Number(game.bot_slot) !== 2) game.player_two_id = userId;
+      if (hasTwoPlayers(game)) game = resetGame(game);
       else {
         game.status = 'waiting';
         game.current_player_id = null;
         game.pendingWord = null;
+        game.turn_started_at = null;
       }
       writeGame(game);
       return { ok: true };
@@ -228,14 +511,14 @@ function createBaldaService({ db, io }) {
       }
       const opponentId = otherPlayerId(game, userId);
       if (game.status === 'playing' && opponentId) {
-        game.status = 'finished';
-        game.winner_id = opponentId;
+        finishGame(game, 'resignation', opponentId);
       }
       if (Number(game.player_one_id) === Number(userId)) game.player_one_id = null;
       if (Number(game.player_two_id) === Number(userId)) game.player_two_id = null;
+      if (Number(opponentId) === BOT_ID) game.bot_slot = null;
       game.current_player_id = null;
       game.pendingWord = null;
-      if (!game.player_one_id && !game.player_two_id) {
+      if (!getPlayerIds(game).some(Boolean)) {
         Object.assign(game, resetGame(game), { status: 'waiting' });
       }
       writeGame(game);
@@ -248,7 +531,7 @@ function createBaldaService({ db, io }) {
 
   function validateMove(game, userId, payload) {
     if (game.status !== 'playing') return { error: 'Партия ещё не началась' };
-    if (Number(game.current_player_id) !== Number(userId)) return { error: 'Сейчас ход другого игрока' };
+    if (Number(getCurrentPlayerId(game)) !== Number(userId)) return { error: 'Сейчас ход другого игрока' };
     if (game.pendingWord) return { error: 'Сначала нужно решить спор о слове' };
 
     const row = Number(payload?.row);
@@ -305,13 +588,12 @@ function createBaldaService({ db, io }) {
   }
 
   function applyMove(game, userId, move) {
-    const user = getUserStmt.get(userId);
     game.board[(move.row * BOARD_SIZE) + move.column] = move.letter;
     game.usedWords.push(move.word);
     game.scores[String(userId)] = Number(game.scores[String(userId)] || 0) + move.word.length;
     game.moves.push({
       userId: Number(userId),
-      userName: user?.name || 'Игрок',
+      userName: getPlayerName(userId),
       word: move.word,
       score: move.word.length,
       row: move.row,
@@ -322,8 +604,11 @@ function createBaldaService({ db, io }) {
     });
     game.pendingWord = null;
     game.consecutive_passes = 0;
-    if (game.board.every(Boolean)) finishGame(game);
-    else game.current_player_id = otherPlayerId(game, userId);
+    if (game.board.every(Boolean)) finishGame(game, 'board_full');
+    else {
+      setCurrentPlayerId(game, otherPlayerId(game, userId));
+      game.turn_started_at = Date.now();
+    }
   }
 
   function submitMove(userId, payload) {
@@ -338,6 +623,7 @@ function createBaldaService({ db, io }) {
           responderId: Number(otherPlayerId(game, userId)),
           createdAt: Date.now(),
         };
+        game.turn_started_at = null;
         writeGame(game);
         return { ok: true, pending: true, word: move.word };
       }
@@ -363,6 +649,7 @@ function createBaldaService({ db, io }) {
       }
       if (!accepted) {
         game.pendingWord = null;
+        game.turn_started_at = Date.now();
         writeGame(game);
         return { ok: true, accepted: false };
       }
@@ -379,6 +666,14 @@ function createBaldaService({ db, io }) {
         userId,
         Date.now(),
       );
+      let trieNode = dictionaryTrie;
+      for (const letter of revalidated.word) {
+        if (!trieNode.children.has(letter)) {
+          trieNode.children.set(letter, { children: new Map(), word: null });
+        }
+        trieNode = trieNode.children.get(letter);
+      }
+      trieNode.word = revalidated.word;
       applyMove(game, pending.proposerId, revalidated);
       writeGame(game);
       return { ok: true, accepted: true, word: revalidated.word };
@@ -388,22 +683,157 @@ function createBaldaService({ db, io }) {
     return result;
   }
 
+  function applyPass(game, userId, timedOut = false) {
+    game.consecutive_passes += 1;
+    game.moves.push({
+      userId: Number(userId),
+      userName: getPlayerName(userId),
+      pass: true,
+      timedOut,
+      createdAt: Date.now(),
+    });
+    if (game.consecutive_passes >= 2) finishGame(game, 'two_passes');
+    else {
+      setCurrentPlayerId(game, otherPlayerId(game, userId));
+      game.turn_started_at = Date.now();
+    }
+  }
+
   function pass(userId) {
     const transaction = db.transaction(() => {
       const game = readGame();
-      if (game.status !== 'playing' || Number(game.current_player_id) !== Number(userId)) {
+      if (game.status !== 'playing' || Number(getCurrentPlayerId(game)) !== Number(userId)) {
         return { ok: false, error: 'Сейчас нельзя пропустить ход' };
       }
       if (game.pendingWord) return { ok: false, error: 'Сначала решите спор о слове' };
-      game.consecutive_passes += 1;
-      game.moves.push({
-        userId: Number(userId),
-        userName: getUserStmt.get(userId)?.name || 'Игрок',
-        pass: true,
-        createdAt: Date.now(),
-      });
-      if (game.consecutive_passes >= 2) finishGame(game);
-      else game.current_player_id = otherPlayerId(game, userId);
+      applyPass(game, userId);
+      writeGame(game);
+      return { ok: true };
+    });
+    const result = transaction();
+    if (result.ok) broadcast();
+    return result;
+  }
+
+  function handleTurnTimeout() {
+    const transaction = db.transaction(() => {
+      const game = readGame();
+      if (game.status !== 'playing' || getCurrentPlayerId(game) === null
+        || game.pendingWord || !game.turn_started_at) return false;
+      const deadline = game.turn_started_at
+        + (normalizeTurnDuration(game.turn_duration_seconds) * 1000);
+      if (Date.now() < deadline) return false;
+      applyPass(game, getCurrentPlayerId(game), true);
+      writeGame(game);
+      return true;
+    });
+    if (transaction()) broadcast();
+    else scheduleTurnTimer();
+  }
+
+  function scheduleTurnTimer() {
+    if (turnTimer) {
+      clearTimeout(turnTimer);
+      turnTimer = null;
+    }
+    const game = readGame();
+    if (game.status !== 'playing' || getCurrentPlayerId(game) === null
+      || game.pendingWord || !game.turn_started_at) return;
+    const deadline = game.turn_started_at
+      + (normalizeTurnDuration(game.turn_duration_seconds) * 1000);
+    turnTimer = setTimeout(handleTurnTimeout, Math.max(0, deadline - Date.now()) + 10);
+    turnTimer.unref();
+  }
+
+  function setTurnDuration(userId, duration) {
+    const transaction = db.transaction(() => {
+      const game = readGame();
+      if (!isSeated(game, userId)) {
+        return { ok: false, error: 'Время хода выбирает один из игроков' };
+      }
+      const nextDuration = Number(duration);
+      if (!TURN_DURATIONS.has(nextDuration)) {
+        return { ok: false, error: 'Доступно 30 секунд, 1 или 2 минуты' };
+      }
+      if (game.status === 'playing' && (game.moves.length > 0 || game.pendingWord)) {
+        return { ok: false, error: 'Время можно изменить до первого хода или между партиями' };
+      }
+      game.turn_duration_seconds = nextDuration;
+      if (game.status === 'playing') game.turn_started_at = Date.now();
+      writeGame(game);
+      return { ok: true, turnDurationSeconds: nextDuration };
+    });
+    const result = transaction();
+    if (result.ok) broadcast();
+    return result;
+  }
+
+  function handleBotAction() {
+    const game = readGame();
+    if (game.status !== 'playing') return;
+    if (Number(game.pendingWord?.responderId) === BOT_ID) {
+      resolveWord(BOT_ID, false);
+      return;
+    }
+    if (getCurrentPlayerId(game) !== BOT_ID || game.pendingWord) return;
+
+    const transaction = db.transaction(() => {
+      const current = readGame();
+      if (current.status !== 'playing' || getCurrentPlayerId(current) !== BOT_ID
+        || current.pendingWord) return false;
+      const move = findBotMove(current.board, current.usedWords, dictionaryTrie, randomInt);
+      if (move) applyMove(current, BOT_ID, move);
+      else applyPass(current, BOT_ID);
+      writeGame(current);
+      return true;
+    });
+    if (transaction()) broadcast();
+  }
+
+  function scheduleBotTurn() {
+    if (botTimer) {
+      clearTimeout(botTimer);
+      botTimer = null;
+    }
+    const game = readGame();
+    const botMustAnswer = Number(game.pendingWord?.responderId) === BOT_ID;
+    if (game.status !== 'playing' || (!botMustAnswer && getCurrentPlayerId(game) !== BOT_ID)) return;
+    botTimer = setTimeout(handleBotAction, BOT_MOVE_DELAY_MS);
+    botTimer.unref();
+  }
+
+  function addBot(userId) {
+    const transaction = db.transaction(() => {
+      let game = readGame();
+      if (!isSeated(game, userId)) {
+        return { ok: false, error: 'Борхеса добавляет игрок за столом' };
+      }
+      if (game.bot_slot) return { ok: false, error: 'Борхес уже в игре' };
+      if (hasTwoPlayers(game)) return { ok: false, error: 'Свободных мест нет' };
+      if (!game.player_one_id) game.bot_slot = 1;
+      else if (!game.player_two_id) game.bot_slot = 2;
+      else return { ok: false, error: 'Свободных мест нет' };
+      game = resetGame(game);
+      writeGame(game);
+      return { ok: true };
+    });
+    const result = transaction();
+    if (result.ok) broadcast();
+    return result;
+  }
+
+  function removeBot(userId) {
+    const transaction = db.transaction(() => {
+      const game = readGame();
+      if (!isSeated(game, userId) || Number(userId) === BOT_ID) {
+        return { ok: false, error: 'Борхеса убирает второй игрок' };
+      }
+      if (!game.bot_slot) return { ok: false, error: 'Борхеса нет в игре' };
+      if (game.status === 'playing') finishGame(game, 'resignation', userId);
+      game.bot_slot = null;
+      game.current_player_id = null;
+      game.pendingWord = null;
+      game.turn_started_at = null;
       writeGame(game);
       return { ok: true };
     });
@@ -416,7 +846,7 @@ function createBaldaService({ db, io }) {
     const transaction = db.transaction(() => {
       const game = readGame();
       if (!isSeated(game, userId)) return { ok: false, error: 'Новую партию запускает один из игроков' };
-      if (!game.player_one_id || !game.player_two_id) return { ok: false, error: 'Для игры нужны два игрока' };
+      if (!hasTwoPlayers(game)) return { ok: false, error: 'Для игры нужны два игрока' };
       if (game.status === 'playing') return { ok: false, error: 'Текущая партия ещё не завершена' };
       writeGame(resetGame(game));
       return { ok: true };
@@ -426,22 +856,36 @@ function createBaldaService({ db, io }) {
     return result;
   }
 
+  scheduleTurnTimer();
+  scheduleBotTurn();
+
   return {
+    addBot,
     broadcast,
+    broadcastPresence,
+    getPresenceCount,
     getState: () => serializeGame(),
     join,
     leave,
     newGame,
     pass,
+    removeBot,
     resolveWord,
     roomName: ROOM_NAME,
+    setTurnDuration,
     submitMove,
   };
 }
 
 module.exports = {
   BOARD_SIZE,
+  BOT_ID,
+  BOT_NAME,
   INITIAL_WORD,
+  chooseStartingPlayer,
+  createDictionaryTrie,
   createBaldaService,
+  findBotMove,
   normalizeWord,
+  normalizeTurnDuration,
 };

@@ -1,4 +1,10 @@
-export default function GameMenu({ mode, onBalda, onModeChange, onPlay }) {
+export default function GameMenu({
+  baldaOnlineCount,
+  mode,
+  onBalda,
+  onModeChange,
+  onPlay,
+}) {
   return (
     <div className="games-container">
       <div className="game-card">
@@ -33,7 +39,7 @@ export default function GameMenu({ mode, onBalda, onModeChange, onPlay }) {
         <div className="game-card-info">
           <h3>Балда</h3>
           <p>Собирайте слова на поле 5×5 вдвоём, пока остальные смотрят.</p>
-          <span className="game-card-tag">Онлайн · 2 игрока</span>
+          <span className="game-card-tag">Сейчас в игре · {baldaOnlineCount}</span>
         </div>
         <button className="game-btn" type="button" onClick={onBalda}>
           Открыть игру
