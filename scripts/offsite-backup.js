@@ -8,6 +8,7 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 const {
   assertSafeSnapshotPath,
+  SIGAME_INDEX_FILENAME,
   timestampFromSnapshotName,
   verifyDatabase,
   verifyManifest,
@@ -71,11 +72,21 @@ async function findLatestSnapshot(backupRoot) {
 }
 
 async function verifySnapshot(snapshot, tarBin, execute = execFileAsync) {
-  await verifyManifest(snapshot, [
+  const expectedFiles = [
     'cheese_wheel.db',
     'sigame-packs.tar',
     'uploads.tar',
-  ]);
+  ];
+  try {
+    await assertRegularFile(
+      path.join(snapshot, SIGAME_INDEX_FILENAME),
+      'SIGame packs content index'
+    );
+    expectedFiles.push(SIGAME_INDEX_FILENAME);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  await verifyManifest(snapshot, expectedFiles);
   verifyDatabase(path.join(snapshot, 'cheese_wheel.db'));
   for (const archive of ['sigame-packs.tar', 'uploads.tar']) {
     await execute(tarBin, ['--list', '--file', path.join(snapshot, archive)], {

@@ -12,11 +12,60 @@
   display: flex;
 }
 
+.startup-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  min-height: 100dvh;
+  padding:
+    max(var(--space-6), env(safe-area-inset-top))
+    max(var(--space-6), env(safe-area-inset-right))
+    max(var(--space-6), env(safe-area-inset-bottom))
+    max(var(--space-6), env(safe-area-inset-left));
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  background: var(--theme-bg);
+  opacity: 1;
+  text-align: center;
+  transition: opacity 0.24s ease;
+}
+
+.startup-splash.is-leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.startup-splash > .mini-cheese-wheel,
+.startup-splash > .auth-title {
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+
+.startup-splash.is-ready > .mini-cheese-wheel,
+.startup-splash.is-ready > .auth-title {
+  opacity: 1;
+}
+
 .auth-logo {
   margin-bottom: var(--space-2);
   font-size: 4.25rem;
   line-height: 1;
   animation: authFloat 2.4s ease-in-out infinite;
+}
+
+.mini-cheese-wheel {
+  display: block;
+  width: 190px;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 7px 8px rgba(115, 72, 10, 0.16));
+}
+
+.mini-cheese-wheel.is-spinning {
+  animation: miniCheeseLoaderFloat 1.8s ease-in-out infinite;
+  will-change: transform;
 }
 
 .auth-logo-text {
@@ -162,4 +211,9 @@
 @keyframes authFloat {
   0%, 100% { transform: translateY(0) rotate(-2deg); }
   50% { transform: translateY(-8px) rotate(2deg); }
+}
+
+@keyframes miniCheeseLoaderFloat {
+  0%, 100% { transform: translateY(0) rotate(-1deg) scale(1); }
+  50% { transform: translateY(-6px) rotate(1deg) scale(1.02); }
 }

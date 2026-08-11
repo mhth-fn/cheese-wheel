@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchStats } from '../api';
+import MovieExternalLinks from '../features/movies/MovieExternalLinks';
 
 function pluralFilms(value) {
   const mod10 = value % 10;
@@ -50,12 +51,20 @@ function RatedMovieCard({
         {hasSeveralMovies ? (
           <>
             {visibleMovies.map(item => (
-              <span key={item.id ?? item.title} className="stat-card-title-item">{item.title}</span>
+              <span key={item.id ?? item.title} className="stat-card-title-item">
+                <span>{item.title}</span>
+                <MovieExternalLinks movie={item} compact />
+              </span>
             ))}
             {hiddenCount > 0 && <span className="stat-card-more">Ещё {hiddenCount}</span>}
           </>
         ) : (
-          movieList[0]?.title || emptyTitle
+          movieList[0] ? (
+            <span className="stat-card-title-item">
+              <span>{movieList[0].title}</span>
+              <MovieExternalLinks movie={movieList[0]} compact />
+            </span>
+          ) : emptyTitle
         )}
       </div>
       <div className="stat-card-sub">

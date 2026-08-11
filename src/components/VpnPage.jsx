@@ -10,6 +10,19 @@ import { useApp } from '../app/AppContext';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import ConfirmDialog from './ConfirmDialog';
 
+const VPN_PROTOCOLS = Object.freeze({
+  vless: {
+    id: 'vless',
+    label: 'VLESS Reality',
+    description: 'Для Hiddify и похожих клиентов',
+  },
+  amneziawg: {
+    id: 'amneziawg',
+    label: 'AmneziaWG',
+    description: 'Конфиг для приложения AmneziaWG',
+  },
+});
+
 function formatDate(timestamp) {
   return new Intl.DateTimeFormat('ru-RU', {
     day: 'numeric',
@@ -34,9 +47,33 @@ async function copyText(text) {
   input.remove();
 }
 
+function safeConfigFileName(deviceName) {
+  const normalized = String(deviceName || 'amneziawg')
+    .normalize('NFKD')
+    .replace(/[^A-Za-z0-9._-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 60);
+  return `${normalized || 'amneziawg'}.conf`;
+}
+
+function downloadConfig(client) {
+  const blob = new Blob([client.connectionLink], {
+    type: 'text/plain;charset=utf-8',
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = safeConfigFileName(client.deviceName);
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 function QrDialog({ client, imageUrl, onClose, onCopy }) {
   const dialogRef = useDialogA11y(Boolean(client), onClose);
   if (!client) return null;
+  const isAmnezia = client.protocol === 'amneziawg';
 
   return (
     <div className="dialog-backdrop" onMouseDown={event => event.target === event.currentTarget && onClose()}>
@@ -63,10 +100,12 @@ function QrDialog({ client, imageUrl, onClose, onCopy }) {
           <div className="vpn-qr-loading" aria-live="polite">Создаём QR-код…</div>
         )}
         <p className="vpn-qr-note">
-          В Hiddify нажмите «+» → «Сканировать QR».
+          {isAmnezia
+            ? 'В AmneziaWG нажмите «+» → «Добавить через QR-код».'
+            : 'В Hiddify нажмите «+» → «Сканировать QR».'}
         </p>
         <button className="button-primary vpn-qr-copy" type="button" onClick={onCopy}>
-          📋 Скопировать ссылку
+          {isAmnezia ? '📋 Скопировать конфиг' : '📋 Скопировать ссылку'}
         </button>
       </section>
     </div>
@@ -80,6 +119,7 @@ export default function VpnPage() {
   const [loadState, setLoadState] = useState('loading');
   const [statusByServer, setStatusByServer] = useState({});
   const [statusState, setStatusState] = useState('loading');
+  const [selectedProtocol, setSelectedProtocol] = useState('vless');
   const [selectedServerId, setSelectedServerId] = useState('');
   const [deviceName, setDeviceName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -108,11 +148,6 @@ export default function VpnPage() {
       const data = await fetchVpnClients();
       setServers(data.servers || []);
       setClients(data.clients || []);
-      setSelectedServerId(current => (
-        data.servers?.some(server => server.id === current)
-          ? current
-          : data.servers?.[0]?.id || ''
-      ));
       setLoadState('ready');
     } catch (error) {
       setLoadState('error');
@@ -132,15 +167,29 @@ export default function VpnPage() {
     [servers]
   );
 
-  const countsByServer = useMemo(() => {
+  const availableServers = useMemo(
+    () => servers.filter(server => server.protocols?.includes(selectedProtocol)),
+    [selectedProtocol, servers]
+  );
+
+  useEffect(() => {
+    setSelectedServerId(current => (
+      availableServers.some(server => server.id === current)
+        ? current
+        : availableServers[0]?.id || ''
+    ));
+  }, [availableServers]);
+
+  const countsByServerProtocol = useMemo(() => {
     const counts = {};
     clients.forEach(client => {
-      counts[client.serverId] = (counts[client.serverId] || 0) + 1;
+      const key = `${client.serverId}:${client.protocol || 'vless'}`;
+      counts[key] = (counts[key] || 0) + 1;
     });
     return counts;
   }, [clients]);
 
-  const selectedStatus = statusByServer[selectedServerId];
+  const selectedStatus = statusByServer[selectedServerId]?.protocols?.[selectedProtocol];
 
   const handleCreate = async event => {
     event.preventDefault();
@@ -148,16 +197,30 @@ export default function VpnPage() {
 
     setCreating(true);
     try {
-      const response = await createVpnClient(selectedServerId, deviceName.trim());
+      const response = await createVpnClient(
+        selectedServerId,
+        selectedProtocol,
+        deviceName.trim()
+      );
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Не удалось создать конфигурацию');
       setClients(current => [data, ...current]);
       setDeviceName('');
-      showToast('Конфигурация создана в x-ui', 'success');
+      showToast(
+        selectedProtocol === 'amneziawg'
+          ? 'Конфигурация AmneziaWG создана'
+          : 'Конфигурация создана в x-ui',
+        'success'
+      );
       loadStatus();
       try {
         await copyText(data.connectionLink);
-        showToast('Скопировано. В Hiddify нажмите «+» → «Из буфера»', 'success');
+        showToast(
+          selectedProtocol === 'amneziawg'
+            ? 'Конфиг скопирован. Добавьте его из буфера в AmneziaWG'
+            : 'Скопировано. В Hiddify нажмите «+» → «Из буфера»',
+          'success'
+        );
       } catch {
         showToast('Создано, но Safari не разрешил автокопирование', 'info');
       }
@@ -171,7 +234,12 @@ export default function VpnPage() {
   const handleCopy = async client => {
     try {
       await copyText(client.connectionLink);
-      showToast('Скопировано. В Hiddify нажмите «+» → «Из буфера»', 'success');
+      showToast(
+        client.protocol === 'amneziawg'
+          ? 'Конфиг скопирован. Добавьте его из буфера в AmneziaWG'
+          : 'Скопировано. В Hiddify нажмите «+» → «Из буфера»',
+        'success'
+      );
     } catch {
       showToast('Не удалось скопировать ссылку', 'error');
     }
@@ -225,7 +293,7 @@ export default function VpnPage() {
         </div>
         <div className="vpn-protocol" aria-label="Протокол">
           <span className="vpn-status-dot" aria-hidden="true" />
-          VLESS Reality
+          VLESS + AmneziaWG
         </div>
       </header>
 
@@ -238,12 +306,40 @@ export default function VpnPage() {
           <span className="vpn-step" aria-hidden="true">+</span>
         </div>
 
+        <fieldset className="vpn-protocol-picker" disabled={creating || loadState !== 'ready'}>
+          <legend>Протокол</legend>
+          <div className="vpn-protocol-options">
+            {Object.values(VPN_PROTOCOLS).map(protocol => {
+              const available = servers.some(server => server.protocols?.includes(protocol.id));
+              return (
+                <label
+                  key={protocol.id}
+                  className={`vpn-protocol-option ${selectedProtocol === protocol.id ? 'selected' : ''} ${available ? '' : 'disabled'}`}
+                >
+                  <input
+                    type="radio"
+                    name="vpn-protocol"
+                    value={protocol.id}
+                    checked={selectedProtocol === protocol.id}
+                    onChange={() => setSelectedProtocol(protocol.id)}
+                    disabled={!available}
+                  />
+                  <span>
+                    <strong>{protocol.label}</strong>
+                    <small>{protocol.description}</small>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+
         <fieldset className="vpn-server-picker" disabled={creating || loadState !== 'ready'}>
           <legend>Сервер</legend>
           <div className="vpn-server-options">
-            {servers.map(server => {
-              const count = countsByServer[server.id] || 0;
-              const status = statusByServer[server.id];
+            {availableServers.map(server => {
+              const count = countsByServerProtocol[`${server.id}:${selectedProtocol}`] || 0;
+              const status = statusByServer[server.id]?.protocols?.[selectedProtocol];
               const healthLabel = status?.online
                 ? `Работает · ${status.port}`
                 : statusState === 'loading' && !status
@@ -271,7 +367,9 @@ export default function VpnPage() {
                   </span>
                   <span className="vpn-server-counts">
                     <b>{count}/{server.limit}</b>
-                    <small>{status?.clientCount ?? '—'} в x-ui</small>
+                    <small>
+                      {status?.clientCount ?? '—'} {selectedProtocol === 'vless' ? 'в x-ui' : 'peer'}
+                    </small>
                   </span>
                 </label>
               );
@@ -306,7 +404,9 @@ export default function VpnPage() {
         </button>
         {selectedStatus?.online === false && (
           <p className="vpn-server-warning" role="status">
-            Сервер или выбранный inbound сейчас недоступен. Создание временно отключено.
+            {selectedProtocol === 'vless'
+              ? 'Сервер или выбранный inbound сейчас недоступен. Создание временно отключено.'
+              : 'AmneziaWG на выбранном сервере сейчас недоступна. Создание временно отключено.'}
           </p>
         )}
       </form>
@@ -351,17 +451,24 @@ export default function VpnPage() {
           <div className="vpn-client-grid">
             {clients.map(client => {
               const server = serverById[client.serverId];
+              const isAmnezia = client.protocol === 'amneziawg';
               return (
                 <article className="vpn-client-card surface" key={client.id}>
-                  <div className="vpn-client-icon" aria-hidden="true">🔐</div>
+                  <div className="vpn-client-icon" aria-hidden="true">
+                    {isAmnezia ? '🛡️' : '🔐'}
+                  </div>
                   <div className="vpn-client-content">
                     <div className="vpn-client-title">
                       <h3>{client.deviceName}</h3>
-                      <span>{server?.label || 'VPN'}</span>
+                      <span>{isAmnezia ? 'AmneziaWG' : 'VLESS'}</span>
                     </div>
-                    <p>{server?.address} · создано {formatDate(client.createdAt)}</p>
+                    <p>
+                      {server?.label || 'VPN'} · {server?.address} · создано {formatDate(client.createdAt)}
+                    </p>
                     <small className="vpn-import-hint">
-                      Скопируйте, сначала откройте Hiddify, затем нажмите «+» → «Из буфера».
+                      {isAmnezia
+                        ? 'Скачайте .conf или добавьте его в AmneziaWG через буфер или QR-код.'
+                        : 'Скопируйте, сначала откройте Hiddify, затем нажмите «+» → «Из буфера».'}
                     </small>
                     <div className="vpn-client-actions">
                       <button
@@ -369,8 +476,17 @@ export default function VpnPage() {
                         className="button-primary vpn-hiddify-copy"
                         onClick={() => handleCopy(client)}
                       >
-                        📋 Скопировать для Hiddify
+                        {isAmnezia ? '📋 Скопировать конфиг' : '📋 Скопировать для Hiddify'}
                       </button>
+                      {isAmnezia && (
+                        <button
+                          type="button"
+                          className="button-secondary"
+                          onClick={() => downloadConfig(client)}
+                        >
+                          ↓ Скачать .conf
+                        </button>
+                      )}
                       <button type="button" className="button-secondary" onClick={() => openQr(client)}>
                         ▦ QR-код
                       </button>

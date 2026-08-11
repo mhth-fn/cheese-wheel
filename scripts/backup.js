@@ -16,7 +16,8 @@ const DEFAULT_UPLOADS_PATH = '/var/lib/cheese-wheel/uploads';
 const DEFAULT_SIGAME_PACKS_PATH = '/var/lib/cheese-wheel/sigame-packs';
 const DEFAULT_BACKUP_ROOT = '/var/backups/cheese-wheel';
 const DEFAULT_TAR_PATH = '/usr/bin/tar';
-const DEFAULT_RETENTION_DAYS = 30;
+const DEFAULT_RETENTION_DAYS = 3;
+const SIGAME_INDEX_FILENAME = 'sigame-packs.index.json';
 const SNAPSHOT_NAME_RE = /^snapshot-(\d{8})T(\d{6})Z$/;
 const LEGACY_EXPECTED_TABLES = Object.freeze([
   'users',
@@ -263,6 +264,118 @@ async function archiveAndVerifyDirectory(directoryPath, archivePath, tarPath, la
   });
 }
 
+function statIdentity(info) {
+  return {
+    mode: info.mode.toString(),
+    size: info.size.toString(),
+    mtimeNs: info.mtimeNs.toString(),
+    ctimeNs: info.ctimeNs.toString(),
+    dev: info.dev.toString(),
+    ino: info.ino.toString(),
+  };
+}
+
+async function inventoryDirectory(directoryPath, includeHashes) {
+  const resolvedDirectory = path.resolve(directoryPath);
+  await assertRealDirectory(resolvedDirectory, 'Inventory path');
+  const entries = [];
+  const state = [];
+
+  async function walk(currentDirectory, relativeDirectory = '') {
+    const children = await fsp.readdir(currentDirectory, { withFileTypes: true });
+    children.sort((left, right) => left.name.localeCompare(right.name));
+
+    for (const child of children) {
+      const absolutePath = path.join(currentDirectory, child.name);
+      const relativePath = path.posix.join(
+        relativeDirectory,
+        child.name.split(path.sep).join(path.posix.sep)
+      );
+      const before = await fsp.lstat(absolutePath, { bigint: true });
+
+      if (before.isDirectory() && !before.isSymbolicLink()) {
+        entries.push({ path: `${relativePath}/`, type: 'directory' });
+        state.push({ path: `${relativePath}/`, type: 'directory', ...statIdentity(before) });
+        await walk(absolutePath, relativePath);
+        continue;
+      }
+
+      if (before.isFile() && !before.isSymbolicLink()) {
+        const entry = {
+          path: relativePath,
+          type: 'file',
+          size: before.size.toString(),
+        };
+        if (includeHashes) entry.sha256 = await sha256File(absolutePath);
+        const after = await fsp.lstat(absolutePath, { bigint: true });
+        if (JSON.stringify(statIdentity(before)) !== JSON.stringify(statIdentity(after))) {
+          throw new Error(`SIGame pack changed while it was being inventoried: ${relativePath}`);
+        }
+        entries.push(entry);
+        state.push({ path: relativePath, type: 'file', ...statIdentity(after) });
+        continue;
+      }
+
+      if (before.isSymbolicLink()) {
+        const target = await fsp.readlink(absolutePath);
+        entries.push({ path: relativePath, type: 'symlink', target });
+        state.push({
+          path: relativePath,
+          type: 'symlink',
+          target,
+          ...statIdentity(before),
+        });
+        continue;
+      }
+
+      throw new Error(`Unsupported entry in SIGame packs directory: ${relativePath}`);
+    }
+  }
+
+  await walk(resolvedDirectory);
+  return {
+    index: includeHashes
+      ? `${JSON.stringify({ version: 1, entries }, null, 2)}\n`
+      : null,
+    state: JSON.stringify(state),
+  };
+}
+
+async function findReusableSigameArchive(backupRoot, expectedIndex) {
+  const entries = await fsp.readdir(backupRoot, { withFileTypes: true });
+  const candidates = entries
+    .filter(entry => entry.isDirectory() && !entry.isSymbolicLink())
+    .map(entry => ({
+      name: entry.name,
+      timestamp: timestampFromSnapshotName(entry.name),
+    }))
+    .filter(entry => entry.timestamp !== null)
+    .sort((left, right) => right.timestamp - left.timestamp);
+
+  for (const candidate of candidates) {
+    const snapshot = assertSafeSnapshotPath(backupRoot, path.join(backupRoot, candidate.name));
+    const indexPath = path.join(snapshot, SIGAME_INDEX_FILENAME);
+    let existingIndex;
+    try {
+      existingIndex = await fsp.readFile(indexPath, 'utf8');
+    } catch (error) {
+      if (error.code === 'ENOENT') continue;
+      throw error;
+    }
+    if (existingIndex !== expectedIndex) continue;
+
+    await verifyManifest(snapshot, [
+      'cheese_wheel.db',
+      SIGAME_INDEX_FILENAME,
+      'sigame-packs.tar',
+      'uploads.tar',
+    ]);
+    return path.join(snapshot, 'sigame-packs.tar');
+  }
+
+  return null;
+}
+
 function assertSafeSnapshotPath(backupRoot, candidate) {
   const resolvedRoot = path.resolve(backupRoot);
   const resolvedCandidate = path.resolve(candidate);
@@ -347,6 +460,7 @@ async function runBackup(options = {}) {
     const backupDatabasePath = path.join(temporaryDirectory, 'cheese_wheel.db');
     const uploadsArchivePath = path.join(temporaryDirectory, 'uploads.tar');
     const sigamePacksArchivePath = path.join(temporaryDirectory, 'sigame-packs.tar');
+    const sigamePacksIndexPath = path.join(temporaryDirectory, SIGAME_INDEX_FILENAME);
 
     sourceDb = new Database(databasePath, {
       readonly: true,
@@ -403,14 +517,29 @@ async function runBackup(options = {}) {
       tarPath,
       'Uploads path'
     );
-    await archiveAndVerifyDirectory(
-      sigamePacksPath,
-      sigamePacksArchivePath,
-      tarPath,
-      'SIGame packs path'
+    const sigameInventory = await inventoryDirectory(sigamePacksPath, true);
+    await fsp.writeFile(sigamePacksIndexPath, sigameInventory.index, { mode: 0o600 });
+    const reusableSigameArchive = await findReusableSigameArchive(
+      backupRoot,
+      sigameInventory.index
     );
+    if (reusableSigameArchive) {
+      await fsp.link(reusableSigameArchive, sigamePacksArchivePath);
+    } else {
+      await archiveAndVerifyDirectory(
+        sigamePacksPath,
+        sigamePacksArchivePath,
+        tarPath,
+        'SIGame packs path'
+      );
+    }
+    const sigameStateAfterArchive = await inventoryDirectory(sigamePacksPath, false);
+    if (sigameStateAfterArchive.state !== sigameInventory.state) {
+      throw new Error('SIGame packs changed while their backup was being created');
+    }
     await writeAndVerifyManifest(temporaryDirectory, [
       'cheese_wheel.db',
+      SIGAME_INDEX_FILENAME,
       'sigame-packs.tar',
       'uploads.tar',
     ]);
@@ -461,6 +590,7 @@ module.exports = {
   EXPECTED_TABLES,
   LEGACY_EXPECTED_TABLES,
   SECURITY_TABLES,
+  SIGAME_INDEX_FILENAME,
   SIGAME_TABLES,
   assertSafeSnapshotPath,
   formatTimestamp,

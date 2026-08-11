@@ -8,7 +8,15 @@ cheese-wheel@*
 node
 dist/
 uploads/
+backups/
+.deploy-backups/
 
 .env
 *.bak
 *.bak.*
+*.pre-dedupe-*
+._*
+
+# Local runtimes and private client configurations are not release artifacts.
+deno.lock
+/mama_antona*.conf

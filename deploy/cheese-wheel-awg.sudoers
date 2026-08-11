@@ -1,0 +1,1 @@
+cheese-wheel ALL=(root) NOPASSWD: /usr/local/sbin/cheese-wheel-awg-helper *

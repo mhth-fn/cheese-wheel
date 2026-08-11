@@ -422,6 +422,10 @@
   margin-bottom: 6px;
 }
 
+.review-card > .movie-external-links {
+  margin: 2px 0 8px;
+}
+
 .review-card-actions {
   display: flex;
   align-items: center;
@@ -1129,7 +1133,7 @@
 .food-photo-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  max-height: 420px;
+  align-items: stretch;
   gap: 2px;
   background: var(--color-border-soft);
 }
@@ -1139,24 +1143,31 @@
 }
 
 .food-photo-trigger {
+  position: relative;
   display: block;
   width: 100%;
-  min-height: 180px;
+  min-width: 0;
+  aspect-ratio: 4 / 3;
   overflow: hidden;
   padding: 0;
   border: 0;
   appearance: none;
+  -webkit-appearance: none;
   background: var(--color-surface-muted);
   -webkit-tap-highlight-color: transparent;
   cursor: zoom-in;
 }
 
+.food-photo-grid.count-1 .food-photo-trigger {
+  aspect-ratio: 16 / 9;
+}
+
 .food-photo-grid img {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
-  min-height: 180px;
-  max-height: 280px;
   object-fit: cover;
   transform: none;
   transition: none;
@@ -1203,10 +1214,10 @@
 }
 
 .food-photo-lightbox-close {
-  position: absolute;
-  top: var(--space-3);
-  right: var(--space-3);
-  z-index: 1;
+  position: fixed;
+  top: max(var(--space-3), calc(env(safe-area-inset-top) + var(--space-3)));
+  right: max(var(--space-3), calc(env(safe-area-inset-right) + var(--space-3)));
+  z-index: 2;
   min-height: 40px;
   padding: 7px 12px;
   border: 1px solid rgba(255, 255, 255, 0.45);
@@ -1232,6 +1243,94 @@
   font-weight: 700;
 }
 
+.food-review-edit-photos {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-medium);
+  background: var(--color-surface-muted);
+}
+
+.food-review-edit-photos-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.food-review-edit-photos-heading strong {
+  color: var(--color-text);
+  font-size: 0.9rem;
+}
+
+.food-review-edit-photos-heading span,
+.food-review-edit-photos-empty,
+.food-review-edit-photo-picker small {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.food-review-edit-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.food-review-edit-photo {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--radius-small);
+  background: var(--color-surface);
+}
+
+.food-review-edit-photo img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+}
+
+.food-review-edit-photo button {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  min-height: 32px;
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: var(--radius-pill);
+  background: rgba(48, 19, 13, 0.86);
+  color: #fff;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.food-review-edit-photo button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.food-review-edit-photo-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.food-review-edit-photo-picker > span {
+  flex: none;
+  padding: 7px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
 .food-review-edit-actions {
   justify-content: flex-end;
 }
@@ -1241,9 +1340,19 @@
     grid-template-columns: 1fr;
   }
 
-  .food-photo-trigger,
-  .food-photo-grid img {
-    min-height: 130px;
+  .food-review-card .review-card-title {
+    flex: 1 0 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .food-review-edit-photos-heading,
+  .food-review-edit-photo-picker {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .food-review-edit-photo-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .food-photo-lightbox {

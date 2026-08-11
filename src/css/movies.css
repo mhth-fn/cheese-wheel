@@ -2,6 +2,61 @@
   display: contents;
 }
 
+.movie-external-links {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.movie-external-link {
+  display: inline-flex;
+  min-height: 28px;
+  padding: 0 9px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  color: var(--color-text);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  text-decoration: none;
+  transition: border-color 0.15s ease, filter 0.15s ease, transform 0.15s ease;
+}
+
+.movie-external-link:hover {
+  filter: brightness(0.96);
+  transform: translateY(-1px);
+}
+
+.movie-external-link:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-info) 36%, transparent);
+  outline-offset: 2px;
+}
+
+.movie-external-link.is-kinopoisk {
+  border-color: color-mix(in srgb, #f28c18 58%, var(--color-border));
+  background: color-mix(in srgb, #f28c18 18%, var(--color-surface));
+}
+
+.movie-external-link.is-imdb {
+  border-color: color-mix(in srgb, #f5c518 72%, var(--color-border));
+  background: #f5c518;
+  color: #171717;
+}
+
+.movie-external-links.is-compact {
+  gap: 4px;
+}
+
+.movie-external-links.is-compact .movie-external-link {
+  min-height: 23px;
+  padding: 0 7px;
+  font-size: 0.64rem;
+}
+
 .drawer-toggle {
   position: fixed;
   bottom: 20px;
@@ -257,6 +312,24 @@
 .wm-participant-copy {
   display: grid;
   min-width: 0;
+}
+
+.wm-participant-copy > .movie-external-links,
+.wm-item-copy > .movie-external-links {
+  margin-top: 5px;
+}
+
+.wm-participant-copy > .movie-external-links > a,
+.wm-item-copy > .movie-external-links > a {
+  overflow: visible;
+  color: var(--color-text);
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.wm-participant-copy > .movie-external-links > .is-imdb,
+.wm-item-copy > .movie-external-links > .is-imdb {
+  color: #171717;
 }
 
 .wm-participant-copy > strong,
@@ -728,15 +801,23 @@
   }
 
   .wm-tab {
-    min-height: 46px;
+    min-height: 66px;
+    padding: 6px 4px;
     flex-direction: column;
-    gap: 0;
+    gap: 3px;
     font-size: 0.7rem;
+    line-height: 1.15;
+  }
+
+  .wm-tab > span:first-child {
+    text-wrap: balance;
   }
 
   .wm-tab-count {
-    position: absolute;
-    transform: translate(22px, -12px);
+    position: static;
+    order: -1;
+    height: 20px;
+    transform: none;
   }
 
   .wm-item {

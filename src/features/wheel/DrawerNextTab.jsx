@@ -6,6 +6,7 @@ import {
   movieToDraft,
 } from '../movies/movieDraft';
 import MovieFields from '../movies/MovieFields';
+import MovieExternalLinks from '../movies/MovieExternalLinks';
 import MovieInlineEditor from './MovieInlineEditor';
 
 export default function DrawerNextTab({
@@ -141,6 +142,7 @@ export default function DrawerNextTab({
                   {movieMetaText(movie) ? `${movieMetaText(movie)} · ` : ''}
                   Выбор на следующий раунд · {movie.added_by_name || 'Автор не указан'}{isOwn ? ' · вы' : ''}
                 </span>
+                {!editing && <MovieExternalLinks movie={movie} compact />}
               </div>
               <span className="wm-item-status">Следующий раунд</span>
               {manageable && !editing && (

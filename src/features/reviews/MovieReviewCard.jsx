@@ -3,6 +3,7 @@ import {
   getRecommendInfo,
   RECOMMEND_OPTIONS,
 } from './reviewUtils';
+import MovieExternalLinks from '../movies/MovieExternalLinks';
 
 export default function MovieReviewCard({
   currentUser,
@@ -172,6 +173,7 @@ export default function MovieReviewCard({
               {review.year && <span>📅 {review.year}</span>}
             </div>
           )}
+          <MovieExternalLinks movie={movie || review} compact />
           <div className="review-card-meta">
             <span className="review-author">{review.user_name}</span>
             <span className="review-date">

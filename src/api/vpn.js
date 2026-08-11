@@ -14,11 +14,15 @@ export async function fetchVpnStatus() {
   return data;
 }
 
-export function createVpnClient(serverId, deviceName) {
+export function createVpnClient(serverId, protocol, deviceName) {
   return apiFetch('/api/vpn/clients', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ server_id: serverId, device_name: deviceName }),
+    body: JSON.stringify({
+      server_id: serverId,
+      protocol,
+      device_name: deviceName,
+    }),
   });
 }
 

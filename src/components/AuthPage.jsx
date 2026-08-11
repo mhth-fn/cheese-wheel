@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import MiniCheeseWheel from './MiniCheeseWheel';
 import { postAuth, postAuthTwoFactor } from '../api';
 
 export default function AuthPage({ users, onLogin, onGuest }) {
@@ -87,7 +88,7 @@ export default function AuthPage({ users, onLogin, onGuest }) {
 
   return (
     <div id="auth-page" className="page auth-page active">
-      <div className="auth-logo" aria-hidden="true">СК</div>
+      <MiniCheeseWheel />
       <h1 className="auth-title">Сырное Колесо</h1>
       <p className="auth-subtitle">
         {needsTwoFactor ? `Подтвердите вход: ${selectedUser?.name || 'участник'}` : 'Выбери себя'}

@@ -8,6 +8,7 @@ import {
   uploadCenterImage,
 } from '../api';
 import CheeseWheel from './CheeseWheel';
+import MovieExternalLinks from '../features/movies/MovieExternalLinks';
 import WheelThemeIcon from './WheelThemeIcon';
 
 async function readResponse(response) {
@@ -498,6 +499,7 @@ export default function OneOffWheelPanel() {
                             ВЫБЫЛ
                           </span>
                         )}
+                        <MovieExternalLinks movie={movie} compact />
                       </span>
                     </td>
                     <td>{movie.added_by_name}</td>

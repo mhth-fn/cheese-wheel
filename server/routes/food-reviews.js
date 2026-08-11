@@ -1,11 +1,24 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { execFile } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const { promisify } = require('node:util');
 
 const MAX_PHOTOS = 4;
-const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
+const MAX_STORED_PHOTO_BYTES = 10 * 1024 * 1024;
+const MAX_UPLOAD_PHOTO_BYTES = 100 * 1024 * 1024;
+const FFMPEG_PATH = process.env.FOOD_PHOTO_FFMPEG_PATH || 'ffmpeg';
+const execFileAsync = promisify(execFile);
+const COMPRESSION_ATTEMPTS = [
+  { maxDimension: 4096, quality: 3 },
+  { maxDimension: 3072, quality: 5 },
+  { maxDimension: 2560, quality: 7 },
+  { maxDimension: 2048, quality: 9 },
+  { maxDimension: 1600, quality: 12 },
+  { maxDimension: 1280, quality: 15 },
+];
 const PHOTO_TYPES = new Map([
   ['image/jpeg', '.jpg'],
   ['image/png', '.png'],
@@ -25,7 +38,9 @@ function registerFoodReviewRoutes(context) {
     uploadsPath,
   } = context;
   const photosPath = path.join(uploadsPath, 'food-reviews');
+  const thumbnailsPath = path.join(photosPath, 'thumbnails');
   fs.mkdirSync(photosPath, { recursive: true, mode: 0o750 });
+  fs.mkdirSync(thumbnailsPath, { recursive: true, mode: 0o750 });
 
   const statements = {
     list: db.prepare(`
@@ -73,12 +88,17 @@ function registerFoodReviewRoutes(context) {
   }
 
   function serializePhoto(photo) {
+    const thumbnailKey = thumbnailStorageKey(photo.storage_key);
+    const thumbnailUrl = fs.existsSync(path.join(thumbnailsPath, thumbnailKey))
+      ? `/uploads/food-reviews/thumbnails/${encodeURIComponent(thumbnailKey)}`
+      : `/uploads/food-reviews/${encodeURIComponent(photo.storage_key)}`;
     return {
       id: photo.id,
       original_file_name: photo.original_file_name,
       mime_type: photo.mime_type,
       file_size: photo.file_size,
       url: `/uploads/food-reviews/${encodeURIComponent(photo.storage_key)}`,
+      thumbnail_url: thumbnailUrl,
     };
   }
 
@@ -108,6 +128,11 @@ function registerFoodReviewRoutes(context) {
     return path.basename(String(value || 'photo')).replace(/[\0\r\n]/g, '').slice(0, 180);
   }
 
+  function thumbnailStorageKey(storageKey) {
+    const baseName = path.parse(path.basename(String(storageKey || 'photo'))).name;
+    return `${baseName}.jpg`;
+  }
+
   function receivePhoto(req, temporaryPath, expectedSize) {
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -127,7 +152,7 @@ function registerFoodReviewRoutes(context) {
         if (signature.length < 12) {
           signature = Buffer.concat([signature, chunk]).subarray(0, 12);
         }
-        if (received > MAX_PHOTO_BYTES || received > expectedSize) {
+        if (received > MAX_UPLOAD_PHOTO_BYTES || received > expectedSize) {
           const error = new Error('Фотография слишком большая');
           error.status = 413;
           fail(error);
@@ -168,6 +193,125 @@ function registerFoodReviewRoutes(context) {
       && signature.subarray(0, 4).toString('ascii') === 'RIFF'
       && signature.subarray(8, 12).toString('ascii') === 'WEBP';
   }
+
+  async function compressPhoto(inputPath, outputPath) {
+    for (const attempt of COMPRESSION_ATTEMPTS) {
+      try {
+        await execFileAsync(FFMPEG_PATH, [
+          '-nostdin',
+          '-hide_banner',
+          '-loglevel', 'error',
+          '-y',
+          '-i', inputPath,
+          '-map_metadata', '-1',
+          '-vf', `scale='min(${attempt.maxDimension},iw)':'min(${attempt.maxDimension},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuvj420p`,
+          '-frames:v', '1',
+          '-c:v', 'mjpeg',
+          '-q:v', String(attempt.quality),
+          '-f', 'image2',
+          outputPath,
+        ], {
+          encoding: 'utf8',
+          timeout: 90_000,
+          maxBuffer: 128 * 1024,
+          windowsHide: true,
+          env: {
+            LANG: 'C.UTF-8',
+            PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+          },
+        });
+      } catch (error) {
+        try { fs.unlinkSync(outputPath); } catch { /* already absent */ }
+        const compressionError = new Error('Не удалось сжать фотографию');
+        compressionError.status = error.killed ? 408 : 422;
+        throw compressionError;
+      }
+
+      const stats = await fs.promises.stat(outputPath);
+      if (stats.size > 0 && stats.size <= MAX_STORED_PHOTO_BYTES) {
+        const signature = Buffer.alloc(12);
+        const handle = await fs.promises.open(outputPath, 'r');
+        try {
+          await handle.read(signature, 0, signature.length, 0);
+        } finally {
+          await handle.close();
+        }
+        if (signatureMatches('image/jpeg', signature)) {
+          return stats.size;
+        }
+      }
+    }
+
+    try { fs.unlinkSync(outputPath); } catch { /* already absent */ }
+    const error = new Error('Не удалось уменьшить фотографию до 10 МБ');
+    error.status = 422;
+    throw error;
+  }
+
+  async function createPhotoThumbnail(inputPath, outputPath) {
+    try {
+      await execFileAsync(FFMPEG_PATH, [
+        '-nostdin',
+        '-hide_banner',
+        '-loglevel', 'error',
+        '-y',
+        '-i', inputPath,
+        '-map_metadata', '-1',
+        '-vf', "scale='min(1280,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuvj420p",
+        '-frames:v', '1',
+        '-c:v', 'mjpeg',
+        '-q:v', '6',
+        '-f', 'image2',
+        outputPath,
+      ], {
+        encoding: 'utf8',
+        timeout: 60_000,
+        maxBuffer: 128 * 1024,
+        windowsHide: true,
+        env: {
+          LANG: 'C.UTF-8',
+          PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+        },
+      });
+      const stats = await fs.promises.stat(outputPath);
+      const signature = Buffer.alloc(12);
+      const handle = await fs.promises.open(outputPath, 'r');
+      try {
+        await handle.read(signature, 0, signature.length, 0);
+      } finally {
+        await handle.close();
+      }
+      if (stats.size < 1 || !signatureMatches('image/jpeg', signature)) {
+        throw new Error('Invalid thumbnail output');
+      }
+    } catch (error) {
+      try { fs.unlinkSync(outputPath); } catch { /* already absent */ }
+      const thumbnailError = new Error('Не удалось подготовить превью фотографии');
+      thumbnailError.status = error.killed ? 408 : 422;
+      throw thumbnailError;
+    }
+  }
+
+  async function ensureExistingPhotoThumbnails() {
+    const photos = db.prepare('SELECT storage_key FROM food_review_photos ORDER BY id').all();
+    for (const photo of photos) {
+      const sourcePath = path.join(photosPath, photo.storage_key);
+      const thumbnailKey = thumbnailStorageKey(photo.storage_key);
+      const thumbnailPath = path.join(thumbnailsPath, thumbnailKey);
+      const temporaryThumbnailPath = path.join(thumbnailsPath, `.${thumbnailKey}.upload`);
+      if (!fs.existsSync(sourcePath) || fs.existsSync(thumbnailPath)) continue;
+      try {
+        await createPhotoThumbnail(sourcePath, temporaryThumbnailPath);
+        fs.renameSync(temporaryThumbnailPath, thumbnailPath);
+      } catch (error) {
+        console.warn('[cheese-wheel] Failed to prepare food photo thumbnail:', error.message);
+      }
+    }
+  }
+
+  setImmediate(() => {
+    void ensureExistingPhotoThumbnails();
+  });
 
   app.get('/api/food-reviews', (req, res) => {
     res.json(statements.list.all().map(serializeReview));
@@ -226,11 +370,16 @@ function registerFoodReviewRoutes(context) {
     });
     removeReview();
     photos.forEach(photo => {
-      try {
-        fs.unlinkSync(path.join(photosPath, photo.storage_key));
-      } catch (error) {
-        if (error.code !== 'ENOENT') {
-          console.warn('[cheese-wheel] Failed to remove food photo:', error.message);
+      for (const filePath of [
+        path.join(photosPath, photo.storage_key),
+        path.join(thumbnailsPath, thumbnailStorageKey(photo.storage_key)),
+      ]) {
+        try {
+          fs.unlinkSync(filePath);
+        } catch (error) {
+          if (error.code !== 'ENOENT') {
+            console.warn('[cheese-wheel] Failed to remove food photo:', error.message);
+          }
         }
       }
     });
@@ -260,12 +409,16 @@ function registerFoodReviewRoutes(context) {
     if (!Number.isInteger(expectedSize) || expectedSize < 1) {
       return res.status(400).json({ error: 'Выберите фотографию' });
     }
-    if (expectedSize > MAX_PHOTO_BYTES) {
-      return res.status(413).json({ error: 'Фотография больше 10 МБ' });
+    if (expectedSize > MAX_UPLOAD_PHOTO_BYTES) {
+      return res.status(413).json({ error: 'Фотография больше 100 МБ' });
     }
-    const storageKey = `${crypto.randomUUID()}${extension}`;
-    const finalPath = path.join(photosPath, storageKey);
-    const temporaryPath = path.join(photosPath, `.${storageKey}.upload`);
+    const fileId = crypto.randomUUID();
+    const temporaryPath = path.join(photosPath, `.${fileId}${extension}.upload`);
+    const compressedPath = path.join(photosPath, `.${fileId}.compressed.jpg.upload`);
+    const thumbnailKey = `${fileId}.jpg`;
+    const thumbnailPath = path.join(thumbnailsPath, thumbnailKey);
+    const temporaryThumbnailPath = path.join(thumbnailsPath, `.${thumbnailKey}.upload`);
+    let finalPath = null;
     try {
       const upload = await receivePhoto(req, temporaryPath, expectedSize);
       if (!signatureMatches(mimeType, upload.signature)) {
@@ -273,20 +426,37 @@ function registerFoodReviewRoutes(context) {
         error.status = 400;
         throw error;
       }
-      fs.renameSync(temporaryPath, finalPath);
+      const compressed = upload.received > MAX_STORED_PHOTO_BYTES;
+      const storedMimeType = compressed ? 'image/jpeg' : mimeType;
+      const storedExtension = compressed ? '.jpg' : extension;
+      const storageKey = `${fileId}${storedExtension}`;
+      finalPath = path.join(photosPath, storageKey);
+      const storedSize = compressed
+        ? await compressPhoto(temporaryPath, compressedPath)
+        : upload.received;
+      fs.renameSync(compressed ? compressedPath : temporaryPath, finalPath);
+      await createPhotoThumbnail(finalPath, temporaryThumbnailPath);
+      fs.renameSync(temporaryThumbnailPath, thumbnailPath);
       const result = statements.insertPhoto.run(
         id,
         storageKey,
         safeOriginalName(req.query.original_file_name),
-        mimeType,
-        upload.received,
+        storedMimeType,
+        storedSize,
         Date.now()
       );
       const photo = statements.getPhoto.get(result.lastInsertRowid);
       io.emit('food-reviews-changed', { action: 'photo-added', review_id: id });
-      res.status(201).json(serializePhoto(photo));
+      res.status(201).json({ ...serializePhoto(photo), compressed });
     } catch (error) {
-      for (const filePath of [temporaryPath, finalPath]) {
+      for (const filePath of [
+        temporaryPath,
+        compressedPath,
+        temporaryThumbnailPath,
+        thumbnailPath,
+        finalPath,
+      ]) {
+        if (!filePath) continue;
         try { fs.unlinkSync(filePath); } catch { /* already absent */ }
       }
       res.status(error.status || 500).json({
@@ -310,7 +480,12 @@ function registerFoodReviewRoutes(context) {
       return res.status(403).json({ error: 'Можно удалять фотографии только своего обзора' });
     }
     statements.deletePhoto.run(photoId);
-    try { fs.unlinkSync(path.join(photosPath, photo.storage_key)); } catch { /* already absent */ }
+    for (const filePath of [
+      path.join(photosPath, photo.storage_key),
+      path.join(thumbnailsPath, thumbnailStorageKey(photo.storage_key)),
+    ]) {
+      try { fs.unlinkSync(filePath); } catch { /* already absent */ }
+    }
     io.emit('food-reviews-changed', { action: 'photo-deleted', review_id: reviewId });
     res.json({ ok: true });
   });

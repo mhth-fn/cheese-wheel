@@ -3,10 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <script>
+    try {
+      var savedDesign = localStorage.getItem('cheese-wheel-theme');
+      var initialDesign = savedDesign === 'seraphim' ? 'seraphim' : 'classic';
+      document.documentElement.dataset.design = initialDesign;
+      if (initialDesign === 'seraphim') {
+        document.documentElement.style.backgroundColor = '#080806';
+      }
+    } catch (error) {
+      document.documentElement.dataset.design = 'classic';
+    }
+  </script>
   <title>Сырное Колесо</title>
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="preload" as="image" href="/cheese-loader.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Comfortaa:wght@400;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
@@ -24,7 +37,9 @@
       spring: '#e8f5e9'
     };
     var browserThemeColor = browserThemeColors[t] || browserThemeColors.cheese;
-    document.documentElement.style.backgroundColor = browserThemeColor;
+    if (document.documentElement.dataset.design !== 'seraphim') {
+      document.documentElement.style.backgroundColor = browserThemeColor;
+    }
     if (t === 'newyear') document.body.classList.add('theme-newyear');
     else if (t === 'spring') document.body.classList.add('theme-spring');
   </script>

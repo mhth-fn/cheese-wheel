@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   deleteFoodReview,
+  deleteFoodReviewPhoto,
   fetchFoodReviews,
   patchFoodReview,
   postFoodReview,
@@ -81,6 +82,7 @@ export default function FoodReviewsPage() {
   });
   const [activePhoto, setActivePhoto] = useState(null);
   const photoInputRef = useRef(null);
+  const editPhotoInputRef = useRef(null);
   const closePhoto = useCallback(() => setActivePhoto(null), []);
 
   const load = useCallback(async ({ quiet = false } = {}) => {
@@ -197,11 +199,81 @@ export default function FoodReviewsPage() {
 
   const startEdit = review => {
     setEditingId(review.id);
+    if (editPhotoInputRef.current) editPhotoInputRef.current.value = '';
     setEditFields({
       title: review.title || '',
       content: review.content || '',
       recommend: Number(review.recommend),
     });
+  };
+
+  const addEditPhotos = async (event, review) => {
+    const selected = [...(event.target.files || [])];
+    event.target.value = '';
+    if (selected.length === 0 || busy) return;
+    const existingCount = review.photos?.length || 0;
+    if (existingCount + selected.length > MAX_FOOD_PHOTOS) {
+      showToast(`В обзоре может быть не больше ${MAX_FOOD_PHOTOS} фотографий`, 'error');
+      return;
+    }
+    const invalid = selected.find(file => validateFoodPhoto(file));
+    if (invalid) {
+      showToast(`«${invalid.name}»: ${validateFoodPhoto(invalid)}`, 'error');
+      return;
+    }
+
+    setBusy(true);
+    let uploaded = 0;
+    let compressed = 0;
+    try {
+      for (const file of selected) {
+        const prepared = await prepareFoodPhoto(file);
+        const saved = await readResponse(await uploadFoodReviewPhoto(review.id, prepared));
+        uploaded += 1;
+        if (saved.compressed) compressed += 1;
+      }
+      await load({ quiet: true });
+      showToast(
+        compressed > 0
+          ? `Добавлено фото: ${uploaded}; сжато на сервере: ${compressed}`
+          : `Добавлено фото: ${uploaded}`,
+        'success'
+      );
+    } catch (error) {
+      await load({ quiet: true });
+      showToast(
+        uploaded > 0
+          ? `Добавлено фото: ${uploaded}. Следующее не загрузилось: ${error.message}`
+          : (error.message || 'Не удалось добавить фотографию'),
+        'error'
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeEditPhoto = async (review, photo) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await readResponse(await deleteFoodReviewPhoto(review.id, photo.id));
+      setReviews(previous => previous.map(item => (
+        Number(item.id) === Number(review.id)
+          ? {
+              ...item,
+              photos: (item.photos || []).filter(
+                itemPhoto => Number(itemPhoto.id) !== Number(photo.id)
+              ),
+            }
+          : item
+      )));
+      if (activePhoto?.url === photo.url) closePhoto();
+      showToast('Фотография удалена', 'info');
+    } catch (error) {
+      showToast(error.message || 'Не удалось удалить фотографию', 'error');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const saveEdit = async event => {
@@ -307,7 +379,7 @@ export default function FoodReviewsPage() {
                 onChange={choosePhotos}
               />
               <span className="food-photo-button">Выбрать фото</span>
-              <small>До 4 фото, каждое не больше 10 МБ; HEIC с iPhone поддерживается</small>
+              <small>До 4 фото, каждое до 100 МБ; файлы больше 10 МБ сжимаются</small>
             </label>
           </div>
           {photos.length > 0 && (
@@ -350,7 +422,7 @@ export default function FoodReviewsPage() {
           )?.reaction;
           return (
             <article className="review-card food-review-card" key={review.id}>
-              {review.photos?.length > 0 && (
+              {editingId !== review.id && review.photos?.length > 0 && (
                 <div className={`food-photo-grid count-${Math.min(review.photos.length, 4)}`}>
                   {review.photos.map((photo, index) => (
                     <button
@@ -366,7 +438,10 @@ export default function FoodReviewsPage() {
                       }}
                       aria-label={`Открыть фото ${index + 1} к обзору «${review.title}»`}
                     >
-                      <img src={photo.url} alt={`${review.title}: фото`} loading="lazy" />
+                      <img
+                        src={photo.thumbnail_url || photo.url}
+                        alt={`${review.title}: фото`}
+                      />
                     </button>
                   ))}
                 </div>
@@ -421,6 +496,52 @@ export default function FoodReviewsPage() {
                         ))}
                       </div>
                     </fieldset>
+                    <section
+                      className="food-review-edit-photos"
+                      aria-label={`Фотографии обзора «${review.title}»`}
+                    >
+                      <div className="food-review-edit-photos-heading">
+                        <strong>Фотографии</strong>
+                        <span>{review.photos?.length || 0}/{MAX_FOOD_PHOTOS} · изменения применяются сразу</span>
+                      </div>
+                      {review.photos?.length > 0 ? (
+                        <div className="food-review-edit-photo-grid">
+                          {review.photos.map((photo, index) => (
+                            <div className="food-review-edit-photo" key={photo.id}>
+                              <img
+                                src={photo.thumbnail_url || photo.url}
+                                alt={`${review.title}: фото ${index + 1}`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeEditPhoto(review, photo)}
+                                disabled={busy}
+                                aria-label={`Удалить фото ${index + 1} из обзора «${review.title}»`}
+                              >
+                                Удалить
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="food-review-edit-photos-empty">Фотографий пока нет</span>
+                      )}
+                      {(review.photos?.length || 0) < MAX_FOOD_PHOTOS && (
+                        <label className="food-review-edit-photo-picker">
+                          <input
+                            className="sr-only"
+                            type="file"
+                            ref={editPhotoInputRef}
+                            accept={FOOD_PHOTO_ACCEPT}
+                            multiple
+                            disabled={busy}
+                            onChange={event => addEditPhotos(event, review)}
+                          />
+                          <span>Добавить фото</span>
+                          <small>До 100 МБ; крупные файлы сервер уменьшит до 10 МБ</small>
+                        </label>
+                      )}
+                    </section>
                     <div className="review-form-footer food-review-edit-actions">
                       <button
                         className="review-edit-cancel"

@@ -3,6 +3,7 @@ import { AppContext } from './app/AppContext';
 import AppView from './app/AppView';
 import { useAppSettings } from './hooks/useAppSettings';
 import { useDocumentTheme } from './hooks/useDocumentTheme';
+import { useInterfaceTheme } from './hooks/useInterfaceTheme';
 import { useRealtimeSocket } from './hooks/useRealtimeSocket';
 import { useSession } from './hooks/useSession';
 import { useToasts } from './hooks/useToasts';
@@ -26,6 +27,7 @@ export default function App() {
     showToast,
   });
   const settings = useAppSettings();
+  const interfaceTheme = useInterfaceTheme();
   const wheel = useWheelState(session.isLoggedIn);
   const realtime = useRealtimeSocket({
     isLoggedIn: session.isLoggedIn,
@@ -59,6 +61,7 @@ export default function App() {
   const context = {
     ...session,
     ...settings,
+    ...interfaceTheme,
     ...wheel,
     ...realtime,
     ...wheelActions,

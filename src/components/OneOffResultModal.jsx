@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useApp } from '../app/AppContext';
 import { resolveOneOffResult } from '../api';
 import { useDialogA11y } from '../hooks/useDialogA11y';
+import MovieExternalLinks from '../features/movies/MovieExternalLinks';
 
 async function readResponse(response) {
   const data = await response.json().catch(() => ({}));
@@ -89,6 +90,7 @@ export default function OneOffResultModal({ visible }) {
           <div id="one-off-result-title" className="result-card-title">
             {result.movie.title}
           </div>
+          <MovieExternalLinks movie={result.movie} className="one-off-result-links" />
           <div className="result-card-suggested">
             {result.eliminated_movie
               ? `«${result.eliminated_movie.title}» выбыл последним`

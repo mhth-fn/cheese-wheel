@@ -8,8 +8,8 @@ import DrawerSettingsTab from '../features/wheel/DrawerSettingsTab';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 
 const TABS = [
-  { key: 'participants', label: 'Участники' },
-  { key: 'next', label: 'Следующие' },
+  { key: 'participants', label: 'Текущее колесо' },
+  { key: 'next', label: 'Следующее колесо' },
   { key: 'settings', label: 'Настройки' },
 ];
 

@@ -129,6 +129,8 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     server_id TEXT NOT NULL,
+    protocol TEXT NOT NULL DEFAULT 'vless'
+      CHECK(protocol IN ('vless', 'amneziawg')),
     inbound_id INTEGER NOT NULL,
     client_id TEXT UNIQUE NOT NULL,
     email TEXT NOT NULL,
@@ -136,7 +138,7 @@ db.exec(`
     connection_link TEXT NOT NULL,
     created_at INTEGER NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id),
-    UNIQUE(user_id, server_id, device_name)
+    UNIQUE(user_id, server_id, protocol, device_name)
   );
 
   CREATE TABLE IF NOT EXISTS review_reactions (
@@ -266,6 +268,48 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_sigame_pack_tags_tag
     ON sigame_pack_tags(tag);
 `);
+
+// VPN v2: один и тот же аппарат может иметь отдельные VLESS и AmneziaWG
+// конфигурации на одном сервере. Старые записи однозначно являются VLESS.
+const vpnClientsSchema = db.prepare(`
+  SELECT sql FROM sqlite_master
+  WHERE type = 'table' AND name = 'vpn_clients'
+`).get()?.sql || '';
+if (!/\bprotocol\b/i.test(vpnClientsSchema)) {
+  const migrateVpnProtocols = db.transaction(() => {
+    db.exec(`
+      ALTER TABLE vpn_clients RENAME TO vpn_clients_before_protocols;
+
+      CREATE TABLE vpn_clients (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        server_id TEXT NOT NULL,
+        protocol TEXT NOT NULL DEFAULT 'vless'
+          CHECK(protocol IN ('vless', 'amneziawg')),
+        inbound_id INTEGER NOT NULL,
+        client_id TEXT UNIQUE NOT NULL,
+        email TEXT NOT NULL,
+        device_name TEXT COLLATE NOCASE NOT NULL,
+        connection_link TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        UNIQUE(user_id, server_id, protocol, device_name)
+      );
+
+      INSERT INTO vpn_clients (
+        id, user_id, server_id, protocol, inbound_id, client_id, email,
+        device_name, connection_link, created_at
+      )
+      SELECT
+        id, user_id, server_id, 'vless', inbound_id, client_id, email,
+        device_name, connection_link, created_at
+      FROM vpn_clients_before_protocols;
+
+      DROP TABLE vpn_clients_before_protocols;
+    `);
+  });
+  migrateVpnProtocols();
+}
 
 // Миграция SIGame v2: старые метаданные сохраняются, а новые записи получают
 // закрытый .siq-файл. planned остаётся внутренним именем статуса unplayed.

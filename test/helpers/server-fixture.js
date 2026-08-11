@@ -29,6 +29,7 @@ async function allocatePort() {
 
 async function startServer(dataDir, {
   discordWebhookUrl = '',
+  extraEnv = {},
   frontend = 'disabled',
 } = {}) {
   if (!['disabled', 'built'].includes(frontend)) {
@@ -54,6 +55,7 @@ async function startServer(dataDir, {
       TEST_FRONTEND_DIST_PATH: frontend === 'disabled'
         ? path.join(dataDir, 'frontend-disabled')
         : '',
+      ...extraEnv,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

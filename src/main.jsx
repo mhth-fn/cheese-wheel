@@ -21,6 +21,7 @@ import './css/sigame.css';
 import './css/reviews.css';
 import './css/vpn.css';
 import './css/responsive.css';
+import './css/theme-seraphim.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

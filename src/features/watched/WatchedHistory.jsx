@@ -1,4 +1,5 @@
 import { movieMetaText } from '../movies/movieDraft';
+import MovieExternalLinks from '../movies/MovieExternalLinks';
 
 function formatDate(dateString) {
   if (!dateString) return '';
@@ -281,6 +282,7 @@ export default function WatchedHistory({
                           </button>
                         )}
                       </div>
+                      <MovieExternalLinks movie={movie} compact />
                     </div>
                   )}
                 </td>

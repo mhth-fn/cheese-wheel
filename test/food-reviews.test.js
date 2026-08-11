@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
@@ -102,12 +103,18 @@ test('food photo limit is aligned across the browser, server, and Nginx', () => 
     'utf8'
   );
 
-  assert.match(frontend, /MAX_FOOD_PHOTO_BYTES\s*=\s*10 \* 1024 \* 1024/);
+  assert.match(frontend, /MAX_FOOD_PHOTO_BYTES\s*=\s*100 \* 1024 \* 1024/);
+  assert.match(
+    frontend,
+    /FOOD_PHOTO_COMPRESSION_THRESHOLD_BYTES\s*=\s*10 \* 1024 \* 1024/
+  );
   assert.match(frontend, /image\/heic/);
-  assert.match(server, /MAX_PHOTO_BYTES\s*=\s*10 \* 1024 \* 1024/);
+  assert.match(server, /MAX_STORED_PHOTO_BYTES\s*=\s*10 \* 1024 \* 1024/);
+  assert.match(server, /MAX_UPLOAD_PHOTO_BYTES\s*=\s*100 \* 1024 \* 1024/);
+  assert.match(server, /\bexecFileAsync\(FFMPEG_PATH,/);
   assert.match(
     nginx,
-    /location ~ \^\/api\/food-reviews\/\[0-9\]\+\/photos\$\s*\{[^}]*client_max_body_size 10m;/s
+    /location ~ \^\/api\/food-reviews\/\[0-9\]\+\/photos\$\s*\{[^}]*client_max_body_size 100m;/s
   );
 });
 
@@ -122,12 +129,36 @@ test('food review UI exposes editing, reactions, and non-animated photos', () =>
   );
 
   assert.match(page, /\bpatchFoodReview\(editingId,/);
+  assert.match(page, /\bdeleteFoodReviewPhoto\(review\.id, photo\.id\)/);
+  assert.match(page, /\buploadFoodReviewPhoto\(review\.id, prepared\)/);
+  assert.match(page, /Фотографии обзора/);
   assert.match(page, /\bpostReviewReaction\('food', reviewId, reaction\)/);
   assert.match(page, /socket\.on\('review-reaction-updated', updateReaction\)/);
   assert.match(page, /socket\.off\('review-reaction-updated', updateReaction\)/);
+  assert.match(page, /src=\{photo\.thumbnail_url \|\| photo\.url\}/);
+  assert.doesNotMatch(
+    page,
+    /loading=["']lazy["']/,
+    'Safari must receive food review thumbnails without lazy-loading the grid images'
+  );
   assert.match(
     styles,
     /\.food-photo-grid img\s*\{[^}]*transform:\s*none;[^}]*transition:\s*none;/s
+  );
+  assert.match(
+    styles,
+    /\.food-photo-trigger\s*\{[^}]*aspect-ratio:\s*4\s*\/\s*3;/s,
+    'food photo controls need explicit geometry in Safari'
+  );
+  assert.match(
+    styles,
+    /@media \(max-width: 680px\)\s*\{[\s\S]*?\.food-review-card \.review-card-title\s*\{[^}]*flex:\s*1 0 100%;[^}]*overflow-wrap:\s*anywhere;/,
+    'food review titles need their own flex row on narrow screens'
+  );
+  assert.doesNotMatch(
+    styles,
+    /\.food-photo-grid\s*\{[^}]*max-height:/s,
+    'the photo grid must not create a percentage-height sizing cycle in Safari'
   );
   assert.doesNotMatch(
     styles,
@@ -144,6 +175,10 @@ test('food review UI exposes editing, reactions, and non-animated photos', () =>
 test('food photos open in an accessible modal lightbox', () => {
   const page = fs.readFileSync(
     path.join(__dirname, '..', 'src', 'components', 'FoodReviewsPage.jsx'),
+    'utf8'
+  );
+  const styles = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'css', 'reviews.css'),
     'utf8'
   );
   const dialogA11y = fs.readFileSync(
@@ -178,6 +213,16 @@ test('food photos open in an accessible modal lightbox', () => {
     /on(?:Click|MouseDown)=\{[^}]*event\.target\s*===\s*event\.currentTarget[^}]*\}/s,
     'clicking the backdrop must close the lightbox without treating clicks on the photo as backdrop clicks'
   );
+  assert.match(
+    styles,
+    /\.food-photo-lightbox-close\s*\{[^}]*position:\s*fixed;[^}]*safe-area-inset-top[^}]*safe-area-inset-right/s,
+    'the close button must stay pinned to the iPhone safe area while the photo loads'
+  );
+  assert.doesNotMatch(
+    styles,
+    /\.food-photo-lightbox-close\s*\{[^}]*position:\s*absolute;/s,
+    'the close button must not depend on the decoded photo dimensions'
+  );
 
   assert.match(
     dialogA11y,
@@ -198,8 +243,20 @@ test('food photos open in an accessible modal lightbox', () => {
 
 test('food reviews accept bounded photos and preserve ownership', async t => {
   const dataDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'cheese-wheel-food-test-'));
+  const realFfmpegPath = process.env.TEST_FOOD_PHOTO_REAL_FFMPEG || '';
+  const fakeFfmpegPath = path.join(dataDir, 'fake-food-ffmpeg.js');
+  await fsp.writeFile(fakeFfmpegPath, `#!/bin/sh
+for output_path do :; done
+printf '\\377\\330\\377\\331' > "$output_path"
+`);
+  await fsp.chmod(fakeFfmpegPath, 0o755);
   const discord = await startDiscordWebhook();
-  const instance = await startServer(dataDir, { discordWebhookUrl: discord.url });
+  const instance = await startServer(dataDir, {
+    discordWebhookUrl: discord.url,
+    extraEnv: {
+      FOOD_PHOTO_FFMPEG_PATH: realFfmpegPath || fakeFfmpegPath,
+    },
+  });
   t.after(async () => {
     await stopServer(instance);
     await discord.close();
@@ -316,7 +373,20 @@ test('food reviews accept bounded photos and preserve ownership', async t => {
     { user_id: peter.user.id, reaction: -1 },
   ]);
 
-  const fakePng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  let fakePng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (realFfmpegPath) {
+    const smallPngPath = path.join(dataDir, 'real-small.png');
+    execFileSync(realFfmpegPath, [
+      '-nostdin',
+      '-hide_banner',
+      '-loglevel', 'error',
+      '-f', 'lavfi',
+      '-i', 'color=c=orange:s=16x16',
+      '-frames:v', '1',
+      smallPngPath,
+    ], { timeout: 30_000 });
+    fakePng = await fsp.readFile(smallPngPath);
+  }
   const photo = await uploadPhoto(
     instance,
     anton.cookie,
@@ -325,6 +395,10 @@ test('food reviews accept bounded photos and preserve ownership', async t => {
   );
   assert.equal(photo.status, 201, JSON.stringify(photo.payload));
   assert.match(photo.payload.url, /^\/uploads\/food-reviews\//);
+  assert.match(
+    photo.payload.thumbnail_url,
+    /^\/uploads\/food-reviews\/thumbnails\/[^/]+\.jpg$/
+  );
   assert.equal((await uploadPhoto(
     instance,
     anton.cookie,
@@ -351,23 +425,68 @@ test('food reviews accept bounded photos and preserve ownership', async t => {
   );
   assert.equal(maximumPhoto.status, 201, JSON.stringify(maximumPhoto.payload));
 
-  const oversizedPng = Buffer.alloc((10 * 1024 * 1024) + 1);
-  fakePng.copy(oversizedPng);
+  const tooLargeResponse = await fetch(
+    `${instance.baseUrl}/api/food-reviews/${created.payload.id}/photos?original_file_name=huge.png`,
+    {
+      method: 'POST',
+      headers: {
+        Cookie: anton.cookie,
+        'Content-Type': 'image/png',
+        'X-File-Size': String((100 * 1024 * 1024) + 1),
+      },
+      body: fakePng,
+    }
+  );
+  assert.equal(tooLargeResponse.status, 413);
+  assert.equal(
+    (await tooLargeResponse.json()).error,
+    'Фотография больше 100 МБ'
+  );
+
+  let oversizedPng;
+  if (realFfmpegPath) {
+    const oversizedPngPath = path.join(dataDir, 'real-oversized.png');
+    execFileSync(realFfmpegPath, [
+      '-nostdin',
+      '-hide_banner',
+      '-loglevel', 'error',
+      '-f', 'lavfi',
+      '-i', 'nullsrc=s=3000x3000',
+      '-vf', 'noise=alls=100:allf=t',
+      '-frames:v', '1',
+      '-compression_level', '0',
+      oversizedPngPath,
+    ], { timeout: 90_000 });
+    oversizedPng = await fsp.readFile(oversizedPngPath);
+    assert.ok(oversizedPng.length > 10 * 1024 * 1024);
+    assert.ok(oversizedPng.length <= 100 * 1024 * 1024);
+  } else {
+    oversizedPng = Buffer.alloc((10 * 1024 * 1024) + 1);
+    fakePng.copy(oversizedPng);
+  }
   const oversizedPhoto = await uploadPhoto(
     instance,
     anton.cookie,
     created.payload.id,
     oversizedPng
   );
-  assert.equal(oversizedPhoto.status, 413, JSON.stringify(oversizedPhoto.payload));
-  assert.equal(oversizedPhoto.payload.error, 'Фотография больше 10 МБ');
+  assert.equal(oversizedPhoto.status, 201, JSON.stringify(oversizedPhoto.payload));
+  assert.equal(oversizedPhoto.payload.compressed, true);
+  assert.equal(oversizedPhoto.payload.mime_type, 'image/jpeg');
+  if (realFfmpegPath) {
+    assert.ok(oversizedPhoto.payload.file_size > 4);
+    assert.ok(oversizedPhoto.payload.file_size <= 10 * 1024 * 1024);
+  } else {
+    assert.equal(oversizedPhoto.payload.file_size, 4);
+  }
+  assert.match(oversizedPhoto.payload.url, /\.jpg$/);
 
   const listed = await request(instance, '/api/food-reviews', {
     cookie: peter.cookie,
   });
   assert.equal(listed.status, 200);
   assert.equal(listed.payload.length, 1);
-  assert.equal(listed.payload[0].photos.length, 3);
+  assert.equal(listed.payload[0].photos.length, 4);
   assert.equal(listed.payload[0].likes, 0);
   assert.equal(listed.payload[0].dislikes, 1);
   assert.deepEqual(listed.payload[0].reactions, [
@@ -376,6 +495,23 @@ test('food reviews accept bounded photos and preserve ownership', async t => {
   const servedPhoto = await fetch(`${instance.baseUrl}${listed.payload[0].photos[0].url}`);
   assert.equal(servedPhoto.status, 200);
   assert.equal(Buffer.from(await servedPhoto.arrayBuffer()).equals(fakePng), true);
+  const servedThumbnail = await fetch(
+    `${instance.baseUrl}${listed.payload[0].photos[0].thumbnail_url}`
+  );
+  assert.equal(servedThumbnail.status, 200);
+  const thumbnailBytes = Buffer.from(await servedThumbnail.arrayBuffer());
+  assert.equal(thumbnailBytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])), true);
+
+  assert.equal((await request(
+    instance,
+    `/api/food-reviews/${created.payload.id}/photos/${oversizedPhoto.payload.id}`,
+    { method: 'DELETE', cookie: peter.cookie }
+  )).status, 403);
+  assert.equal((await request(
+    instance,
+    `/api/food-reviews/${created.payload.id}/photos/${oversizedPhoto.payload.id}`,
+    { method: 'DELETE', cookie: anton.cookie }
+  )).status, 200);
 
   assert.equal((await request(instance, `/api/food-reviews/${created.payload.id}`, {
     method: 'DELETE',
@@ -401,6 +537,16 @@ test('food reviews accept bounded photos and preserve ownership', async t => {
       'uploads',
       'food-reviews',
       decodeURIComponent(photo.payload.url.split('/').pop())
+    )).then(() => true, () => false),
+    false
+  );
+  assert.equal(
+    await fsp.access(path.join(
+      dataDir,
+      'uploads',
+      'food-reviews',
+      'thumbnails',
+      decodeURIComponent(photo.payload.thumbnail_url.split('/').pop())
     )).then(() => true, () => false),
     false
   );

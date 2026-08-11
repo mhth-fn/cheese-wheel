@@ -213,31 +213,32 @@ const stmts = {
 
 const vpnStmts = {
   listByUser: db.prepare(`
-    SELECT id, server_id, email, device_name, connection_link, created_at
+    SELECT id, server_id, protocol, email, device_name, connection_link, created_at
     FROM vpn_clients
     WHERE user_id = ?
     ORDER BY created_at DESC
   `),
-  countByUserAndServer: db.prepare(`
+  countByUserServerAndProtocol: db.prepare(`
     SELECT COUNT(*) AS count
     FROM vpn_clients
-    WHERE user_id = ? AND server_id = ?
+    WHERE user_id = ? AND server_id = ? AND protocol = ?
   `),
   getByIdAndUser: db.prepare(`
     SELECT *
     FROM vpn_clients
     WHERE id = ? AND user_id = ?
   `),
-  getByUserServerAndDevice: db.prepare(`
+  getByUserServerProtocolAndDevice: db.prepare(`
     SELECT id
     FROM vpn_clients
-    WHERE user_id = ? AND server_id = ? AND device_name = ? COLLATE NOCASE
+    WHERE user_id = ? AND server_id = ? AND protocol = ?
+      AND device_name = ? COLLATE NOCASE
   `),
   insert: db.prepare(`
     INSERT INTO vpn_clients (
-      user_id, server_id, inbound_id, client_id, email,
+      user_id, server_id, protocol, inbound_id, client_id, email,
       device_name, connection_link, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `),
   deleteByIdAndUser: db.prepare('DELETE FROM vpn_clients WHERE id = ? AND user_id = ?'),
 };

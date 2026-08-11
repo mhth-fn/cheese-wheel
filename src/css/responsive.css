@@ -34,6 +34,11 @@
     font-size: 3.5rem;
   }
 
+  .mini-cheese-wheel {
+    width: 172px;
+    height: auto;
+  }
+
   .auth-users {
     grid-template-columns: 1fr 1fr;
     gap: var(--space-2);

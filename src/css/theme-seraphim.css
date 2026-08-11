@@ -1,0 +1,1744 @@
+html[data-design='seraphim'] {
+  --color-background: #080806;
+  --color-background-accent: #121109;
+  --color-surface: #12120f;
+  --color-surface-elevated: #191811;
+  --color-surface-muted: #1e1c13;
+  --color-surface-hover: #242116;
+  --color-surface-translucent: rgba(15, 15, 12, 0.84);
+  --color-surface-translucent-strong: rgba(18, 18, 14, 0.96);
+  --color-overlay: rgba(0, 0, 0, 0.78);
+  --color-primary: #e8b82f;
+  --color-primary-hover: #ffd65d;
+  --color-primary-active: #c88c12;
+  --color-primary-border: #9d6f13;
+  --color-on-primary: #171103;
+  --color-text: #f4f2e8;
+  --color-text-muted: #a7a399;
+  --color-border: rgba(232, 184, 47, 0.3);
+  --color-border-soft: rgba(255, 205, 61, 0.12);
+  --color-success: #7aa16c;
+  --color-success-surface: #172217;
+  --color-success-border: #405840;
+  --color-success-text: #b9d4af;
+  --color-warning: #e3aa33;
+  --color-warning-surface: #29200d;
+  --color-warning-border: rgba(227, 170, 51, 0.32);
+  --color-warning-text: #f1cf83;
+  --color-danger: #d66d5f;
+  --color-danger-surface: #2a1513;
+  --color-danger-border: #65332f;
+  --color-danger-text: #f1a299;
+  --color-info: #7fa3b6;
+  --color-info-surface: #101d23;
+  --color-info-border: #294553;
+  --color-info-text: #b6d2df;
+  --color-focus: #ffd65d;
+  --feature-accent: #dcae33;
+  --feature-accent-surface: #28200d;
+  --feature-accent-text: #f4d785;
+  --feature-played-accent: #a48c42;
+  --feature-hero-background: linear-gradient(135deg, #1b180d, #0d0d09);
+  --feature-hero-border: rgba(232, 184, 47, 0.15);
+  --feature-hero-text: #f4f2e8;
+  --feature-hero-muted: #aaa596;
+  --feature-hero-action: #e5b638;
+  --feature-hero-action-hover: #ffd969;
+  --feature-hero-action-text: #171103;
+  --shadow-small: 0 4px 18px rgba(0, 0, 0, 0.28);
+  --shadow-medium: 0 14px 38px rgba(0, 0, 0, 0.42);
+  --shadow-modal: 0 28px 90px rgba(0, 0, 0, 0.7);
+  --shadow-button: 0 3px 0 #76500a, 0 12px 30px rgba(202, 142, 18, 0.22);
+  --theme-bg: #080806;
+  --theme-btn: linear-gradient(180deg, #f1c84e 0%, #d79d1d 100%);
+  --theme-btn-hover: linear-gradient(180deg, #ffe178 0%, #e9b530 100%);
+  --theme-btn-active: linear-gradient(180deg, #ce8e13 0%, #e4ae2b 100%);
+  color-scheme: dark;
+  background: #080806;
+}
+
+html[data-design='seraphim'] body {
+  color: var(--color-text);
+  background:
+    radial-gradient(ellipse at 50% 22%, rgba(142, 99, 16, 0.12), transparent 38%),
+    radial-gradient(circle at 14% 68%, rgba(118, 82, 13, 0.055), transparent 25%),
+    linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.01) 1px, transparent 1px),
+    #080806;
+  background-attachment: fixed;
+  background-size: auto, auto, 4px 4px, 4px 4px, auto;
+  font-family: 'Nunito', system-ui, sans-serif;
+}
+
+html[data-design='seraphim'] body::before {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at center, transparent 42%, rgba(0, 0, 0, 0.32) 118%),
+    repeating-radial-gradient(circle at 30% 40%, rgba(255, 213, 90, 0.018) 0 1px, transparent 1px 5px);
+  content: '';
+  pointer-events: none;
+}
+
+html[data-design='seraphim'] button:focus-visible,
+html[data-design='seraphim'] [role='button']:focus-visible,
+html[data-design='seraphim'] input:focus-visible,
+html[data-design='seraphim'] select:focus-visible,
+html[data-design='seraphim'] textarea:focus-visible,
+html[data-design='seraphim'] a:focus-visible {
+  outline-color: #ffd65d;
+}
+
+html[data-design='seraphim'] .app-container {
+  width: min(100%, 1600px);
+  padding: 0 clamp(18px, 2.4vw, 38px) clamp(28px, 4vw, 58px);
+}
+
+html[data-design='seraphim'] .app-container.wheel-active .nav {
+  margin-bottom: 0;
+}
+
+html[data-design='seraphim'] .nav {
+  position: sticky;
+  top: 0;
+  z-index: 700;
+  display: grid;
+  grid-template-columns: minmax(170px, 230px) minmax(0, 1fr) auto;
+  min-height: 68px;
+  align-items: center;
+  gap: clamp(14px, 2vw, 30px);
+  margin: 0 clamp(-38px, -2.4vw, -18px) 20px;
+  padding: 0 clamp(18px, 2.4vw, 38px);
+  border-bottom: 1px solid rgba(255, 205, 61, 0.09);
+  background: rgba(6, 6, 5, 0.88);
+  box-shadow: 0 8px 36px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(18px);
+}
+
+html[data-design='seraphim'] .nav-brand {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #e9b936;
+  font-size: 0.83rem;
+  font-weight: 900;
+  letter-spacing: 0.065em;
+  line-height: 1.15;
+  text-align: left;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+html[data-design='seraphim'] .nav-brand img {
+  width: 39px;
+  height: 39px;
+  filter: sepia(1) saturate(1.9) drop-shadow(0 0 8px rgba(238, 185, 47, 0.22));
+}
+
+html[data-design='seraphim'] .nav-pages-layer {
+  display: block;
+  min-width: 0;
+}
+
+html[data-design='seraphim'] .nav-pages {
+  gap: 2px;
+  overflow: visible;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+html[data-design='seraphim'] .nav-btn {
+  min-height: 67px;
+  padding: 0 clamp(7px, 1vw, 15px);
+  border: 0;
+  border-radius: 0;
+  color: #aaa69b;
+  font-size: clamp(0.76rem, 0.9vw, 0.91rem);
+  font-weight: 700;
+  box-shadow: none;
+}
+
+html[data-design='seraphim'] .nav-btn::after {
+  position: absolute;
+  right: 25%;
+  bottom: 0;
+  left: 25%;
+  height: 2px;
+  background: #e7b52f;
+  box-shadow: 0 0 12px rgba(231, 181, 47, 0.65);
+  content: '';
+  opacity: 0;
+  transform: scaleX(0.4);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+html[data-design='seraphim'] .nav-btn:hover {
+  border-color: transparent;
+  background: rgba(255, 205, 61, 0.035);
+  color: #f2efe5;
+}
+
+html[data-design='seraphim'] .nav-btn.active {
+  border: 0;
+  background: transparent;
+  color: #eac14f;
+  box-shadow: none;
+}
+
+html[data-design='seraphim'] .nav-btn.active::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+html[data-design='seraphim'] .nav-user {
+  align-self: center;
+}
+
+html[data-design='seraphim'] .nav-user-btn {
+  min-height: 44px;
+  padding-right: 10px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-design='seraphim'] .nav-user-btn:hover {
+  border-color: rgba(237, 189, 51, 0.18);
+  background: rgba(255, 205, 61, 0.045);
+}
+
+html[data-design='seraphim'] .nav-user-avatar {
+  border: 1px solid rgba(241, 190, 47, 0.5);
+  background: radial-gradient(circle at 38% 32%, #443415, #12110c 65%);
+  color: #f3cc61;
+}
+
+html[data-design='seraphim'] .nav-dropdown {
+  top: calc(100% + 10px);
+  min-width: 270px;
+  border-color: rgba(238, 187, 47, 0.16);
+  background: rgba(13, 13, 10, 0.98);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(22px);
+}
+
+html[data-design='seraphim'] .nav-design-option[aria-pressed='true'] {
+  background: rgba(229, 177, 38, 0.09);
+  color: #f1cf75;
+}
+
+html[data-design='seraphim'] .nav-dropdown-logout {
+  color: #e5877d;
+}
+
+html[data-design='seraphim'] .surface,
+html[data-design='seraphim'] .stat-card,
+html[data-design='seraphim'] .watched-scope-control,
+html[data-design='seraphim'] .watched-table-wrap,
+html[data-design='seraphim'] .watched-movie-card,
+html[data-design='seraphim'] .reviews-journal-panel,
+html[data-design='seraphim'] .sigame-card,
+html[data-design='seraphim'] .vpn-card {
+  border-color: rgba(255, 205, 61, 0.12);
+  background-color: rgba(16, 16, 13, 0.82);
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.22);
+}
+
+html[data-design='seraphim'] input,
+html[data-design='seraphim'] select,
+html[data-design='seraphim'] textarea {
+  border-color: rgba(255, 205, 61, 0.16);
+  background-color: #12120e;
+  color: #f4f2e8;
+}
+
+html[data-design='seraphim'] input::placeholder,
+html[data-design='seraphim'] textarea::placeholder {
+  color: #7e7b72;
+}
+
+html[data-design='seraphim'] .button-primary {
+  border-color: #9b6d0e;
+  background: var(--theme-btn);
+  color: #181205;
+}
+
+html[data-design='seraphim'] .button-secondary,
+html[data-design='seraphim'] .button-ghost,
+html[data-design='seraphim'] .icon-button {
+  border-color: rgba(255, 205, 61, 0.16);
+  background: rgba(255, 205, 61, 0.045);
+  color: #e9e6dd;
+}
+
+html[data-design='seraphim'] .stats-panel,
+html[data-design='seraphim'] .watched-toolbar,
+html[data-design='seraphim'] .watched-scope-control,
+html[data-design='seraphim'] .watched-table-wrap,
+html[data-design='seraphim'] .reviews-journal,
+html[data-design='seraphim'] .sigame-page,
+html[data-design='seraphim'] .vpn-page {
+  color: var(--color-text);
+}
+
+html[data-design='seraphim'] .seraphim-page-heading {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 22px;
+}
+
+html[data-design='seraphim'] .seraphim-page-heading p {
+  color: #d8a82f;
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+html[data-design='seraphim'] .seraphim-page-heading h1 {
+  color: #f3f0e7;
+  font-size: clamp(1.8rem, 3vw, 2.7rem);
+  letter-spacing: -0.035em;
+}
+
+html[data-design='seraphim'] .seraphim-page-heading span {
+  color: #9e9a90;
+  font-size: 0.9rem;
+}
+
+html[data-design='seraphim'] .seraphim-home {
+  position: relative;
+  isolation: isolate;
+  min-height: calc(100dvh - 90px);
+  padding-top: 8px;
+}
+
+html[data-design='seraphim'] .seraphim-home::after {
+  position: absolute;
+  z-index: -3;
+  top: -8px;
+  left: 50%;
+  width: 100vw;
+  height: max(720px, calc(100dvh - 68px));
+  max-height: 840px;
+  background-image:
+    linear-gradient(180deg, rgba(5, 5, 3, 0.01), rgba(5, 5, 3, 0.08) 78%, #090907 100%),
+    url('/assets/seraphim/seraphim-reference-background-1920-v8.webp');
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-size: cover;
+  content: '';
+  filter: none;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+html[data-design='seraphim'] .seraphim-home::before {
+  position: fixed;
+  z-index: -1;
+  inset: 68px 0 0;
+  background: rgba(0, 0, 0, 0.2);
+  content: '';
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.7s ease;
+}
+
+html[data-design='seraphim'] .seraphim-home.is-awake::before {
+  opacity: 1;
+}
+
+html[data-design='seraphim'] .seraphim-hero {
+  display: grid;
+  grid-template-columns: minmax(205px, 250px) minmax(470px, 1fr) minmax(205px, 250px);
+  grid-template-areas: 'today oracle rules';
+  align-items: center;
+  gap: clamp(12px, 1.8vw, 30px);
+  min-height: min(740px, calc(100dvh - 92px));
+}
+
+html[data-design='seraphim'] .seraphim-side {
+  position: relative;
+  z-index: 8;
+  overflow: hidden;
+  padding: clamp(18px, 2vw, 28px);
+  border: 1px solid rgba(255, 205, 61, 0.12);
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(19, 18, 13, 0.86), rgba(9, 9, 7, 0.76));
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25), inset 0 1px rgba(255, 231, 149, 0.025);
+  backdrop-filter: blur(9px);
+}
+
+html[data-design='seraphim'] .seraphim-today {
+  grid-area: today;
+}
+
+html[data-design='seraphim'] .seraphim-rules {
+  grid-area: rules;
+}
+
+html[data-design='seraphim'] .seraphim-panel-kicker {
+  margin-bottom: 22px;
+  color: #e5b536;
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.095em;
+  text-transform: uppercase;
+}
+
+html[data-design='seraphim'] .seraphim-panel-kicker::before {
+  margin-right: 7px;
+  content: '✣';
+}
+
+html[data-design='seraphim'] .seraphim-today > strong,
+html[data-design='seraphim'] .seraphim-today-movie strong {
+  display: block;
+  margin-bottom: 5px;
+  color: #f2efe5;
+  font-size: 1rem;
+}
+
+html[data-design='seraphim'] .seraphim-today > p,
+html[data-design='seraphim'] .seraphim-today-movie span {
+  margin: 0 0 18px;
+  color: #9c988e;
+  font-size: 0.84rem;
+}
+
+html[data-design='seraphim'] .seraphim-today > button {
+  width: 100%;
+  min-height: 39px;
+  border: 1px solid rgba(231, 179, 38, 0.55);
+  border-radius: 7px;
+  background: transparent;
+  color: #e6c163;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+html[data-design='seraphim'] .seraphim-today > button:hover:not(:disabled) {
+  background: rgba(230, 178, 38, 0.09);
+  box-shadow: 0 0 22px rgba(230, 178, 38, 0.08);
+}
+
+html[data-design='seraphim'] .seraphim-year-stats {
+  margin: 26px -28px -28px;
+  padding: 22px clamp(18px, 2vw, 28px) 24px;
+  border-top: 1px solid rgba(255, 205, 61, 0.1);
+  background: rgba(0, 0, 0, 0.12);
+}
+
+html[data-design='seraphim'] .seraphim-year-stats .seraphim-panel-kicker {
+  margin-bottom: 16px;
+}
+
+html[data-design='seraphim'] .seraphim-year-stats dl {
+  display: grid;
+  gap: 15px;
+}
+
+html[data-design='seraphim'] .seraphim-year-stats dl > div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 12px;
+}
+
+html[data-design='seraphim'] .seraphim-year-stats dt {
+  color: #928e84;
+  font-size: 0.75rem;
+}
+
+html[data-design='seraphim'] .seraphim-year-stats dd {
+  color: #f0eee4;
+  font-size: 1.18rem;
+  font-weight: 900;
+}
+
+html[data-design='seraphim'] .seraphim-year-stats dd small {
+  color: #8e8a80;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+html[data-design='seraphim'] .seraphim-rules ul {
+  display: grid;
+  gap: 22px;
+  list-style: none;
+}
+
+html[data-design='seraphim'] .seraphim-rules li {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 10px;
+}
+
+html[data-design='seraphim'] .seraphim-rules li > span {
+  color: #e0ab2d;
+  font-size: 1.08rem;
+}
+
+html[data-design='seraphim'] .seraphim-rules li div {
+  display: grid;
+  gap: 3px;
+}
+
+html[data-design='seraphim'] .seraphim-rules strong {
+  color: #eeece3;
+  font-size: 0.86rem;
+}
+
+html[data-design='seraphim'] .seraphim-rules small {
+  color: #8f8b82;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+html[data-design='seraphim'] .seraphim-oracle-column {
+  position: relative;
+  z-index: 5;
+  grid-area: oracle;
+  min-width: 0;
+  text-align: center;
+}
+
+html[data-design='seraphim'] .seraphim-incantation {
+  position: relative;
+  z-index: 12;
+  width: min(90%, 560px);
+  margin: 0 auto -25px;
+  color: #d9ae43;
+  font-family: 'Caveat', cursive;
+  font-size: clamp(1.35rem, 2vw, 2.2rem);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  text-shadow: 0 0 22px rgba(208, 151, 29, 0.2);
+  text-transform: uppercase;
+  transform: rotate(-1deg);
+}
+
+html[data-design='seraphim'] .seraphim-oracle {
+  --oracle-x: 0;
+  --oracle-y: 0;
+  --eye-look-x: 0px;
+  --eye-look-y: 0px;
+  --center-eye-look-x: 0px;
+  --center-eye-look-y: 0px;
+  position: relative;
+  z-index: 2;
+  width: min(100%, 920px);
+  aspect-ratio: 3 / 2;
+  margin: 0 auto;
+  animation: seraphimOracleArrival 1.15s cubic-bezier(0.16, 0.84, 0.26, 1.08) 1.05s both;
+  transform-origin: 50% 32%;
+}
+
+html[data-design='seraphim'] .seraphim-aura {
+  position: absolute;
+  z-index: 0;
+  inset: 13% 18% 5%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(221, 160, 30, 0.23), rgba(132, 85, 12, 0.06) 48%, transparent 72%);
+  filter: blur(26px);
+  opacity: 0.7;
+  animation: seraphimAura 6s ease-in-out infinite;
+}
+
+html[data-design='seraphim'] .seraphim-art {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: block;
+  transform: translate(
+    calc(var(--oracle-x) * 4px),
+    calc(var(--oracle-y) * 3px)
+  );
+  transition: transform 0.8s cubic-bezier(0.18, 0.8, 0.2, 1);
+  pointer-events: none;
+}
+
+html[data-design='seraphim'] .seraphim-floating-assembly {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  animation: seraphimBreathe 7s ease-in-out infinite;
+  transform-origin: 50% 58%;
+  will-change: transform;
+}
+
+html[data-design='seraphim'] .seraphim-art-body {
+  position: absolute;
+  inset: 0;
+}
+
+html[data-design='seraphim'] .seraphim-art-core {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  display: block;
+  clip-path: polygon(
+    31% 5%, 69% 5%, 73% 25%, 69% 38%, 78% 61%,
+    91% 100%, 9% 100%, 22% 61%, 31% 38%, 27% 25%
+  );
+}
+
+html[data-design='seraphim'] .seraphim-art-core img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 24px 28px rgba(0, 0, 0, 0.68));
+}
+
+html[data-design='seraphim'] .seraphim-reference-wings {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+}
+
+html[data-design='seraphim'] .seraphim-reference-wing {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 22px 24px rgba(0, 0, 0, 0.58));
+  will-change: transform;
+}
+
+html[data-design='seraphim'] .seraphim-reference-wing.is-upper-left {
+  clip-path: polygon(0 0, 47% 0, 45% 34%, 32% 44%, 0 43%);
+  animation: seraphimReferenceWingUpperLeft 7.4s ease-in-out infinite;
+  transform-origin: 36% 30%;
+}
+
+html[data-design='seraphim'] .seraphim-reference-wing.is-upper-right {
+  clip-path: polygon(53% 0, 100% 0, 100% 43%, 68% 44%, 55% 34%);
+  animation: seraphimReferenceWingUpperRight 7.4s ease-in-out -3.7s infinite;
+  transform-origin: 64% 30%;
+}
+
+html[data-design='seraphim'] .seraphim-reference-wing.is-lower-left {
+  clip-path: polygon(0 29%, 36% 30%, 35% 53%, 31% 90%, 0 90%);
+  animation: seraphimReferenceWingLowerLeft 8.8s ease-in-out -2.1s infinite;
+  transform-origin: 30% 48%;
+}
+
+html[data-design='seraphim'] .seraphim-reference-wing.is-lower-right {
+  clip-path: polygon(64% 30%, 100% 29%, 100% 90%, 69% 90%, 65% 53%);
+  animation: seraphimReferenceWingLowerRight 8.8s ease-in-out -6.5s infinite;
+  transform-origin: 70% 48%;
+}
+
+html[data-design='seraphim'] .seraphim-wing {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: block;
+  background-image: url('/assets/seraphim/seraphim-frame-v2.webp');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  filter: drop-shadow(0 22px 24px rgba(0, 0, 0, 0.58)) saturate(0.92) contrast(1.04);
+  will-change: transform;
+}
+
+html[data-design='seraphim'] .seraphim-wing-upper.is-left {
+  clip-path: polygon(0 0, 42% 0, 44% 51%, 0 54%);
+  animation: seraphimWingUpperLeft 7.8s ease-in-out infinite;
+  transform-origin: 38% 39%;
+}
+
+html[data-design='seraphim'] .seraphim-wing-upper.is-right {
+  clip-path: polygon(58% 0, 100% 0, 100% 54%, 56% 51%);
+  animation: seraphimWingUpperRight 7.8s ease-in-out -3.9s infinite;
+  transform-origin: 62% 39%;
+}
+
+html[data-design='seraphim'] .seraphim-wing-lower.is-left {
+  clip-path: polygon(0 40%, 39% 43%, 48% 100%, 0 100%);
+  animation: seraphimWingLowerLeft 9.2s ease-in-out -2.1s infinite;
+  transform-origin: 35% 56%;
+}
+
+html[data-design='seraphim'] .seraphim-wing-lower.is-right {
+  clip-path: polygon(61% 43%, 100% 40%, 100% 100%, 52% 100%);
+  animation: seraphimWingLowerRight 9.2s ease-in-out -6.7s infinite;
+  transform-origin: 65% 56%;
+}
+
+html[data-design='seraphim'] .seraphim-home.is-awake .seraphim-art-core img,
+html[data-design='seraphim'] .seraphim-home.is-awake .seraphim-wing,
+html[data-design='seraphim'] .seraphim-home.is-awake .seraphim-reference-wing {
+  filter:
+    drop-shadow(0 25px 34px rgba(0, 0, 0, 0.75))
+    drop-shadow(0 0 18px rgba(234, 174, 36, 0.3))
+    saturate(1.12)
+    contrast(1.08);
+}
+
+html[data-design='seraphim'] .seraphim-home.is-awake .seraphim-floating-assembly,
+html[data-design='seraphim'] .seraphim-home.is-awake .seraphim-wing-upper,
+html[data-design='seraphim'] .seraphim-home.is-awake .seraphim-reference-wing.is-upper-left,
+html[data-design='seraphim'] .seraphim-home.is-awake .seraphim-reference-wing.is-upper-right {
+  animation-duration: 2.2s;
+}
+
+html[data-design='seraphim'] .seraphim-home.is-awake .seraphim-wing-lower,
+html[data-design='seraphim'] .seraphim-home.is-awake .seraphim-reference-wing.is-lower-left,
+html[data-design='seraphim'] .seraphim-home.is-awake .seraphim-reference-wing.is-lower-right {
+  animation-duration: 3s;
+}
+
+html[data-design='seraphim'] .seraphim-living-eyes {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  display: block;
+}
+
+html[data-design='seraphim'] .seraphim-living-eyes > i {
+  position: absolute;
+  top: var(--eye-y);
+  left: var(--eye-x);
+  display: block;
+  width: var(--eye-size);
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+html[data-design='seraphim'] .seraphim-eye-state {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform: translate(var(--eye-look-x), var(--eye-look-y)) scale(1.04);
+  transition: transform 0.32s cubic-bezier(0.18, 0.8, 0.2, 1);
+  pointer-events: none;
+  will-change: opacity, transform;
+}
+
+html[data-design='seraphim'] .seraphim-eye-state.is-open {
+  animation: seraphimEyeOpen 9.7s var(--blink-delay) infinite;
+}
+
+html[data-design='seraphim'] .seraphim-eye-state.is-half {
+  animation: seraphimEyeHalf 9.7s var(--blink-delay) infinite;
+  opacity: 0;
+}
+
+html[data-design='seraphim'] .seraphim-eye-state.is-closed {
+  animation: seraphimEyeClosed 9.7s var(--blink-delay) infinite;
+  opacity: 0;
+}
+
+html[data-design='seraphim'] .seraphim-reference-fingers {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+html[data-design='seraphim'] .seraphim-reference-finger {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  animation: seraphimFingerFlex var(--finger-speed, 5.1s) ease-in-out var(--finger-delay, 0s) infinite;
+  clip-path: var(--finger-clip);
+  transform-origin: var(--finger-origin);
+  pointer-events: none;
+  will-change: transform;
+}
+
+html[data-design='seraphim'] .seraphim-reference-finger.is-left.is-finger-1 {
+  --finger-clip: polygon(17% 67%, 31% 66%, 31% 88%, 15% 90%);
+  --finger-origin: 27% 70%;
+  --finger-turn: 1.8deg;
+  --finger-x: 0.8px;
+  --finger-y: 1px;
+  --finger-speed: 4.9s;
+}
+
+html[data-design='seraphim'] .seraphim-reference-finger.is-left.is-finger-2 {
+  --finger-clip: polygon(9% 73%, 25% 71%, 25% 99%, 6% 100%);
+  --finger-origin: 22% 75%;
+  --finger-turn: -1.7deg;
+  --finger-x: -0.8px;
+  --finger-y: 1.4px;
+  --finger-delay: -1.8s;
+  --finger-speed: 5.5s;
+}
+
+html[data-design='seraphim'] .seraphim-reference-finger.is-left.is-finger-3 {
+  --finger-clip: polygon(15% 75%, 30% 72%, 29% 99%, 12% 100%);
+  --finger-origin: 27% 76%;
+  --finger-turn: 2.1deg;
+  --finger-x: 1px;
+  --finger-y: 1.2px;
+  --finger-delay: -3.3s;
+  --finger-speed: 5.9s;
+}
+
+html[data-design='seraphim'] .seraphim-reference-finger.is-right.is-finger-1 {
+  --finger-clip: polygon(69% 66%, 83% 67%, 85% 90%, 69% 88%);
+  --finger-origin: 73% 70%;
+  --finger-turn: -1.8deg;
+  --finger-x: -0.8px;
+  --finger-y: 1px;
+  --finger-delay: -2.4s;
+  --finger-speed: 4.9s;
+}
+
+html[data-design='seraphim'] .seraphim-reference-finger.is-right.is-finger-2 {
+  --finger-clip: polygon(75% 71%, 91% 73%, 94% 100%, 75% 99%);
+  --finger-origin: 78% 75%;
+  --finger-turn: 1.7deg;
+  --finger-x: 0.8px;
+  --finger-y: 1.4px;
+  --finger-delay: -4s;
+  --finger-speed: 5.5s;
+}
+
+html[data-design='seraphim'] .seraphim-reference-finger.is-right.is-finger-3 {
+  --finger-clip: polygon(70% 72%, 85% 75%, 88% 100%, 71% 99%);
+  --finger-origin: 73% 76%;
+  --finger-turn: -2.1deg;
+  --finger-x: -1px;
+  --finger-y: 1.2px;
+  --finger-delay: -0.9s;
+  --finger-speed: 5.9s;
+}
+
+html[data-design='seraphim'] .seraphim-landing-dust {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+html[data-design='seraphim'] .seraphim-landing-dust > span {
+  position: absolute;
+  top: 79%;
+  left: 50%;
+  width: 16%;
+  height: 3%;
+  border: 1px solid rgba(236, 193, 92, 0.42);
+  border-radius: 50%;
+  box-shadow: 0 0 16px rgba(209, 151, 46, 0.22);
+  opacity: 0;
+  animation: seraphimLandingShockwave 1.35s ease-out 1.82s both;
+}
+
+html[data-design='seraphim'] .seraphim-landing-dust > i {
+  position: absolute;
+  top: 77%;
+  left: calc(50% + var(--dust-x));
+  width: var(--dust-size);
+  aspect-ratio: 1.8;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(213, 181, 117, 0.42), rgba(123, 92, 47, 0.2) 42%, transparent 72%);
+  filter: blur(5px);
+  opacity: 0;
+  animation: seraphimLandingDust 1.55s ease-out calc(1.82s + var(--dust-delay)) both;
+  transform: translate(-50%, 0) scale(0.3);
+}
+
+html[data-design='seraphim'] .seraphim-wheel-mount {
+  position: absolute;
+  z-index: 5;
+  top: 50.2%;
+  left: 50%;
+  width: 29%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+}
+
+html[data-design='seraphim'] .seraphim-wheel-mount::before {
+  position: absolute;
+  z-index: -1;
+  inset: -2.2%;
+  border: 1px solid rgba(255, 207, 69, 0.34);
+  border-radius: 50%;
+  background: radial-gradient(circle, #4a2b08 0 75%, #160c03 91%, #050301 100%);
+  box-shadow:
+    0 0 0 3px rgba(100, 58, 10, 0.5),
+    0 0 34px rgba(228, 165, 26, 0.24),
+    inset 0 0 18px rgba(0, 0, 0, 0.72);
+  content: '';
+}
+
+html[data-design='seraphim'] .seraphim-wheel-mount .cheese-wheel-stage {
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.5)) saturate(1.06) contrast(1.03);
+}
+
+html[data-design='seraphim'] .seraphim-wheel-mount .cheese-wheel-stage.is-spinning {
+  filter:
+    drop-shadow(0 0 14px rgba(255, 204, 60, 0.62))
+    drop-shadow(0 10px 18px rgba(0, 0, 0, 0.55))
+    saturate(1.15);
+}
+
+html[data-design='seraphim'] .seraphim-wheel-mount .wheel-pointer {
+  top: 5px;
+  border-top-width: 22px;
+  border-right-width: 11px;
+  border-left-width: 11px;
+  border-top-color: #f0c34b;
+  filter: drop-shadow(0 0 5px rgba(242, 192, 61, 0.8));
+}
+
+html[data-design='seraphim'] .seraphim-wheel-mount .wheel-pointer::before {
+  top: -26px;
+  left: -4px;
+  width: 8px;
+  height: 8px;
+  background: #8f6411;
+}
+
+html[data-design='seraphim'] .seraphim-eye-button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 12;
+  display: grid;
+  width: 56%;
+  min-width: 44px;
+  min-height: 44px;
+  aspect-ratio: 1;
+  overflow: visible;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  transition: filter 0.2s ease, transform 0.2s ease;
+}
+
+html[data-design='seraphim'] .seraphim-center-eye-track {
+  position: relative;
+  z-index: 2;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform: none;
+}
+
+html[data-design='seraphim'] .seraphim-center-eye-state {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 0 8px rgba(224, 160, 35, 0.3));
+  object-fit: contain;
+  transform: scale(1.035);
+  will-change: opacity, transform;
+}
+
+html[data-design='seraphim'] .seraphim-center-eye-state.is-open {
+  animation: seraphimEyeOpen 9.1s var(--blink-delay) infinite;
+}
+
+html[data-design='seraphim'] .seraphim-center-eye-state.is-half {
+  animation: seraphimEyeHalf 9.1s var(--blink-delay) infinite;
+  opacity: 0;
+}
+
+html[data-design='seraphim'] .seraphim-center-eye-state.is-closed {
+  animation: seraphimEyeClosed 9.1s var(--blink-delay) infinite;
+  opacity: 0;
+}
+
+html[data-design='seraphim'] .seraphim-eye-button:disabled {
+  opacity: 1;
+}
+
+html[data-design='seraphim'] .seraphim-eye-button::after {
+  display: none;
+}
+
+html[data-design='seraphim'] .seraphim-eye-button:hover:not(:disabled) {
+  filter: brightness(1.24);
+  transform: translate(-50%, -50%) scale(1.08);
+}
+
+html[data-design='seraphim'] .seraphim-eye-button.is-pending,
+html[data-design='seraphim'] .seraphim-eye-button.is-spinning {
+  box-shadow: 0 0 0 4px rgba(43, 27, 5, 0.78), 0 0 30px rgba(255, 197, 45, 0.75), inset 0 0 14px #000;
+  animation: seraphimEyePulse 0.8s ease-in-out infinite;
+}
+
+html[data-design='seraphim'] .seraphim-wheel-empty {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  border-radius: 50%;
+  color: #b9b4a9;
+  font-size: 0.72rem;
+}
+
+html[data-design='seraphim'] .seraphim-wheel-empty > span {
+  width: 46px;
+  aspect-ratio: 1;
+  border: 5px solid #a47b25;
+  border-radius: 50%;
+  background: radial-gradient(circle, #090705 0 24%, #b78e36 27% 44%, #2a1e09 48%);
+  box-shadow: 0 0 24px rgba(216, 162, 40, 0.25);
+}
+
+html[data-design='seraphim'] .seraphim-wheel-empty button {
+  padding: 5px 10px;
+  border: 1px solid rgba(234, 183, 49, 0.35);
+  border-radius: 6px;
+  background: transparent;
+  color: #dfba56;
+  cursor: pointer;
+}
+
+html[data-design='seraphim'] .seraphim-particles {
+  position: absolute;
+  z-index: 4;
+  inset: 12% 12% 4%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+html[data-design='seraphim'] .seraphim-particles i {
+  position: absolute;
+  top: 72%;
+  left: calc(7% + var(--particle-left, 0%));
+  width: 5px;
+  height: 5px;
+  border-radius: 38%;
+  background: #d89e23;
+  box-shadow: 0 0 7px rgba(235, 175, 35, 0.45);
+  opacity: 0;
+  animation: seraphimDust 8s linear infinite;
+}
+
+html[data-design='seraphim'] .seraphim-particles i:nth-child(1) { left: 9%; animation-delay: -1s; }
+html[data-design='seraphim'] .seraphim-particles i:nth-child(2) { left: 18%; animation-delay: -6s; transform: scale(0.6); }
+html[data-design='seraphim'] .seraphim-particles i:nth-child(3) { left: 27%; animation-delay: -3s; }
+html[data-design='seraphim'] .seraphim-particles i:nth-child(4) { left: 37%; animation-delay: -7s; transform: scale(0.5); }
+html[data-design='seraphim'] .seraphim-particles i:nth-child(5) { left: 44%; animation-delay: -2s; }
+html[data-design='seraphim'] .seraphim-particles i:nth-child(6) { left: 53%; animation-delay: -4.8s; transform: scale(0.7); }
+html[data-design='seraphim'] .seraphim-particles i:nth-child(7) { left: 61%; animation-delay: -0.3s; }
+html[data-design='seraphim'] .seraphim-particles i:nth-child(8) { left: 69%; animation-delay: -5.3s; transform: scale(0.55); }
+html[data-design='seraphim'] .seraphim-particles i:nth-child(9) { left: 77%; animation-delay: -2.8s; }
+html[data-design='seraphim'] .seraphim-particles i:nth-child(10) { left: 85%; animation-delay: -7.3s; transform: scale(0.65); }
+html[data-design='seraphim'] .seraphim-particles i:nth-child(11) { left: 32%; animation-delay: -1.9s; }
+html[data-design='seraphim'] .seraphim-particles i:nth-child(12) { left: 73%; animation-delay: -4.1s; transform: scale(0.5); }
+
+html[data-design='seraphim'] .seraphim-home.is-awake .seraphim-particles i {
+  animation-duration: 2.8s;
+}
+
+html[data-design='seraphim'] .seraphim-cta-wrap {
+  position: relative;
+  z-index: 15;
+  display: grid;
+  width: min(82%, 520px);
+  justify-items: center;
+  gap: 8px;
+  margin: clamp(-75px, -8vw, -48px) auto 0;
+  animation: seraphimCtaArrival 0.65s ease-out 1.9s both;
+}
+
+html[data-design='seraphim'] .seraphim-oracle-status {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  gap: 7px;
+  color: #c7b980;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+html[data-design='seraphim'] .seraphim-oracle-status > span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #e4b536;
+  box-shadow: 0 0 8px #e4b536;
+}
+
+html[data-design='seraphim'] .seraphim-spin-cta {
+  position: relative;
+  width: 100%;
+  min-height: clamp(76px, 7.2vw, 98px);
+  padding: 8px 34px 17px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: url('/assets/seraphim/seraphim-cta-v2.webp') center / 100% 100% no-repeat;
+  color: #201404;
+  box-shadow: none;
+  filter: saturate(1.14) contrast(1.04) drop-shadow(0 13px 19px rgba(0, 0, 0, 0.5));
+  font-family: 'Caveat', cursive;
+  font-size: clamp(1.45rem, 2.4vw, 2.25rem);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-transform: uppercase;
+  cursor: pointer;
+  transform: rotate(-0.5deg);
+  transition: filter 0.2s ease, box-shadow 0.2s ease, transform 0.16s ease;
+}
+
+html[data-design='seraphim'] .seraphim-spin-cta::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 26%, rgba(255, 255, 220, 0.38) 46%, transparent 66%);
+  content: '';
+  transform: translateX(-130%);
+  transition: transform 0.55s ease;
+}
+
+html[data-design='seraphim'] .seraphim-spin-cta:hover:not(:disabled) {
+  filter: brightness(1.1) saturate(1.08) drop-shadow(0 15px 24px rgba(212, 143, 22, 0.32));
+  box-shadow: none;
+  transform: rotate(-0.5deg) translateY(-2px) scale(1.015);
+}
+
+html[data-design='seraphim'] .seraphim-spin-cta:hover:not(:disabled)::after {
+  transform: translateX(130%);
+}
+
+html[data-design='seraphim'] .seraphim-spin-cta:active:not(:disabled) {
+  box-shadow: none;
+  filter: brightness(0.96) drop-shadow(0 7px 12px rgba(0, 0, 0, 0.45));
+  transform: rotate(-0.5deg) translateY(3px) scale(0.99);
+}
+
+html[data-design='seraphim'] .seraphim-spin-cta:disabled {
+  filter: saturate(0.98) brightness(0.88) contrast(1.03) drop-shadow(0 11px 17px rgba(0, 0, 0, 0.46));
+  opacity: 0.9;
+}
+
+html[data-design='seraphim'] .seraphim-cta-note,
+html[data-design='seraphim'] .seraphim-disabled-note {
+  color: #9c9584;
+  font-size: 0.76rem;
+}
+
+html[data-design='seraphim'] .seraphim-cta-note::before {
+  margin-right: 7px;
+  color: #d9a62c;
+  content: '✣';
+}
+
+html[data-design='seraphim'] .seraphim-disabled-note {
+  color: #d09a72;
+}
+
+html[data-design='seraphim'] .seraphim-recent {
+  position: relative;
+  z-index: 10;
+  margin-top: clamp(22px, 3vw, 46px);
+  padding-top: 22px;
+  border-top: 1px solid rgba(255, 205, 61, 0.08);
+}
+
+html[data-design='seraphim'] .seraphim-recent > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 16px;
+}
+
+html[data-design='seraphim'] .seraphim-recent > header > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+html[data-design='seraphim'] .seraphim-recent h2 {
+  color: #eeeae0;
+  font-size: 0.9rem;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+html[data-design='seraphim'] .seraphim-recent > header span,
+html[data-design='seraphim'] .seraphim-recent > header button {
+  color: #d8a52c;
+}
+
+html[data-design='seraphim'] .seraphim-recent > header button {
+  padding: 7px 0;
+  border: 0;
+  background: transparent;
+  font-size: 0.83rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+html[data-design='seraphim'] .seraphim-movie-strip {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: clamp(10px, 1.2vw, 16px);
+}
+
+html[data-design='seraphim'] .seraphim-movie-card {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  min-width: 0;
+  aspect-ratio: 1.55;
+  align-content: end;
+  justify-items: start;
+  gap: 2px;
+  overflow: hidden;
+  padding: 14px;
+  border: 1px solid rgba(255, 214, 86, 0.13);
+  border-radius: 9px;
+  background:
+    radial-gradient(circle at calc(20% + var(--movie-index) * 9%) 25%, rgba(218, 168, 55, 0.24), transparent 31%),
+    linear-gradient(calc(118deg + var(--movie-index) * 7deg), #272116, #0e1111 54%, #070706);
+  color: #f2eee2;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.22s ease, filter 0.22s ease, transform 0.22s ease;
+}
+
+html[data-design='seraphim'] .seraphim-movie-card:hover {
+  z-index: 3;
+  border-color: rgba(244, 196, 60, 0.45);
+  filter: brightness(1.12);
+  transform: translateY(-4px) scale(1.025);
+}
+
+html[data-design='seraphim'] .seraphim-movie-symbol {
+  position: absolute;
+  z-index: -2;
+  top: -22%;
+  right: 3%;
+  color: rgba(231, 192, 102, 0.12);
+  font-family: 'Caveat', cursive;
+  font-size: clamp(4rem, 7vw, 7rem);
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  transform: rotate(8deg);
+}
+
+html[data-design='seraphim'] .seraphim-movie-shade {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(transparent 15%, rgba(4, 4, 3, 0.16) 42%, rgba(3, 3, 2, 0.94) 100%);
+}
+
+html[data-design='seraphim'] .seraphim-movie-card strong {
+  overflow: hidden;
+  width: 100%;
+  font-size: 0.86rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-design='seraphim'] .seraphim-movie-card small {
+  color: #99958d;
+  font-size: 0.7rem;
+}
+
+html[data-design='seraphim'] .seraphim-movie-card em {
+  margin-top: 3px;
+  color: #efba33;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+html[data-design='seraphim'] .seraphim-history-error,
+html[data-design='seraphim'] .seraphim-history-empty {
+  width: 100%;
+  min-height: 90px;
+  padding: 18px;
+  border: 1px dashed rgba(255, 205, 61, 0.14);
+  border-radius: 10px;
+  background: rgba(14, 14, 11, 0.6);
+  color: #9d998f;
+  text-align: center;
+}
+
+html[data-design='seraphim'] .seraphim-history-error {
+  cursor: pointer;
+}
+
+html[data-design='seraphim'] .admin-btn,
+html[data-design='seraphim'] .drawer-toggle {
+  border-color: rgba(255, 205, 61, 0.22);
+  background: #17150e;
+  color: #e8bd4d;
+  box-shadow: 0 12px 38px rgba(0, 0, 0, 0.38);
+}
+
+html[data-design='seraphim'] .drawer-toggle-label {
+  color: #e8bd4d;
+}
+
+html[data-design='seraphim'] .drawer,
+html[data-design='seraphim'] .modal,
+html[data-design='seraphim'] .dialog,
+html[data-design='seraphim'] .result-card {
+  border-color: rgba(255, 205, 61, 0.15);
+  background: #11110d;
+  color: var(--color-text);
+}
+
+html[data-design='seraphim'] .dialog-backdrop,
+html[data-design='seraphim'] .modal-backdrop,
+html[data-design='seraphim'] .result-modal {
+  background: rgba(2, 2, 1, 0.82);
+  backdrop-filter: blur(7px);
+}
+
+@keyframes seraphimBreathe {
+  0%, 100% { transform: scale(0.995) translateY(1px); }
+  50% { transform: scale(1.012) translateY(-2px); }
+}
+
+@keyframes seraphimWingUpperLeft {
+  0%, 100% { transform: rotate(-0.35deg) scaleY(0.995); }
+  50% { transform: rotate(0.75deg) scaleY(1.018); }
+}
+
+@keyframes seraphimWingUpperRight {
+  0%, 100% { transform: rotate(0.35deg) scaleY(0.995); }
+  50% { transform: rotate(-0.75deg) scaleY(1.018); }
+}
+
+@keyframes seraphimWingLowerLeft {
+  0%, 100% { transform: rotate(0.15deg) translateY(0); }
+  50% { transform: rotate(-0.65deg) translateY(2px); }
+}
+
+@keyframes seraphimWingLowerRight {
+  0%, 100% { transform: rotate(-0.15deg) translateY(0); }
+  50% { transform: rotate(0.65deg) translateY(2px); }
+}
+
+@keyframes seraphimReferenceWingUpperLeft {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(-0.5deg) scaleY(0.996); }
+  50% { transform: translate3d(1px, -2px, 0) rotate(1.35deg) scaleY(1.014); }
+}
+
+@keyframes seraphimReferenceWingUpperRight {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0.5deg) scaleY(0.996); }
+  50% { transform: translate3d(-1px, -2px, 0) rotate(-1.35deg) scaleY(1.014); }
+}
+
+@keyframes seraphimReferenceWingLowerLeft {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0.35deg) scaleY(0.998); }
+  50% { transform: translate3d(-1px, 2px, 0) rotate(-0.9deg) scaleY(1.01); }
+}
+
+@keyframes seraphimReferenceWingLowerRight {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(-0.35deg) scaleY(0.998); }
+  50% { transform: translate3d(1px, 2px, 0) rotate(0.9deg) scaleY(1.01); }
+}
+
+@keyframes seraphimEyeOpen {
+  0%, 87.8%, 91.2%, 100% { opacity: 1; }
+  88.35%, 90.7% { opacity: 0; }
+}
+
+@keyframes seraphimEyeHalf {
+  0%, 87.9%, 89.05%, 90.15%, 91.15%, 100% { opacity: 0; }
+  88.3%, 88.85%, 90.35%, 90.9% { opacity: 1; }
+}
+
+@keyframes seraphimEyeClosed {
+  0%, 88.8%, 90.35%, 100% { opacity: 0; }
+  89.15%, 90.05% { opacity: 1; }
+}
+
+@keyframes seraphimFrontClawLeft {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(-1.2deg); }
+  50% { transform: translate3d(2px, 1px, 0) rotate(0.7deg); }
+}
+
+@keyframes seraphimFrontClawRight {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(1.2deg); }
+  50% { transform: translate3d(-2px, 1px, 0) rotate(-0.7deg); }
+}
+
+@keyframes seraphimRearClawLeft {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0.8deg) scale(0.99); }
+  50% { transform: translate3d(-3px, 5px, 0) rotate(-1.3deg) scale(1.018); }
+}
+
+@keyframes seraphimRearClawRight {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(-0.8deg) scale(0.99); }
+  50% { transform: translate3d(3px, 5px, 0) rotate(1.3deg) scale(1.018); }
+}
+
+@keyframes seraphimFingerFlex {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0); }
+  42% { transform: translate3d(var(--finger-x), var(--finger-y), 0) rotate(var(--finger-turn)); }
+  58% { transform: translate3d(calc(var(--finger-x) * 0.7), calc(var(--finger-y) * 0.7), 0) rotate(calc(var(--finger-turn) * 0.72)); }
+}
+
+@keyframes seraphimOracleArrival {
+  0% { opacity: 0; transform: translate3d(0, -58vh, 0) scale(0.72); }
+  68% { opacity: 1; transform: translate3d(0, 12px, 0) scale(1.018); }
+  84% { transform: translate3d(0, -4px, 0) scale(0.995); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes seraphimLandingShockwave {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.35); }
+  12% { opacity: 0.6; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(4.8, 1.45); }
+}
+
+@keyframes seraphimLandingDust {
+  0% { opacity: 0; transform: translate(-50%, 4px) scale(0.28); }
+  14% { opacity: 0.66; }
+  46% { opacity: 0.4; }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--dust-drift)), var(--dust-lift)) scale(1.85); }
+}
+
+@keyframes seraphimCtaArrival {
+  from { opacity: 0; transform: translateY(-24px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes seraphimAura {
+  0%, 100% { opacity: 0.45; transform: scale(0.94); }
+  50% { opacity: 0.78; transform: scale(1.04); }
+}
+
+@keyframes seraphimEyePulse {
+  0%, 100% { filter: brightness(1); transform: translate(-50%, -50%) scale(1); }
+  50% { filter: brightness(1.35); transform: translate(-50%, -50%) scale(1.07); }
+}
+
+@keyframes seraphimDust {
+  0% { opacity: 0; transform: translate3d(0, 30px, 0) rotate(0deg); }
+  18% { opacity: 0.65; }
+  75% { opacity: 0.28; }
+  100% { opacity: 0; transform: translate3d(18px, -210px, 0) rotate(260deg); }
+}
+
+@media (max-width: 1180px) {
+  html[data-design='seraphim'] .seraphim-hero {
+    grid-template-columns: minmax(180px, 220px) minmax(430px, 1fr) minmax(180px, 220px);
+  }
+
+  html[data-design='seraphim'] .seraphim-side {
+    padding: 17px;
+  }
+
+  html[data-design='seraphim'] .seraphim-year-stats {
+    margin-right: -17px;
+    margin-left: -17px;
+    padding-right: 17px;
+    padding-left: 17px;
+  }
+
+  html[data-design='seraphim'] .seraphim-rules ul {
+    gap: 16px;
+  }
+}
+
+@media (max-width: 980px) {
+  html[data-design='seraphim'] .nav {
+    grid-template-columns: minmax(150px, 190px) minmax(0, 1fr) auto;
+  }
+
+  html[data-design='seraphim'] .seraphim-hero {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      'oracle oracle'
+      'today rules';
+    min-height: 0;
+  }
+
+  html[data-design='seraphim'] .seraphim-oracle-column {
+    width: min(100%, 760px);
+    margin: 0 auto 20px;
+  }
+
+  html[data-design='seraphim'] .seraphim-side {
+    align-self: stretch;
+  }
+
+  html[data-design='seraphim'] .seraphim-movie-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px), (max-width: 960px) and (max-height: 560px) {
+  html[data-design='seraphim'] .app-container {
+    padding-right: 14px;
+    padding-bottom: max(30px, env(safe-area-inset-bottom));
+    padding-left: 14px;
+  }
+
+  html[data-design='seraphim'] .nav {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    min-height: 58px;
+    gap: 8px;
+    margin: 0 -14px 10px;
+    padding: 5px 14px 8px;
+  }
+
+  html[data-design='seraphim'] .nav-brand {
+    min-height: 44px;
+    font-size: 0.76rem;
+  }
+
+  html[data-design='seraphim'] .nav-brand img {
+    width: 34px;
+    height: 34px;
+  }
+
+  html[data-design='seraphim'] .nav-user {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  html[data-design='seraphim'] .nav-user-name,
+  html[data-design='seraphim'] .nav-role-badge {
+    display: none;
+  }
+
+  html[data-design='seraphim'] .nav-pages-layer {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  html[data-design='seraphim'] .nav-pages,
+  html[data-design='seraphim'] .nav-pages.is-hidden {
+    position: static;
+    display: flex;
+    width: 100%;
+    max-width: none;
+    padding: 0;
+    overflow-x: auto;
+    border: 0;
+    box-shadow: none;
+    opacity: 1;
+    transform: none;
+    visibility: visible;
+    pointer-events: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+
+  html[data-design='seraphim'] .nav-pages::-webkit-scrollbar {
+    display: none;
+  }
+
+  html[data-design='seraphim'] .nav-btn {
+    flex: 0 0 auto;
+    min-height: 38px;
+    padding: 0 12px;
+    font-size: 0.76rem;
+    scroll-snap-align: start;
+  }
+
+  html[data-design='seraphim'] .nav-btn .nav-label-full {
+    display: inline;
+  }
+
+  html[data-design='seraphim'] .nav-btn .nav-label-short {
+    display: none;
+  }
+
+  html[data-design='seraphim'] .nav-dropdown {
+    position: fixed;
+    top: 62px;
+    right: 12px;
+    width: min(290px, calc(100vw - 24px));
+  }
+
+  html[data-design='seraphim'] .seraphim-home {
+    padding-top: 0;
+  }
+
+  html[data-design='seraphim'] .seraphim-home::after {
+    top: 0;
+    height: min(650px, 100dvh);
+    background-image:
+      linear-gradient(180deg, rgba(5, 5, 3, 0.01), rgba(5, 5, 3, 0.1) 80%, #090907 100%),
+      url('/assets/seraphim/seraphim-reference-background-1280-v8.webp');
+  }
+
+  html[data-design='seraphim'] .seraphim-hero {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  html[data-design='seraphim'] .seraphim-oracle-column {
+    order: 1;
+    width: 100%;
+    overflow: clip;
+    margin: 0 0 14px;
+  }
+
+  html[data-design='seraphim'] .seraphim-today {
+    order: 2;
+  }
+
+  html[data-design='seraphim'] .seraphim-rules {
+    order: 3;
+  }
+
+  html[data-design='seraphim'] .seraphim-side {
+    width: 100%;
+  }
+
+  html[data-design='seraphim'] .seraphim-incantation {
+    margin-bottom: -8px;
+    font-size: clamp(1.16rem, 6vw, 1.6rem);
+  }
+
+  html[data-design='seraphim'] .seraphim-oracle {
+    width: calc(100% + 20px);
+    margin-left: -10px;
+  }
+
+  html[data-design='seraphim'] .seraphim-wheel-mount {
+    width: 29%;
+  }
+
+  html[data-design='seraphim'] .seraphim-wheel-mount .wheel-pointer {
+    top: 2px;
+    border-top-width: 18px;
+    border-right-width: 9px;
+    border-left-width: 9px;
+  }
+
+  html[data-design='seraphim'] .seraphim-cta-wrap {
+    width: min(84%, 430px);
+    margin-top: clamp(-47px, -9vw, -28px);
+  }
+
+  html[data-design='seraphim'] .seraphim-spin-cta {
+    min-height: 70px;
+    padding-bottom: 14px;
+    font-size: clamp(1.35rem, 7vw, 1.9rem);
+  }
+
+  html[data-design='seraphim'] .seraphim-recent {
+    margin-top: 30px;
+  }
+
+  html[data-design='seraphim'] .seraphim-movie-strip {
+    display: flex;
+    margin-right: -14px;
+    padding-right: 14px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+  }
+
+  html[data-design='seraphim'] .seraphim-movie-card {
+    flex: 0 0 min(74vw, 260px);
+    scroll-snap-align: start;
+  }
+
+  html[data-design='seraphim'] .drawer-toggle-layer,
+  html[data-design='seraphim'] .admin-btn-layer {
+    bottom: max(16px, env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 420px) {
+  html[data-design='seraphim'] .seraphim-oracle {
+    width: calc(100% + 26px);
+    margin-left: -13px;
+  }
+
+  html[data-design='seraphim'] .seraphim-eye-button {
+    min-width: 38px;
+    min-height: 38px;
+  }
+
+  html[data-design='seraphim'] .seraphim-oracle-status {
+    max-width: 92vw;
+    font-size: 0.62rem;
+  }
+
+  html[data-design='seraphim'] .seraphim-recent > header {
+    align-items: flex-start;
+  }
+
+  html[data-design='seraphim'] .seraphim-recent h2 {
+    font-size: 0.78rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-design='seraphim'] .seraphim-art,
+  html[data-design='seraphim'] .seraphim-oracle,
+  html[data-design='seraphim'] .seraphim-cta-wrap,
+  html[data-design='seraphim'] .seraphim-art-core img,
+  html[data-design='seraphim'] .seraphim-art-body,
+  html[data-design='seraphim'] .seraphim-floating-assembly,
+  html[data-design='seraphim'] .seraphim-wing,
+  html[data-design='seraphim'] .seraphim-reference-wing,
+  html[data-design='seraphim'] .seraphim-eye-state,
+  html[data-design='seraphim'] .seraphim-center-eye-state,
+  html[data-design='seraphim'] .seraphim-reference-finger,
+  html[data-design='seraphim'] .seraphim-landing-dust > span,
+  html[data-design='seraphim'] .seraphim-landing-dust > i,
+  html[data-design='seraphim'] .seraphim-eye-button::after,
+  html[data-design='seraphim'] .seraphim-center-eye-track,
+  html[data-design='seraphim'] .seraphim-aura,
+  html[data-design='seraphim'] .seraphim-eye-button,
+  html[data-design='seraphim'] .seraphim-particles i,
+  html[data-design='seraphim'] .seraphim-spin-cta,
+  html[data-design='seraphim'] .seraphim-movie-card {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+    transform: none;
+  }
+
+  html[data-design='seraphim'] .seraphim-eye-button {
+    transform: translate(-50%, -50%);
+  }
+}

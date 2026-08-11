@@ -1,8 +1,9 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import AdminModal from '../components/AdminModal';
 import AuthPage from '../components/AuthPage';
 import ConnectionStatus from '../components/ConnectionStatus';
 import DrawerPanel from '../components/DrawerPanel';
+import MiniCheeseWheel from '../components/MiniCheeseWheel';
 import Nav from '../components/Nav';
 import ResultModal from '../components/ResultModal';
 import ReviewsJournalPage from '../components/ReviewsJournalPage';
@@ -15,6 +16,8 @@ const GamesPage = lazy(() => import('../components/GamesPage'));
 const SigamePacksPage = lazy(() => import('../components/SigamePacksPage'));
 const VpnPage = lazy(() => import('../components/VpnPage'));
 const WatchedPage = lazy(() => import('../components/WatchedPage'));
+const STARTUP_SPLASH_MIN_MS = 1000;
+const STARTUP_SPLASH_FADE_MS = 240;
 
 const REVIEW_KINDS_BY_PAGE = {
   'movie-reviews': 'movies',
@@ -39,6 +42,47 @@ function PageLoading() {
   );
 }
 
+function StartupSplash() {
+  const { usersLoadState } = useApp();
+  const [imageReady, setImageReady] = useState(false);
+  const [minimumElapsed, setMinimumElapsed] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setMinimumElapsed(true),
+      STARTUP_SPLASH_MIN_MS
+    );
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!imageReady || !minimumElapsed || usersLoadState === 'loading') return undefined;
+    setLeaving(true);
+    const timer = window.setTimeout(
+      () => setVisible(false),
+      STARTUP_SPLASH_FADE_MS
+    );
+    return () => window.clearTimeout(timer);
+  }, [imageReady, minimumElapsed, usersLoadState]);
+
+  if (!visible) return null;
+  return (
+    <div
+      className={`startup-splash${imageReady ? ' is-ready' : ''}${leaving ? ' is-leaving' : ''}`}
+      role="status"
+      aria-live="polite"
+    >
+      <MiniCheeseWheel
+        spinning
+        onReady={() => setImageReady(true)}
+      />
+      <h1 className="auth-title">Сырное колесо</h1>
+    </div>
+  );
+}
+
 function AuthState() {
   const {
     isLoggedIn,
@@ -51,15 +95,7 @@ function AuthState() {
   } = useApp();
 
   if (isLoggedIn) return null;
-  if (usersLoadState === 'loading') {
-    return (
-      <div className="auth-page active" aria-live="polite">
-        <div className="auth-logo" aria-hidden="true">СК</div>
-        <h1 className="auth-title">Собираем компанию…</h1>
-        <p className="auth-subtitle">Загружаем участников и настройки.</p>
-      </div>
-    );
-  }
+  if (usersLoadState === 'loading') return null;
   if (usersLoadState === 'error') {
     return (
       <div className="auth-page active" role="alert">
@@ -169,6 +205,7 @@ function AppControls() {
     drawerOpen,
     formCurrentWheel,
     formUpcomingWheel,
+    interfaceTheme,
     isAdmin,
     isLoggedIn,
     nextWheelMovies,
@@ -186,7 +223,9 @@ function AppControls() {
 
   return (
     <>
-      {decorationsEnabled && <ThemeDecorations theme={theme} />}
+      {decorationsEnabled && interfaceTheme === 'classic' && (
+        <ThemeDecorations theme={theme} />
+      )}
       {isAdmin && (
         <div className="admin-btn-layer">
           <button
@@ -281,6 +320,7 @@ function GlobalFeedback() {
 export default function AppView() {
   return (
     <>
+      <StartupSplash />
       <AppControls />
       <AuthState />
       <AppNavigation />

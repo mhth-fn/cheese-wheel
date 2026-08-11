@@ -3,11 +3,13 @@ import { useApp } from '../app/AppContext';
 import CheeseWheel from './CheeseWheel';
 import OneOffWheelPanel from './OneOffWheelPanel';
 import OneOffResultModal from './OneOffResultModal';
+import SeraphimWheelHome from './SeraphimWheelHome';
 import WheelThemeIcon from './WheelThemeIcon';
 
 export default function WheelPage() {
   const {
     isGuest,
+    interfaceTheme,
     socket,
     connected,
     showToast,
@@ -154,6 +156,28 @@ export default function WheelPage() {
   );
   if (oneOffVisible) {
     return <OneOffWheelPanel />;
+  }
+
+  if (interfaceTheme === 'seraphim') {
+    return (
+      <>
+        <SeraphimWheelHome
+          handleSpin={handleSpin}
+          handleSpinComplete={handleSpinComplete}
+          isSpinning={isSpinning}
+          movies={movies}
+          readinessText={readinessText}
+          refreshWheelData={refreshWheelData}
+          spinDisabled={spinDisabled}
+          spinIsDisabled={spinIsDisabled}
+          spinPending={spinPending}
+          wheelReady={wheelReady}
+          wheelRef={wheelRef}
+          wheelStatusLoadState={wheelStatusLoadState}
+        />
+        <OneOffResultModal visible />
+      </>
+    );
   }
 
   return (

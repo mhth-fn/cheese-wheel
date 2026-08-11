@@ -347,6 +347,10 @@
   gap: 1px;
 }
 
+.movie-title-stack > .movie-external-links {
+  padding: 4px 6px 0;
+}
+
 .movie-title-cell:hover {
   background: var(--feature-accent-surface);
 }
@@ -692,6 +696,10 @@
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: var(--space-2);
+  }
+
+  .watched-movie-card > .movie-external-links {
+    padding-top: var(--space-1);
   }
 
   .watched-card-title {

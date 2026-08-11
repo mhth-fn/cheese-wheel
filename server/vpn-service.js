@@ -1,8 +1,18 @@
 'use strict';
 
 const https = require('node:https');
+const path = require('node:path');
 const net = require('node:net');
 const tls = require('node:tls');
+const { execFile } = require('node:child_process');
+const { promisify } = require('node:util');
+
+const execFileAsync = promisify(execFile);
+
+const VPN_PROTOCOLS = Object.freeze({
+  VLESS: 'vless',
+  AMNEZIAWG: 'amneziawg',
+});
 
 function createVpnService() {
 
@@ -20,6 +30,7 @@ const VPN_SERVERS = [
     password: process.env.XUI_PRIMARY_PASSWORD,
     inboundId: Number.parseInt(process.env.XUI_PRIMARY_INBOUND_ID || '2', 10),
     tlsFingerprint: process.env.XUI_PRIMARY_TLS_FINGERPRINT,
+    awgHelper: process.env.AWG_PRIMARY_HELPER,
   },
   {
     id: 'secondary',
@@ -30,6 +41,7 @@ const VPN_SERVERS = [
     password: process.env.XUI_SECONDARY_PASSWORD,
     inboundId: Number.parseInt(process.env.XUI_SECONDARY_INBOUND_ID || '2', 10),
     tlsFingerprint: process.env.XUI_SECONDARY_TLS_FINGERPRINT,
+    awgHelper: process.env.AWG_SECONDARY_HELPER,
   },
 ];
 const xuiSessions = new Map();
@@ -47,6 +59,106 @@ function isVpnServerConfigured(server) {
     server.tlsFingerprint &&
     Number.isInteger(server.inboundId)
   );
+}
+
+function isAwgServerConfigured(server) {
+  return Boolean(
+    server?.awgHelper
+    && path.isAbsolute(server.awgHelper)
+    && !server.awgHelper.includes('\0')
+  );
+}
+
+function isVpnProtocolConfigured(server, protocol) {
+  if (protocol === VPN_PROTOCOLS.VLESS) return isVpnServerConfigured(server);
+  if (protocol === VPN_PROTOCOLS.AMNEZIAWG) return isAwgServerConfigured(server);
+  return false;
+}
+
+function getVpnServerProtocols(server) {
+  return [
+    isVpnServerConfigured(server) ? VPN_PROTOCOLS.VLESS : null,
+    isAwgServerConfigured(server) ? VPN_PROTOCOLS.AMNEZIAWG : null,
+  ].filter(Boolean);
+}
+
+function parseAwgHelperPayload(stdout, serverId) {
+  const source = String(stdout || '').trim();
+  if (!source || Buffer.byteLength(source, 'utf8') > 64 * 1024) {
+    throw new Error(`Invalid AmneziaWG helper response for ${serverId}`);
+  }
+  try {
+    const payload = JSON.parse(source);
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new Error('not an object');
+    }
+    return payload;
+  } catch {
+    throw new Error(`Invalid AmneziaWG helper JSON for ${serverId}`);
+  }
+}
+
+async function callAwgHelper(serverConfig, action, peerId = '') {
+  if (!isAwgServerConfigured(serverConfig)) {
+    throw new Error(`AmneziaWG helper is not configured for ${serverConfig?.id || 'unknown'}`);
+  }
+  if (!['status', 'create', 'delete'].includes(action)) {
+    throw new Error('Unsupported AmneziaWG helper action');
+  }
+  if (
+    action !== 'status'
+    && !/^cw_[1-9][0-9]*_[a-f0-9]{16}$/.test(peerId)
+  ) {
+    throw new Error('Invalid AmneziaWG peer id');
+  }
+
+  const args = action === 'status' ? [action] : [action, peerId];
+  const { stdout } = await execFileAsync(serverConfig.awgHelper, args, {
+    encoding: 'utf8',
+    timeout: 20_000,
+    maxBuffer: 64 * 1024,
+    windowsHide: true,
+    env: {
+      LANG: 'C.UTF-8',
+      PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+    },
+  });
+  return parseAwgHelperPayload(stdout, serverConfig.id);
+}
+
+async function createAwgClient(serverConfig, peerId) {
+  const payload = await callAwgHelper(serverConfig, 'create', peerId);
+  if (
+    payload.success !== true
+    || payload.clientId !== peerId
+    || typeof payload.address !== 'string'
+    || typeof payload.configBase64 !== 'string'
+  ) {
+    throw new Error(`Incomplete AmneziaWG create response for ${serverConfig.id}`);
+  }
+  const configBuffer = Buffer.from(payload.configBase64, 'base64');
+  const config = configBuffer.toString('utf8');
+  if (
+    configBuffer.length < 100
+    || configBuffer.length > 16 * 1024
+    || !config.startsWith('[Interface]\n')
+    || !config.includes('\n[Peer]\n')
+    || !config.includes(`Endpoint = ${serverConfig.address}:`)
+  ) {
+    throw new Error(`Invalid AmneziaWG client configuration for ${serverConfig.id}`);
+  }
+  return {
+    clientId: peerId,
+    address: payload.address.slice(0, 120),
+    connectionConfig: config,
+  };
+}
+
+async function deleteAwgClient(serverConfig, peerId) {
+  const payload = await callAwgHelper(serverConfig, 'delete', peerId);
+  if (payload.success !== true || payload.clientId !== peerId) {
+    throw new Error(`Incomplete AmneziaWG delete response for ${serverConfig.id}`);
+  }
 }
 
 function normalizeFingerprint(value) {
@@ -303,11 +415,11 @@ function checkTcpPort(address, port, timeout = 3500) {
   });
 }
 
-async function checkVpnServer(serverConfig) {
+async function checkVlessServer(serverConfig) {
   const checkedAt = Date.now();
   if (!isVpnServerConfigured(serverConfig)) {
     return {
-      id: serverConfig.id,
+      available: false,
       online: false,
       panelOnline: false,
       inboundEnabled: false,
@@ -331,7 +443,7 @@ async function checkVpnServer(serverConfig) {
     const inboundSettings = parseXuiJson(inbound.settings);
 
     return {
-      id: serverConfig.id,
+      available: true,
       online: inboundEnabled && portOpen,
       panelOnline: true,
       inboundEnabled,
@@ -346,7 +458,7 @@ async function checkVpnServer(serverConfig) {
   } catch (error) {
     console.warn(`[cheese-wheel] VPN health check failed for ${serverConfig.id}:`, error.message);
     return {
-      id: serverConfig.id,
+      available: true,
       online: false,
       panelOnline: false,
       inboundEnabled: false,
@@ -359,17 +471,77 @@ async function checkVpnServer(serverConfig) {
   }
 }
 
+async function checkAwgServer(serverConfig) {
+  const checkedAt = Date.now();
+  if (!isAwgServerConfigured(serverConfig)) {
+    return {
+      available: false,
+      online: false,
+      port: null,
+      clientCount: null,
+      checkedAt,
+    };
+  }
+  try {
+    const payload = await callAwgHelper(serverConfig, 'status');
+    const port = Number(payload.port);
+    const clientCount = Number(payload.clientCount);
+    return {
+      available: true,
+      online: payload.online === true,
+      port: Number.isInteger(port) && port > 0 && port <= 65535 ? port : null,
+      clientCount: Number.isInteger(clientCount) && clientCount >= 0 ? clientCount : null,
+      checkedAt,
+    };
+  } catch (error) {
+    console.warn(
+      `[cheese-wheel] AmneziaWG health check failed for ${serverConfig.id}:`,
+      error.message
+    );
+    return {
+      available: true,
+      online: false,
+      port: null,
+      clientCount: null,
+      checkedAt,
+    };
+  }
+}
+
+async function checkVpnServer(serverConfig) {
+  const checkedAt = Date.now();
+  const [vless, amneziawg] = await Promise.all([
+    checkVlessServer(serverConfig),
+    checkAwgServer(serverConfig),
+  ]);
+  return {
+    id: serverConfig.id,
+    online: vless.online || amneziawg.online,
+    checkedAt,
+    protocols: {
+      [VPN_PROTOCOLS.VLESS]: vless,
+      [VPN_PROTOCOLS.AMNEZIAWG]: amneziawg,
+    },
+  };
+}
+
 // ============ RATE LIMITING ============
 
 
   return {
     VPN_MAX_CLIENTS_PER_SERVER,
+    VPN_PROTOCOLS,
     VPN_SERVERS,
     buildVlessLink,
+    createAwgClient,
     callXuiApi,
     canonicalizeVlessLink,
     checkVpnServer,
+    deleteAwgClient,
     getVpnServer,
+    getVpnServerProtocols,
+    isAwgServerConfigured,
+    isVpnProtocolConfigured,
     isVpnServerConfigured,
     vpnMutations,
   };

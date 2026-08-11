@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { useApp } from '../app/AppContext';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import MovieReviewsSection from './MovieReviewsSection';
+import MovieExternalLinks from '../features/movies/MovieExternalLinks';
 
 function formatDate(value) {
   if (!value) return 'Не указана';
@@ -51,6 +52,7 @@ export default function MovieDetailsDialog({
             {movie.alternative_title && (
               <span className="movie-details-alternative">{movie.alternative_title}</span>
             )}
+            <MovieExternalLinks movie={movie} className="movie-details-external-links" />
           </div>
           <button
             className="icon-button"

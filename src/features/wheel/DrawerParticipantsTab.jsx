@@ -6,6 +6,7 @@ import {
   movieToDraft,
 } from '../movies/movieDraft';
 import MovieFields from '../movies/MovieFields';
+import MovieExternalLinks from '../movies/MovieExternalLinks';
 import MovieInlineEditor from './MovieInlineEditor';
 
 function selectDisplayedMovies(movies, wheelStatus) {
@@ -126,6 +127,7 @@ export default function DrawerParticipantsTab({
         {movie && movieMetaText(movie) && (
           <small className="wm-movie-meta">{movieMetaText(movie)}</small>
         )}
+        {movie && <MovieExternalLinks movie={movie} compact />}
       </>
     );
   };
@@ -254,6 +256,7 @@ export default function DrawerParticipantsTab({
                   <>
                     <span>{movie.title}</span>
                     {movieMetaText(movie) && <small className="wm-movie-meta">{movieMetaText(movie)}</small>}
+                    <MovieExternalLinks movie={movie} compact />
                   </>
                 )}
               </div>

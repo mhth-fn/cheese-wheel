@@ -84,10 +84,23 @@
 }
 
 .stat-card-title-item {
-  display: block;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  overflow: visible;
+  white-space: normal;
+}
+
+.stat-card-title-item > span:first-child {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.stat-card-title-item > .movie-external-links {
+  flex: 0 0 auto;
 }
 
 .stat-card-more {

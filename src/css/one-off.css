@@ -306,6 +306,7 @@
   min-width: 0;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .one-off-movie-title {

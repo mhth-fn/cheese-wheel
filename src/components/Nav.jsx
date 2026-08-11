@@ -31,7 +31,14 @@ const PRIMARY_PAGES = [
 ];
 
 export default function Nav({ activePage, onNavigate, onLogout, userName }) {
-  const { currentUser, isAdmin, isGuest, showToast } = useApp();
+  const {
+    currentUser,
+    interfaceTheme,
+    isAdmin,
+    isGuest,
+    setInterfaceTheme,
+    showToast,
+  } = useApp();
   const [changingPassword, setChangingPassword] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [securityOpen, setSecurityOpen] = useState(false);
@@ -110,10 +117,21 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
   }, [changingPassword, dropdownOpen, securityOpen]);
 
   return (
-    <nav className="nav" aria-label="Основные разделы">
-      <div className="nav-pages-layer">
+    <header className="nav">
+      <button
+        className="nav-brand"
+        type="button"
+        onClick={() => handleNavigate('wheel')}
+        aria-label="Сырное колесо — на главную"
+      >
+        <img src="/favicon.svg" alt="" aria-hidden="true" />
+        <span>Сырное<br />колесо</span>
+      </button>
+
+      <nav className="nav-pages-layer" aria-label="Основные разделы">
         <div
           className={`nav-pages${mobileNavigation.hidden ? ' is-hidden' : ''}`}
+          data-page-count={pages.length}
           style={{ '--nav-page-count': pages.length }}
           onFocusCapture={mobileNavigation.reveal}
         >
@@ -142,7 +160,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
             );
           })}
         </div>
-      </div>
+      </nav>
 
       <div className="nav-user" ref={dropdownRef}>
         <button
@@ -174,6 +192,41 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
             aria-modal="false"
             aria-label={`Настройки пользователя ${userName}`}
           >
+            {!changingPassword && !securityOpen && (
+              <>
+                <div className="nav-dropdown-profile">
+                  <span>{userName}</span>
+                  {isAdmin && <small>Администратор</small>}
+                </div>
+                <div className="nav-design-picker" role="group" aria-label="Дизайн сайта">
+                  <span className="nav-design-label">Дизайн</span>
+                  <button
+                    className="nav-design-option"
+                    type="button"
+                    onClick={() => setInterfaceTheme('classic')}
+                    aria-pressed={interfaceTheme === 'classic'}
+                  >
+                    <span aria-hidden="true">
+                      {interfaceTheme === 'classic' ? '✓' : ''}
+                    </span>
+                    Классический
+                  </button>
+                  <button
+                    className="nav-design-option"
+                    type="button"
+                    onClick={() => setInterfaceTheme('seraphim')}
+                    aria-pressed={interfaceTheme === 'seraphim'}
+                  >
+                    <span aria-hidden="true">
+                      {interfaceTheme === 'seraphim' ? '✓' : ''}
+                    </span>
+                    Cheese Wheel 2.0
+                  </button>
+                </div>
+                <div className="nav-dropdown-divider" />
+              </>
+            )}
+
             {!isGuest && !changingPassword && !securityOpen && (
               <button
                 className="nav-dropdown-item"
@@ -222,6 +275,6 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
           </div>
         )}
       </div>
-    </nav>
+    </header>
   );
 }

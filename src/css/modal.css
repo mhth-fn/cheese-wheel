@@ -197,6 +197,15 @@
   line-height: 1.4;
 }
 
+.movie-details-external-links {
+  margin-top: var(--space-3);
+}
+
+.one-off-result-links {
+  justify-content: center;
+  margin-top: var(--space-3);
+}
+
 .movie-details-meta {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

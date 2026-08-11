@@ -18,7 +18,9 @@ export function useDocumentTheme(theme) {
     document.body.classList.remove(...THEME_CLASSES);
     document.body.classList.add(`theme-${theme}`);
     document.documentElement.style.backgroundColor = (
-      BROWSER_THEME_COLORS[theme] || BROWSER_THEME_COLORS.cheese
+      document.documentElement.dataset.design === 'seraphim'
+        ? '#080806'
+        : BROWSER_THEME_COLORS[theme] || BROWSER_THEME_COLORS.cheese
     );
     localStorage.setItem('theme', theme);
   }, [theme]);

@@ -17,6 +17,7 @@ import {
   movieMetaText,
   movieToDraft,
 } from '../features/movies/movieDraft';
+import MovieExternalLinks from '../features/movies/MovieExternalLinks';
 import WatchedAddForm from '../features/watched/WatchedAddForm';
 import WatchedHistory from '../features/watched/WatchedHistory';
 import WatchedScopeControls from '../features/watched/WatchedScopeControls';
@@ -24,7 +25,17 @@ import { useWatchedScope } from '../features/watched/useWatchedScope';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 
 export default function WatchedPage() {
-  const { currentUser, isGuest, isAdmin, users, socket, showToast, page, connected } = useApp();
+  const {
+    connected,
+    currentUser,
+    interfaceTheme,
+    isAdmin,
+    isGuest,
+    page,
+    showToast,
+    socket,
+    users,
+  } = useApp();
   const [movies, setMovies] = useState([]);
   const [searchQuery, setSearchQuery] = useState(() => sessionStorage.getItem('watchedSearch') || '');
   const [debouncedQuery, setDebouncedQuery] = useState(searchQuery);
@@ -460,6 +471,7 @@ export default function WatchedPage() {
               {renderAvgRating(movie)}
             </div>
           </header>
+          <MovieExternalLinks movie={movie} />
         </>
       )}
     </article>
@@ -467,6 +479,13 @@ export default function WatchedPage() {
 
   return (
     <>
+      {interfaceTheme === 'seraphim' && (
+        <header className="seraphim-page-heading">
+          <p>Летопись выбранного</p>
+          <h1>Просмотренное</h1>
+          <span>Фильтры статистики, оценки и общая история наших просмотров.</span>
+        </header>
+      )}
       <StatsPanel
         key={`${activeScope}-${selectedStatsUserIds.join(',')}-stats`}
         refreshKey={statsKey}

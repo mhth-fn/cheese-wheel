@@ -57,6 +57,7 @@ test('backup creates and verifies an atomic database and file-storage snapshot',
   assert.deepEqual(snapshotFiles, [
     'SHA256SUMS',
     'cheese_wheel.db',
+    'sigame-packs.index.json',
     'sigame-packs.tar',
     'uploads.tar',
   ]);
@@ -80,6 +81,58 @@ test('backup creates and verifies an atomic database and file-storage snapshot',
     }),
     /missing required table/
   );
+});
+
+test('unchanged SIGame packs reuse one verified archive inode', async t => {
+  const fixtureRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'cheese-wheel-dedupe-test-'));
+  t.after(() => fsp.rm(fixtureRoot, { recursive: true, force: true }));
+
+  const dataRoot = path.join(fixtureRoot, 'data');
+  const uploadsPath = path.join(dataRoot, 'uploads');
+  const sigamePacksPath = path.join(dataRoot, 'sigame-packs');
+  const backupRoot = path.join(fixtureRoot, 'backups');
+  const databasePath = path.join(dataRoot, 'cheese_wheel.db');
+  await Promise.all([
+    fsp.mkdir(uploadsPath, { recursive: true }),
+    fsp.mkdir(sigamePacksPath, { recursive: true }),
+  ]);
+  const packPath = path.join(sigamePacksPath, 'safe-id.siq');
+  await fsp.writeFile(packPath, 'first pack version');
+
+  const db = new Database(databasePath);
+  db.exec('CREATE TABLE users (id INTEGER PRIMARY KEY)');
+  db.close();
+
+  const commonOptions = {
+    databasePath,
+    uploadsPath,
+    sigamePacksPath,
+    backupRoot,
+    tarPath,
+    retentionDays: 30,
+    expectedTables: ['users'],
+  };
+  const first = await runBackup({
+    ...commonOptions,
+    currentDate: new Date('2026-07-25T00:00:00Z'),
+  });
+  const second = await runBackup({
+    ...commonOptions,
+    currentDate: new Date('2026-07-25T06:00:00Z'),
+  });
+
+  const firstArchive = await fsp.stat(path.join(first.snapshot, 'sigame-packs.tar'));
+  const secondArchive = await fsp.stat(path.join(second.snapshot, 'sigame-packs.tar'));
+  assert.equal(secondArchive.ino, firstArchive.ino);
+  assert.equal(secondArchive.nlink, 2);
+
+  await fsp.writeFile(packPath, 'second pack version');
+  const third = await runBackup({
+    ...commonOptions,
+    currentDate: new Date('2026-07-25T12:00:00Z'),
+  });
+  const thirdArchive = await fsp.stat(path.join(third.snapshot, 'sigame-packs.tar'));
+  assert.notEqual(thirdArchive.ino, firstArchive.ino);
 });
 
 test('retention removes only strictly named expired snapshot directories', async t => {

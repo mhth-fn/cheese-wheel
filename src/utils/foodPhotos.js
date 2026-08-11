@@ -1,5 +1,6 @@
 export const MAX_FOOD_PHOTOS = 4;
-export const MAX_FOOD_PHOTO_BYTES = 10 * 1024 * 1024;
+export const MAX_FOOD_PHOTO_BYTES = 100 * 1024 * 1024;
+export const FOOD_PHOTO_COMPRESSION_THRESHOLD_BYTES = 10 * 1024 * 1024;
 
 const FOOD_PHOTO_TYPES = new Set([
   'image/jpeg',
@@ -60,7 +61,7 @@ export function validateFoodPhoto(file) {
     return 'Фотография пустая';
   }
   if (file.size > MAX_FOOD_PHOTO_BYTES) {
-    return 'Фотография больше 10 МБ';
+    return 'Фотография больше 100 МБ';
   }
   return null;
 }
@@ -119,9 +120,9 @@ async function convertHeifPhoto(file) {
     let converted;
     for (const quality of [0.9, 0.82, 0.72]) {
       converted = await encodeJpeg(canvas, quality);
-      if (converted.size <= MAX_FOOD_PHOTO_BYTES) break;
+      if (converted.size <= FOOD_PHOTO_COMPRESSION_THRESHOLD_BYTES) break;
     }
-    if (!converted || converted.size > MAX_FOOD_PHOTO_BYTES) {
+    if (!converted || converted.size > FOOD_PHOTO_COMPRESSION_THRESHOLD_BYTES) {
       throw new Error('После преобразования фотография всё ещё больше 10 МБ');
     }
 

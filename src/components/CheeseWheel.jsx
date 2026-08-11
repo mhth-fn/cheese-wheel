@@ -18,6 +18,13 @@ const RIND_THEMES = {
     marker: "#D43030",
     markerStroke: "#A82020",
   },
+  seraphim: {
+    outer: "#4b2c09",
+    mid: "#a9690d",
+    inner: "#e0a128",
+    marker: "#e8b739",
+    markerStroke: "#76500a",
+  },
   newyear: {
     outer: "#8b0000",
     mid: "#c41e3a",
@@ -49,6 +56,15 @@ const WHEEL_PALETTES = {
     holeShadow: "#C48E18",
     holeHighlight: "#E8B840",
     label: "#5B3D08",
+  },
+  seraphim: {
+    wedges: ["#efb63a", "#dd951f", "#f4c54d", "#e8a72c"],
+    divider: "rgba(103, 57, 7, 0.78)",
+    hole: "#70400a",
+    holeShadow: "#2b1704",
+    holeHighlight: "#f0c35c",
+    label: "#3b2308",
+    labelStroke: "rgba(249, 207, 105, 0.68)",
   },
   samurai: {
     wedges: ["#a92920", "#b73329", "#98231c", "#c13b2f"],
@@ -106,6 +122,59 @@ function drawSamuraiSunTexture(ctx, cx, cy, radius, rotation, movieCount) {
   ctx.restore();
 }
 
+function drawSeraphimCheeseTexture(ctx, cx, cy, radius, rotation, movieCount) {
+  let seed = 6143 + movieCount * 131;
+  const random = () => {
+    seed = (seed * 16807) % 2147483647;
+    return (seed - 1) / 2147483646;
+  };
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+  ctx.clip();
+
+  const cheeseLight = ctx.createRadialGradient(
+    cx - radius * 0.3,
+    cy - radius * 0.34,
+    radius * 0.04,
+    cx,
+    cy,
+    radius
+  );
+  cheeseLight.addColorStop(0, "rgba(255, 238, 147, 0.46)");
+  cheeseLight.addColorStop(0.42, "rgba(255, 202, 65, 0.08)");
+  cheeseLight.addColorStop(0.78, "rgba(110, 54, 4, 0.06)");
+  cheeseLight.addColorStop(1, "rgba(73, 32, 2, 0.3)");
+  ctx.fillStyle = cheeseLight;
+  ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+
+  ctx.translate(cx, cy);
+  ctx.rotate(rotation);
+  for (let index = 0; index < 110; index++) {
+    const angle = random() * Math.PI * 2;
+    const distance = Math.sqrt(random()) * radius * 0.93;
+    const x = Math.cos(angle) * distance;
+    const y = Math.sin(angle) * distance;
+    const length = 3 + random() * 19;
+    ctx.beginPath();
+    ctx.moveTo(x - length / 2, y);
+    ctx.quadraticCurveTo(
+      x,
+      y + (random() - 0.5) * 3,
+      x + length / 2,
+      y + (random() - 0.5) * 2
+    );
+    ctx.strokeStyle = index % 4 === 0
+      ? `rgba(255, 229, 128, ${0.045 + random() * 0.08})`
+      : `rgba(100, 49, 4, ${0.03 + random() * 0.075})`;
+    ctx.lineWidth = 0.45 + random() * 0.9;
+    ctx.lineCap = "round";
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 const CheeseWheel = forwardRef(function CheeseWheel({
   movies,
   onSpinComplete,
@@ -118,7 +187,9 @@ const CheeseWheel = forwardRef(function CheeseWheel({
   const [spinning, setSpinning] = useState(false);
   const [spinPhase, setSpinPhase] = useState('idle');
   const [pointerTick, setPointerTick] = useState(0);
+  const [seraphimTextureReady, setSeraphimTextureReady] = useState(false);
   const rotRef = useRef(0);
+  const seraphimTextureRef = useRef(null);
   const spinningRef = useRef(false);
   const spinPhaseRef = useRef('idle');
   const hoveredSectorRef = useRef(-1);
@@ -126,33 +197,74 @@ const CheeseWheel = forwardRef(function CheeseWheel({
   const completionTimerRef = useRef(null);
   const celebrationTimerRef = useRef(null);
 
+  useEffect(() => {
+    if (theme !== 'seraphim') {
+      seraphimTextureRef.current = null;
+      setSeraphimTextureReady(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const texture = new Image();
+    texture.decoding = 'async';
+    texture.onload = () => {
+      if (cancelled) return;
+      seraphimTextureRef.current = texture;
+      setSeraphimTextureReady(true);
+    };
+    texture.onerror = () => {
+      if (cancelled) return;
+      seraphimTextureRef.current = null;
+      setSeraphimTextureReady(false);
+    };
+    texture.src = '/assets/seraphim/cheese-wheel-reference-v11.webp';
+    return () => {
+      cancelled = true;
+    };
+  }, [theme]);
+
   const seeded = (s) => { let v = s; return () => { v = (v * 16807) % 2147483647; return (v - 1) / 2147483646; }; };
 
   /* pre-generate holes — regenerate when movie count changes */
   const holesRef = useRef(null);
-  const holeCountRef = useRef(0);
+  const holeCountRef = useRef('');
 
-  const ensureHoles = useCallback((n) => {
-    if (holesRef.current && holeCountRef.current === n) return;
-    const rng = seeded(42);
+  const ensureHoles = useCallback((n, dense = false) => {
+    const holeKey = `${n}:${dense ? 'dense' : 'classic'}`;
+    if (holesRef.current && holeCountRef.current === holeKey) return;
+    const rng = seeded(dense ? 117 : 42);
     const holes = [];
     const sliceAngle = (2 * Math.PI) / n;
     for (let s = 0; s < n; s++) {
-      const count = 5 + Math.floor(rng() * 3);
+      const count = dense
+        ? 4 + Math.floor(rng() * 4)
+        : 5 + Math.floor(rng() * 3);
       for (let h = 0; h < count; h++) {
         const t = (h + 0.2 + rng() * 0.6) / count;
         const angleOff = t * sliceAngle;
-        const distFrac = 0.22 + rng() * 0.62;
-        const hr = 4 + rng() * 9;
-        holes.push({ sector: s, angleOff, distFrac, hr });
+        const distFrac = dense
+          ? 0.18 + rng() * 0.7
+          : 0.22 + rng() * 0.62;
+        const hr = dense ? 5 + rng() * 13 : 4 + rng() * 9;
+        holes.push({
+          sector: s,
+          angleOff,
+          distFrac,
+          hr,
+          squash: 0.68 + rng() * 0.24,
+          tilt: (rng() - 0.5) * 0.75,
+        });
       }
     }
     holesRef.current = holes;
-    holeCountRef.current = n;
+    holeCountRef.current = holeKey;
   }, []);
 
   const draw = useCallback((ctx, w, h, rot) => {
-    const cx = w / 2, cy = h / 2, r = Math.min(cx, cy) - 44;
+    const isSeraphim = theme === 'seraphim';
+    const cx = w / 2;
+    const cy = h / 2;
+    const r = Math.min(cx, cy) - (isSeraphim ? 14 : 44);
     ctx.clearRect(0, 0, w, h);
 
     const n = movies.length;
@@ -160,24 +272,54 @@ const CheeseWheel = forwardRef(function CheeseWheel({
     const sliceAngle = (2 * Math.PI) / n;
 
     const isSamurai = theme === 'samurai';
-    if (!isSamurai) ensureHoles(n);
+    if (!isSamurai) ensureHoles(n, isSeraphim);
 
     const rind = RIND_THEMES[theme] || RIND_THEMES.cheese;
     const palette = WHEEL_PALETTES[theme] || WHEEL_PALETTES.cheese;
-    const rindOuter = r + 28;
-    const rindMid = r + 16;
-    const rindInner = r + 4;
+    const rindOuter = r + (isSeraphim ? 7 : 28);
+    const rindMid = r + (isSeraphim ? 4 : 16);
+    const rindInner = r + (isSeraphim ? 1 : 4);
 
     /* outer dark border */
     ctx.beginPath();
     ctx.arc(cx, cy, rindOuter, 0, 2 * Math.PI);
-    ctx.fillStyle = rind.outer;
+    if (isSeraphim) {
+      const outerRind = ctx.createRadialGradient(
+        cx - rindOuter * 0.26,
+        cy - rindOuter * 0.3,
+        rindOuter * 0.12,
+        cx,
+        cy,
+        rindOuter
+      );
+      outerRind.addColorStop(0, '#a56a15');
+      outerRind.addColorStop(0.72, rind.outer);
+      outerRind.addColorStop(1, '#241304');
+      ctx.fillStyle = outerRind;
+    } else {
+      ctx.fillStyle = rind.outer;
+    }
     ctx.fill();
 
     /* mid rind */
     ctx.beginPath();
     ctx.arc(cx, cy, rindMid, 0, 2 * Math.PI);
-    ctx.fillStyle = rind.mid;
+    if (isSeraphim) {
+      const midRind = ctx.createRadialGradient(
+        cx - rindMid * 0.25,
+        cy - rindMid * 0.28,
+        rindMid * 0.08,
+        cx,
+        cy,
+        rindMid
+      );
+      midRind.addColorStop(0, '#f1bc49');
+      midRind.addColorStop(0.64, rind.mid);
+      midRind.addColorStop(1, '#704008');
+      ctx.fillStyle = midRind;
+    } else {
+      ctx.fillStyle = rind.mid;
+    }
     ctx.fill();
 
     /* inner rind edge */
@@ -191,12 +333,59 @@ const CheeseWheel = forwardRef(function CheeseWheel({
     movies.forEach((m, i) => {
       const startAngle = rot + i * sliceAngle;
       const endAngle = startAngle + sliceAngle;
+      const seamAngle = isSeraphim && n > 1
+        ? Math.min(0.017, sliceAngle * 0.055)
+        : 0;
+      const pieceStart = startAngle + seamAngle;
+      const pieceEnd = endAngle - seamAngle;
       ctx.beginPath();
       ctx.moveTo(cx, cy);
-      ctx.arc(cx, cy, r, startAngle, endAngle);
+      ctx.arc(cx, cy, r, pieceStart, pieceEnd);
       ctx.closePath();
-      ctx.fillStyle = wedgeColors[i % wedgeColors.length];
-      ctx.fill();
+      if (isSeraphim && seraphimTextureReady && seraphimTextureRef.current) {
+        const texture = seraphimTextureRef.current;
+        const crop = Math.round(Math.min(texture.naturalWidth, texture.naturalHeight) * 0.008);
+        ctx.save();
+        ctx.clip();
+        ctx.translate(cx, cy);
+        ctx.rotate(rot);
+        ctx.drawImage(
+          texture,
+          crop,
+          crop,
+          texture.naturalWidth - crop * 2,
+          texture.naturalHeight - crop * 2,
+          -r,
+          -r,
+          r * 2,
+          r * 2
+        );
+        ctx.restore();
+
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r, pieceStart, pieceEnd);
+        ctx.closePath();
+        ctx.fillStyle = [
+          'rgba(255, 226, 126, 0.025)',
+          'rgba(87, 40, 2, 0.045)',
+          'rgba(255, 236, 153, 0.035)',
+          'rgba(104, 47, 2, 0.038)',
+        ][i % 4];
+        ctx.fill();
+      } else {
+        ctx.fillStyle = wedgeColors[i % wedgeColors.length];
+        ctx.fill();
+      }
+      if (isSeraphim) {
+        ctx.strokeStyle = 'rgba(45, 20, 1, 0.96)';
+        ctx.lineWidth = 4.6;
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(255, 226, 137, 0.46)';
+        ctx.lineWidth = 1.15;
+        ctx.stroke();
+      }
       if (hoveredSectorRef.current === i && !spinningRef.current) {
         ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
         ctx.fill();
@@ -206,9 +395,12 @@ const CheeseWheel = forwardRef(function CheeseWheel({
     if (isSamurai) {
       drawSamuraiSunTexture(ctx, cx, cy, r, rot, n);
     }
+    if (isSeraphim && !seraphimTextureReady) {
+      drawSeraphimCheeseTexture(ctx, cx, cy, r, rot, n);
+    }
 
-    /* divider lines */
-    if (n > 1) {
+    /* Deep seams between the physical cheese pieces. */
+    if (n > 1 && !isSeraphim) {
       movies.forEach((m, i) => {
         const angle = rot + i * sliceAngle;
         ctx.beginPath();
@@ -220,13 +412,44 @@ const CheeseWheel = forwardRef(function CheeseWheel({
       });
     }
 
-    if (!isSamurai) {
+    if (!isSamurai && (!isSeraphim || !seraphimTextureReady)) {
       /* cheese holes */
-      holesRef.current.forEach(({ sector, angleOff, distFrac, hr }) => {
+      holesRef.current.forEach(({ sector, angleOff, distFrac, hr, squash, tilt }) => {
         const angle = rot + sector * sliceAngle + angleOff;
         const dist = distFrac * r;
         const hx = cx + dist * Math.cos(angle);
         const hy = cy + dist * Math.sin(angle);
+
+        if (isSeraphim) {
+          ctx.save();
+          ctx.translate(hx, hy);
+          ctx.rotate(tilt + angle * 0.08);
+          ctx.beginPath();
+          ctx.ellipse(0, 0, hr * 1.14, hr * squash, 0, 0, 2 * Math.PI);
+          const holeGradient = ctx.createRadialGradient(
+            0,
+            0,
+            hr * 0.04,
+            0,
+            0,
+            hr * 1.22
+          );
+          holeGradient.addColorStop(0, '#180b01');
+          holeGradient.addColorStop(0.54, palette.holeShadow);
+          holeGradient.addColorStop(0.8, palette.hole);
+          holeGradient.addColorStop(1, palette.holeHighlight);
+          ctx.fillStyle = holeGradient;
+          ctx.shadowColor = 'rgba(42, 18, 1, 0.68)';
+          ctx.shadowBlur = 4;
+          ctx.shadowOffsetY = 2;
+          ctx.fill();
+          ctx.shadowColor = 'transparent';
+          ctx.strokeStyle = 'rgba(96, 48, 4, 0.62)';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.restore();
+          return;
+        }
 
         ctx.beginPath();
         ctx.arc(hx, hy, hr, 0, 2 * Math.PI);
@@ -259,7 +482,7 @@ const CheeseWheel = forwardRef(function CheeseWheel({
 
     /* red triangle markers on rind */
     const markerR = (rindMid + rindOuter) / 2 - 1;
-    movies.forEach((m, i) => {
+    if (!isSeraphim) movies.forEach((m, i) => {
       const angle = rot + i * sliceAngle;
       const mx = cx + markerR * Math.cos(angle);
       const my = cy + markerR * Math.sin(angle);
@@ -280,6 +503,19 @@ const CheeseWheel = forwardRef(function CheeseWheel({
       ctx.restore();
     });
 
+    if (isSeraphim) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r + 0.5, 0, 2 * Math.PI);
+      ctx.strokeStyle = 'rgba(44, 21, 2, 0.96)';
+      ctx.lineWidth = 5.5;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx, cy, r - 2, 0, 2 * Math.PI);
+      ctx.strokeStyle = 'rgba(255, 219, 117, 0.48)';
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+    }
+
     /* Labels stay upright and shrink to fit their sector. */
     ctx.shadowColor = "transparent";
     ctx.shadowBlur = 0;
@@ -289,11 +525,13 @@ const CheeseWheel = forwardRef(function CheeseWheel({
     movies.forEach((m, i) => {
       const midAngle = rot + i * sliceAngle + sliceAngle / 2;
       const label = m.title.length > 24 ? m.title.slice(0, 22) + "\u2026" : m.title;
-      const textR = r * (n <= 4 ? 0.6 : 0.67);
+      const textR = r * (n <= 4 ? (isSeraphim ? 0.64 : 0.6) : 0.67);
       const x = cx + textR * Math.cos(midAngle);
       const y = cy + textR * Math.sin(midAngle);
       const sectorWidth = Math.max(54, 2 * textR * Math.sin(Math.min(sliceAngle * 0.38, Math.PI / 3)));
-      const fontSize = Math.max(10, Math.min(16, 190 / Math.max(n, 7), 230 / Math.max(label.length, 8)));
+      const fontSize = isSeraphim
+        ? Math.max(13, Math.min(20, 235 / Math.max(n, 6), 285 / Math.max(label.length, 8)))
+        : Math.max(10, Math.min(16, 190 / Math.max(n, 7), 230 / Math.max(label.length, 8)));
       let rotation = midAngle + Math.PI / 2;
       const normalizedRotation = ((rotation % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
       if (normalizedRotation > Math.PI / 2 && normalizedRotation < Math.PI * 1.5) rotation += Math.PI;
@@ -304,13 +542,13 @@ const CheeseWheel = forwardRef(function CheeseWheel({
       ctx.font = `800 ${fontSize}px 'Nunito', 'Comfortaa', sans-serif`;
       ctx.lineJoin = "round";
       ctx.strokeStyle = palette.labelStroke || wedgeColors[i % wedgeColors.length];
-      ctx.lineWidth = 4;
+      ctx.lineWidth = isSeraphim ? 3.2 : 4;
       ctx.strokeText(label, 0, 0, sectorWidth);
       ctx.fillStyle = palette.label;
       ctx.fillText(label, 0, 0, sectorWidth);
       ctx.restore();
     });
-  }, [movies, theme, ensureHoles]);
+  }, [movies, theme, ensureHoles, seraphimTextureReady]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
