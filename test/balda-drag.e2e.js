@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const Database = require('better-sqlite3');
 const { chromium } = require('playwright');
 const {
   createBaldaResources,
@@ -46,7 +47,7 @@ function findUnknownMove(board) {
   throw new Error('Could not construct an unknown word');
 }
 
-test('Balda automatically plays known dragged words and clears unknown paths', async t => {
+test('Balda flashes unknown and duplicate words while managing the draft', async t => {
   const dataDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'cheese-balda-drag-'));
   const instance = await startServer(dataDir, { frontend: 'built' });
   let browser = null;
@@ -126,10 +127,9 @@ test('Balda automatically plays known dragged words and clears unknown paths', a
   };
 
   await dragMove(unknownMove, 'right');
-  const rejectionFlash = page.locator('.balda-rejection-flash');
-  await rejectionFlash.waitFor();
-  await expectText(rejectionFlash, `Слова «${unknownMove.word}» нет в словаре`);
-  await expectText(rejectionFlash, 'Выделение сброшено — попробуйте другое слово');
+  const unknownFlash = page.locator('.balda-board-flash.is-unknown');
+  await unknownFlash.waitFor();
+  assert.equal(await unknownFlash.textContent(), '');
   await page.getByText('Слова нет в словаре', { exact: true }).waitFor();
   assert.equal(await page.locator('.balda-cell.is-in-path').count(), 0);
   assert.equal(await page.getByLabel('Новая буква', { exact: true }).inputValue(), unknownMove.letter);
@@ -137,6 +137,28 @@ test('Balda automatically plays known dragged words and clears unknown paths', a
   await dragMove(unknownMove, 'left');
   await page.getByText('Слова нет в словаре', { exact: true }).waitFor();
   assert.equal(await page.locator('.balda-cell.is-in-path').count(), 0);
+
+  const gameDb = new Database(path.join(dataDir, 'cheese_wheel.db'));
+  const usedWordsRow = gameDb.prepare(
+    'SELECT used_words_json FROM balda_games WHERE id = 1'
+  ).get();
+  const originalUsedWords = JSON.parse(usedWordsRow.used_words_json);
+  gameDb.prepare('UPDATE balda_games SET used_words_json = ? WHERE id = 1').run(
+    JSON.stringify([...originalUsedWords, knownMove.word])
+  );
+  gameDb.close();
+
+  await dragMove(knownMove, 'left');
+  await page.locator('.balda-board-flash.is-duplicate').waitFor();
+  await page.getByText('Это слово уже было сыграно', { exact: true }).waitFor();
+  assert.equal(await page.getByLabel('Новая буква', { exact: true }).count(), 0);
+  assert.equal(await page.locator('.balda-cell.is-in-path').count(), 0);
+
+  const restoredDb = new Database(path.join(dataDir, 'cheese_wheel.db'));
+  restoredDb.prepare('UPDATE balda_games SET used_words_json = ? WHERE id = 1').run(
+    JSON.stringify(originalUsedWords)
+  );
+  restoredDb.close();
 
   await dragMove(knownMove, 'left');
   await page.locator('.balda-history strong', { hasText: knownMove.word }).waitFor();
@@ -146,7 +168,3 @@ test('Balda automatically plays known dragged words and clears unknown paths', a
   ).textContent(), knownMove.letter);
   assert.deepEqual(browserErrors, []);
 });
-
-async function expectText(locator, expected) {
-  assert.match((await locator.textContent()) || '', new RegExp(expected));
-}

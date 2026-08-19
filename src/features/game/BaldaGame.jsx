@@ -35,7 +35,7 @@ export default function BaldaGame({ onClose }) {
   const [letter, setLetter] = useState('');
   const [path, setPath] = useState([]);
   const [unknownDraft, setUnknownDraft] = useState(null);
-  const [unknownNotice, setUnknownNotice] = useState(null);
+  const [boardFeedback, setBoardFeedback] = useState(null);
   const [dictionaryOpen, setDictionaryOpen] = useState(false);
   const [dictionaryWord, setDictionaryWord] = useState('');
   const [dictionaryResult, setDictionaryResult] = useState(null);
@@ -46,8 +46,8 @@ export default function BaldaGame({ onClose }) {
   const mouseSelectionRef = useRef(null);
   const suppressClickRef = useRef(false);
   const completeSelectionRef = useRef(() => {});
-  const unknownNoticeTimerRef = useRef(null);
-  const unknownNoticeSequenceRef = useRef(0);
+  const boardFeedbackTimerRef = useRef(null);
+  const boardFeedbackSequenceRef = useRef(0);
 
   useLayoutEffect(() => {
     document.body.classList.add('balda-game-active');
@@ -55,8 +55,8 @@ export default function BaldaGame({ onClose }) {
   }, []);
 
   useEffect(() => () => {
-    if (unknownNoticeTimerRef.current) {
-      window.clearTimeout(unknownNoticeTimerRef.current);
+    if (boardFeedbackTimerRef.current) {
+      window.clearTimeout(boardFeedbackTimerRef.current);
     }
   }, []);
 
@@ -220,26 +220,26 @@ export default function BaldaGame({ onClose }) {
   }, [letter, path, placement, state]);
 
   const resetDraft = useCallback(() => {
-    if (unknownNoticeTimerRef.current) {
-      window.clearTimeout(unknownNoticeTimerRef.current);
-      unknownNoticeTimerRef.current = null;
+    if (boardFeedbackTimerRef.current) {
+      window.clearTimeout(boardFeedbackTimerRef.current);
+      boardFeedbackTimerRef.current = null;
     }
     setPlacement(null);
     setLetter('');
     setPath([]);
     setUnknownDraft(null);
-    setUnknownNotice(null);
+    setBoardFeedback(null);
   }, []);
 
-  const showUnknownNotice = useCallback(word => {
-    if (unknownNoticeTimerRef.current) {
-      window.clearTimeout(unknownNoticeTimerRef.current);
+  const showBoardFeedback = useCallback(type => {
+    if (boardFeedbackTimerRef.current) {
+      window.clearTimeout(boardFeedbackTimerRef.current);
     }
-    unknownNoticeSequenceRef.current += 1;
-    setUnknownNotice({ id: unknownNoticeSequenceRef.current, word });
-    unknownNoticeTimerRef.current = window.setTimeout(() => {
-      setUnknownNotice(null);
-      unknownNoticeTimerRef.current = null;
+    boardFeedbackSequenceRef.current += 1;
+    setBoardFeedback({ id: boardFeedbackSequenceRef.current, type });
+    boardFeedbackTimerRef.current = window.setTimeout(() => {
+      setBoardFeedback(null);
+      boardFeedbackTimerRef.current = null;
     }, 2400);
   }, []);
 
@@ -419,11 +419,14 @@ export default function BaldaGame({ onClose }) {
     if (result?.unknown) {
       setUnknownDraft({ ...move, word: result.word });
       setPath([]);
-      showUnknownNotice(result.word);
+      showBoardFeedback('unknown');
+    } else if (result?.code === 'WORD_ALREADY_USED') {
+      resetDraft();
+      showBoardFeedback('duplicate');
     } else if (result?.ok) {
       resetDraft();
     }
-  }, [letter, perform, placement, resetDraft, showUnknownNotice]);
+  }, [letter, perform, placement, resetDraft, showBoardFeedback]);
 
   useLayoutEffect(() => {
     completeSelectionRef.current = selectedPath => {
@@ -656,17 +659,12 @@ export default function BaldaGame({ onClose }) {
               );
               })}
             </div>
-            {unknownNotice && (
+            {boardFeedback && (
               <div
-                className="balda-rejection-flash"
-                key={unknownNotice.id}
-                role="alert"
-              >
-                <div className="balda-rejection-message">
-                  <strong>Слова «{unknownNotice.word}» нет в словаре</strong>
-                  <span>Выделение сброшено — попробуйте другое слово</span>
-                </div>
-              </div>
+                aria-hidden="true"
+                className={`balda-board-flash is-${boardFeedback.type}`}
+                key={boardFeedback.id}
+              />
             )}
           </div>
 

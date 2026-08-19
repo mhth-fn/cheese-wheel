@@ -658,7 +658,12 @@ function createBaldaService({
     if (placedUses !== 1) return { error: 'Путь слова должен включать новую букву' };
     word = normalizeWord(word);
     if (!/^[А-ЯЁ]{2,25}$/u.test(word)) return { error: 'Некорректное слово' };
-    if (game.usedWords.includes(word)) return { error: 'Это слово уже было сыграно' };
+    if (game.usedWords.includes(word)) {
+      return {
+        code: 'WORD_ALREADY_USED',
+        error: 'Это слово уже было сыграно',
+      };
+    }
     return { row, column, letter, path, word };
   }
 
@@ -690,7 +695,7 @@ function createBaldaService({
     const transaction = db.transaction(() => {
       const game = readGame();
       const move = validateMove(game, userId, payload);
-      if (move.error) return { ok: false, error: move.error };
+      if (move.error) return { ok: false, error: move.error, code: move.code };
       if (!findWordStmt.get(move.word)) {
         return { ok: true, unknown: true, word: move.word };
       }
@@ -707,7 +712,7 @@ function createBaldaService({
     const transaction = db.transaction(() => {
       const game = readGame();
       const move = validateMove(game, userId, payload);
-      if (move.error) return { ok: false, error: move.error };
+      if (move.error) return { ok: false, error: move.error, code: move.code };
       if (findWordStmt.get(move.word)) {
         return { ok: false, error: 'Слово уже есть в словаре — сыграйте его обычной кнопкой' };
       }

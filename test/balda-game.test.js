@@ -430,6 +430,25 @@ test('Балда полностью ведёт партию, онлайн, та�
   assert.equal(missingLetterMove.ok, false);
   assert.match(missingLetterMove.error, /новую букву/);
 
+  const liveDb = new Database(path.join(dataDir, 'cheese_wheel.db'));
+  const usedWordsJson = liveDb.prepare(
+    'SELECT used_words_json FROM balda_games WHERE id = 1'
+  ).get().used_words_json;
+  const usedWordsWithDuplicate = [...JSON.parse(usedWordsJson), knownMovePayload.word];
+  liveDb.prepare('UPDATE balda_games SET used_words_json = ? WHERE id = 1').run(
+    JSON.stringify(usedWordsWithDuplicate)
+  );
+  assert.deepEqual(
+    await emitAck(starter, 'balda:submit-move', knownMovePayload),
+    {
+      ok: false,
+      error: 'Это слово уже было сыграно',
+      code: 'WORD_ALREADY_USED',
+    },
+  );
+  liveDb.prepare('UPDATE balda_games SET used_words_json = ? WHERE id = 1').run(usedWordsJson);
+  liveDb.close();
+
   const knownMove = await emitAck(starter, 'balda:submit-move', knownMovePayload);
   assert.deepEqual(knownMove, {
     ok: true,

@@ -85,10 +85,12 @@ test('Balda exposes two rooms and direct board input with drag selection', () =>
   assert.match(baldaComponent, /onMouseMove=\{handleBoardMouseMove\}/);
   assert.match(baldaComponent, /onContextMenu=\{event => event\.preventDefault\(\)\}/);
   assert.match(baldaComponent, /onClick=\{\(\) => handleCellClick\(row, column\)\}/);
-  assert.match(baldaComponent, /className="balda-rejection-flash"/);
-  assert.match(baldaComponent, /Слова «\{unknownNotice\.word\}» нет в словаре/);
-  assert.match(gamesCss, /@keyframes balda-rejection-flash/);
-  assert.match(gamesCss, /\.balda-rejection-flash\s*\{[^}]*border:\s*5px solid var\(--color-danger\)/s);
+  assert.match(baldaComponent, /balda-board-flash is-\$\{boardFeedback\.type\}/);
+  assert.match(baldaComponent, /result\?\.code === 'WORD_ALREADY_USED'/);
+  assert.doesNotMatch(baldaComponent, /balda-rejection-message/);
+  assert.match(gamesCss, /@keyframes balda-board-flash/);
+  assert.match(gamesCss, /\.balda-board-flash\.is-unknown\s*\{[^}]*--balda-flash-color:\s*var\(--color-danger\)/s);
+  assert.match(gamesCss, /\.balda-board-flash\.is-duplicate\s*\{[^}]*--balda-flash-color:\s*#e6ab00/s);
   assert.doesNotMatch(baldaComponent, /<label>\s*Новая буква/);
 });
 
