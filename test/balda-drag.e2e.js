@@ -126,6 +126,10 @@ test('Balda automatically plays known dragged words and clears unknown paths', a
   };
 
   await dragMove(unknownMove, 'right');
+  const rejectionFlash = page.locator('.balda-rejection-flash');
+  await rejectionFlash.waitFor();
+  await expectText(rejectionFlash, `Слова «${unknownMove.word}» нет в словаре`);
+  await expectText(rejectionFlash, 'Выделение сброшено — попробуйте другое слово');
   await page.getByText('Слова нет в словаре', { exact: true }).waitFor();
   assert.equal(await page.locator('.balda-cell.is-in-path').count(), 0);
   assert.equal(await page.getByLabel('Новая буква', { exact: true }).inputValue(), unknownMove.letter);
@@ -142,3 +146,7 @@ test('Balda automatically plays known dragged words and clears unknown paths', a
   ).textContent(), knownMove.letter);
   assert.deepEqual(browserErrors, []);
 });
+
+async function expectText(locator, expected) {
+  assert.match((await locator.textContent()) || '', new RegExp(expected));
+}

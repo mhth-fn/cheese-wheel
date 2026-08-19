@@ -35,6 +35,7 @@ export default function BaldaGame({ onClose }) {
   const [letter, setLetter] = useState('');
   const [path, setPath] = useState([]);
   const [unknownDraft, setUnknownDraft] = useState(null);
+  const [unknownNotice, setUnknownNotice] = useState(null);
   const [dictionaryOpen, setDictionaryOpen] = useState(false);
   const [dictionaryWord, setDictionaryWord] = useState('');
   const [dictionaryResult, setDictionaryResult] = useState(null);
@@ -45,10 +46,18 @@ export default function BaldaGame({ onClose }) {
   const mouseSelectionRef = useRef(null);
   const suppressClickRef = useRef(false);
   const completeSelectionRef = useRef(() => {});
+  const unknownNoticeTimerRef = useRef(null);
+  const unknownNoticeSequenceRef = useRef(0);
 
   useLayoutEffect(() => {
     document.body.classList.add('balda-game-active');
     return () => document.body.classList.remove('balda-game-active');
+  }, []);
+
+  useEffect(() => () => {
+    if (unknownNoticeTimerRef.current) {
+      window.clearTimeout(unknownNoticeTimerRef.current);
+    }
   }, []);
 
   useEffect(() => {
@@ -211,10 +220,27 @@ export default function BaldaGame({ onClose }) {
   }, [letter, path, placement, state]);
 
   const resetDraft = useCallback(() => {
+    if (unknownNoticeTimerRef.current) {
+      window.clearTimeout(unknownNoticeTimerRef.current);
+      unknownNoticeTimerRef.current = null;
+    }
     setPlacement(null);
     setLetter('');
     setPath([]);
     setUnknownDraft(null);
+    setUnknownNotice(null);
+  }, []);
+
+  const showUnknownNotice = useCallback(word => {
+    if (unknownNoticeTimerRef.current) {
+      window.clearTimeout(unknownNoticeTimerRef.current);
+    }
+    unknownNoticeSequenceRef.current += 1;
+    setUnknownNotice({ id: unknownNoticeSequenceRef.current, word });
+    unknownNoticeTimerRef.current = window.setTimeout(() => {
+      setUnknownNotice(null);
+      unknownNoticeTimerRef.current = null;
+    }, 2400);
   }, []);
 
   const handleRoomChange = nextRoomId => {
@@ -393,10 +419,11 @@ export default function BaldaGame({ onClose }) {
     if (result?.unknown) {
       setUnknownDraft({ ...move, word: result.word });
       setPath([]);
+      showUnknownNotice(result.word);
     } else if (result?.ok) {
       resetDraft();
     }
-  }, [letter, perform, placement, resetDraft]);
+  }, [letter, perform, placement, resetDraft, showUnknownNotice]);
 
   useLayoutEffect(() => {
     completeSelectionRef.current = selectedPath => {
@@ -553,18 +580,19 @@ export default function BaldaGame({ onClose }) {
 
       <div className="balda-layout">
         <div className="balda-play-column">
-          <div
-            ref={boardRef}
-            className="balda-board surface"
-            role="grid"
-            aria-label="Игровое поле 5 на 5"
-            onMouseDown={handleBoardMouseDown}
-            onMouseMove={handleBoardMouseMove}
-            onPointerDown={handleBoardPointerDown}
-            onPointerMove={handleBoardPointerMove}
-            onContextMenu={event => event.preventDefault()}
-          >
-            {state.board.map((boardLetter, index) => {
+          <div className="balda-board-stage">
+            <div
+              ref={boardRef}
+              className="balda-board surface"
+              role="grid"
+              aria-label="Игровое поле 5 на 5"
+              onMouseDown={handleBoardMouseDown}
+              onMouseMove={handleBoardMouseMove}
+              onPointerDown={handleBoardPointerDown}
+              onPointerMove={handleBoardPointerMove}
+              onContextMenu={event => event.preventDefault()}
+            >
+              {state.board.map((boardLetter, index) => {
               const row = Math.floor(index / BOARD_SIZE);
               const column = index % BOARD_SIZE;
               const key = cellKey(row, column);
@@ -626,7 +654,20 @@ export default function BaldaGame({ onClose }) {
                   {order && <small aria-hidden="true">{order}</small>}
                 </button>
               );
-            })}
+              })}
+            </div>
+            {unknownNotice && (
+              <div
+                className="balda-rejection-flash"
+                key={unknownNotice.id}
+                role="alert"
+              >
+                <div className="balda-rejection-message">
+                  <strong>Слова «{unknownNotice.word}» нет в словаре</strong>
+                  <span>Выделение сброшено — попробуйте другое слово</span>
+                </div>
+              </div>
+            )}
           </div>
 
           {isMyTurn && !state.pendingWord && (

@@ -69,6 +69,10 @@ test('Balda exposes two rooms and direct board input with drag selection', () =>
     path.join(__dirname, '..', 'src', 'features', 'game', 'BaldaGame.jsx'),
     'utf8'
   );
+  const gamesCss = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'css', 'games.css'),
+    'utf8'
+  );
 
   assert.match(baldaComponent, /\[1, 2\]\.map\(nextRoomId/);
   assert.match(baldaComponent, /className="balda-room-tabs surface"/);
@@ -81,6 +85,10 @@ test('Balda exposes two rooms and direct board input with drag selection', () =>
   assert.match(baldaComponent, /onMouseMove=\{handleBoardMouseMove\}/);
   assert.match(baldaComponent, /onContextMenu=\{event => event\.preventDefault\(\)\}/);
   assert.match(baldaComponent, /onClick=\{\(\) => handleCellClick\(row, column\)\}/);
+  assert.match(baldaComponent, /className="balda-rejection-flash"/);
+  assert.match(baldaComponent, /Слова «\{unknownNotice\.word\}» нет в словаре/);
+  assert.match(gamesCss, /@keyframes balda-rejection-flash/);
+  assert.match(gamesCss, /\.balda-rejection-flash\s*\{[^}]*border:\s*5px solid var\(--color-danger\)/s);
   assert.doesNotMatch(baldaComponent, /<label>\s*Новая буква/);
 });
 
