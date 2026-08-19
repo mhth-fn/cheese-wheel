@@ -27,8 +27,10 @@ export default function BaldaGame({ onClose }) {
   const [dictionaryWord, setDictionaryWord] = useState('');
   const [dictionaryResult, setDictionaryResult] = useState(null);
   const [clockNow, setClockNow] = useState(Date.now());
+  const boardRef = useRef(null);
   const cellInputRef = useRef(null);
   const dragSelectionRef = useRef(null);
+  const mouseSelectionRef = useRef(null);
   const suppressClickRef = useRef(false);
 
   useLayoutEffect(() => {
@@ -149,13 +151,28 @@ export default function BaldaGame({ onClose }) {
         suppressClickRef.current = true;
         window.setTimeout(() => { suppressClickRef.current = false; }, 0);
       }
+      const board = boardRef.current;
+      if (board?.hasPointerCapture?.(selection.pointerId)) {
+        board.releasePointerCapture(selection.pointerId);
+      }
       dragSelectionRef.current = null;
+    };
+    const finishMouseSelection = () => {
+      if (mouseSelectionRef.current?.active) {
+        suppressClickRef.current = true;
+        window.setTimeout(() => { suppressClickRef.current = false; }, 0);
+      }
+      mouseSelectionRef.current = null;
     };
     window.addEventListener('pointerup', finishSelection);
     window.addEventListener('pointercancel', finishSelection);
+    window.addEventListener('mouseup', finishMouseSelection);
+    window.addEventListener('blur', finishMouseSelection);
     return () => {
       window.removeEventListener('pointerup', finishSelection);
       window.removeEventListener('pointercancel', finishSelection);
+      window.removeEventListener('mouseup', finishMouseSelection);
+      window.removeEventListener('blur', finishMouseSelection);
     };
   }, []);
 
@@ -212,6 +229,8 @@ export default function BaldaGame({ onClose }) {
 
   const handleBoardPointerDown = event => {
     if (!canEdit) return;
+    const isMouse = event.pointerType === 'mouse';
+    if (isMouse) return;
     const cell = event.target.closest('[data-balda-cell]');
     if (!cell) return;
     const row = Number(cell.dataset.row);
@@ -219,12 +238,47 @@ export default function BaldaGame({ onClose }) {
     if (!isCellAvailableForPath(row, column)) return;
     dragSelectionRef.current = {
       active: false,
+      button: event.button,
       column,
       pointerId: event.pointerId,
       row,
       startX: event.clientX,
       startY: event.clientY,
     };
+  };
+
+  const handleBoardMouseDown = event => {
+    if (!canEdit || (event.button !== 0 && event.button !== 2)) return;
+    const cell = event.target.closest('[data-balda-cell]');
+    if (!cell) return;
+    const row = Number(cell.dataset.row);
+    const column = Number(cell.dataset.column);
+    if (!isCellAvailableForPath(row, column)) return;
+    const isRightButton = event.button === 2;
+    if (isRightButton) event.preventDefault();
+    mouseSelectionRef.current = {
+      active: isRightButton,
+      button: event.button,
+      column,
+      row,
+    };
+    if (isRightButton) {
+      setUnknownDraft(null);
+      setActionError('');
+      setPath([{ row, column }]);
+    }
+  };
+
+  const handleCellMouseEnter = (row, column) => {
+    const selection = mouseSelectionRef.current;
+    if (!selection || !canEdit) return;
+    if (!selection.active) {
+      selection.active = true;
+      setUnknownDraft(null);
+      setActionError('');
+      setPath([{ row: selection.row, column: selection.column }]);
+    }
+    extendDragPath(row, column);
   };
 
   const handleBoardPointerMove = event => {
@@ -237,6 +291,7 @@ export default function BaldaGame({ onClose }) {
       );
       if (distance < 5) return;
       selection.active = true;
+      event.currentTarget.setPointerCapture?.(event.pointerId);
       setUnknownDraft(null);
       setActionError('');
       setPath([{ row: selection.row, column: selection.column }]);
@@ -437,11 +492,14 @@ export default function BaldaGame({ onClose }) {
       <div className="balda-layout">
         <div className="balda-play-column">
           <div
+            ref={boardRef}
             className="balda-board surface"
             role="grid"
             aria-label="Игровое поле 5 на 5"
+            onMouseDown={handleBoardMouseDown}
             onPointerDown={handleBoardPointerDown}
             onPointerMove={handleBoardPointerMove}
+            onContextMenu={event => event.preventDefault()}
           >
             {state.board.map((boardLetter, index) => {
               const row = Math.floor(index / BOARD_SIZE);
@@ -465,6 +523,8 @@ export default function BaldaGame({ onClose }) {
                     data-balda-cell
                     data-row={row}
                     data-column={column}
+                    onClick={() => handleCellClick(row, column)}
+                    onMouseEnter={() => handleCellMouseEnter(row, column)}
                     aria-label={`Строка ${row + 1}, столбец ${column + 1}, новая буква${letter ? ` ${letter}` : ''}`}
                   >
                     <input
@@ -472,6 +532,7 @@ export default function BaldaGame({ onClose }) {
                       value={letter}
                       maxLength={1}
                       aria-label="Новая буква"
+                      aria-describedby="balda-move-hint"
                       inputMode="text"
                       onChange={event => {
                         const nextLetter = event.target.value.toLocaleUpperCase('ru-RU')
@@ -496,6 +557,7 @@ export default function BaldaGame({ onClose }) {
                   data-row={row}
                   data-column={column}
                   onClick={() => handleCellClick(row, column)}
+                  onMouseEnter={() => handleCellMouseEnter(row, column)}
                   disabled={!canEdit}
                   aria-label={`Строка ${row + 1}, столбец ${column + 1}${displayLetter ? `, буква ${displayLetter}` : ', пусто'}`}
                 >
@@ -516,7 +578,7 @@ export default function BaldaGame({ onClose }) {
                   ? 'Нажмите пустую клетку и введите букву прямо в ней.'
                   : !letter
                     ? 'Введите новую букву прямо в выбранной клетке.'
-                    : 'Проведите мышью или пальцем по буквам слова. Можно выбирать клетки и кликами.'}
+                    : 'Зажмите правую кнопку мыши и проведите по всему слову. На телефоне — удерживайте палец; также можно выбирать клетки кликами.'}
               </p>
               <div className="balda-move-actions">
                 <button className="game-btn" type="submit" disabled={!submitReady || Boolean(busy)}>
