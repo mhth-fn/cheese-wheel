@@ -11,6 +11,18 @@ function isAdjacent(first, second) {
   return Math.abs(first.row - second.row) + Math.abs(first.column - second.column) === 1;
 }
 
+function appendPathCell(previous, nextCell) {
+  if (previous.length === 0) return [nextCell];
+  const existingIndex = previous.findIndex(cell => (
+    cell.row === nextCell.row && cell.column === nextCell.column
+  ));
+  if (existingIndex >= 0 && existingIndex === previous.length - 2) {
+    return previous.slice(0, -1);
+  }
+  if (existingIndex >= 0 || !isAdjacent(previous.at(-1), nextCell)) return previous;
+  return [...previous, nextCell];
+}
+
 export default function BaldaGame({ onClose }) {
   const { connected, currentUser, isGuest, socket } = useApp();
   const [roomId, setRoomId] = useState(1);
@@ -216,15 +228,7 @@ export default function BaldaGame({ onClose }) {
   const extendDragPath = useCallback((row, column) => {
     if (!isCellAvailableForPath(row, column)) return;
     const nextCell = { row, column };
-    setPath(previous => {
-      if (previous.length === 0) return [nextCell];
-      const existingIndex = previous.findIndex(cell => (
-        cell.row === row && cell.column === column
-      ));
-      if (existingIndex === previous.length - 2) return previous.slice(0, -1);
-      if (existingIndex >= 0 || !isAdjacent(previous.at(-1), nextCell)) return previous;
-      return [...previous, nextCell];
-    });
+    setPath(previous => appendPathCell(previous, nextCell));
   }, [isCellAvailableForPath]);
 
   const handleBoardPointerDown = event => {
@@ -269,14 +273,24 @@ export default function BaldaGame({ onClose }) {
     }
   };
 
-  const handleCellMouseEnter = (row, column) => {
+  const handleBoardMouseMove = event => {
     const selection = mouseSelectionRef.current;
     if (!selection || !canEdit) return;
+    const cell = event.target.closest('[data-balda-cell]');
+    if (!cell) return;
+    const row = Number(cell.dataset.row);
+    const column = Number(cell.dataset.column);
+    if (!isCellAvailableForPath(row, column)) return;
     if (!selection.active) {
+      if (selection.row === row && selection.column === column) return;
       selection.active = true;
       setUnknownDraft(null);
       setActionError('');
-      setPath([{ row: selection.row, column: selection.column }]);
+      setPath(appendPathCell(
+        [{ row: selection.row, column: selection.column }],
+        { row, column },
+      ));
+      return;
     }
     extendDragPath(row, column);
   };
@@ -294,7 +308,21 @@ export default function BaldaGame({ onClose }) {
       event.currentTarget.setPointerCapture?.(event.pointerId);
       setUnknownDraft(null);
       setActionError('');
-      setPath([{ row: selection.row, column: selection.column }]);
+      const target = document.elementFromPoint(event.clientX, event.clientY)
+        ?.closest?.('[data-balda-cell]');
+      const initialPath = [{ row: selection.row, column: selection.column }];
+      if (target && isCellAvailableForPath(
+        Number(target.dataset.row),
+        Number(target.dataset.column),
+      )) {
+        setPath(appendPathCell(initialPath, {
+          row: Number(target.dataset.row),
+          column: Number(target.dataset.column),
+        }));
+      } else {
+        setPath(initialPath);
+      }
+      return;
     }
     event.preventDefault();
     const target = document.elementFromPoint(event.clientX, event.clientY)
@@ -497,6 +525,7 @@ export default function BaldaGame({ onClose }) {
             role="grid"
             aria-label="Игровое поле 5 на 5"
             onMouseDown={handleBoardMouseDown}
+            onMouseMove={handleBoardMouseMove}
             onPointerDown={handleBoardPointerDown}
             onPointerMove={handleBoardPointerMove}
             onContextMenu={event => event.preventDefault()}
@@ -524,7 +553,6 @@ export default function BaldaGame({ onClose }) {
                     data-row={row}
                     data-column={column}
                     onClick={() => handleCellClick(row, column)}
-                    onMouseEnter={() => handleCellMouseEnter(row, column)}
                     aria-label={`Строка ${row + 1}, столбец ${column + 1}, новая буква${letter ? ` ${letter}` : ''}`}
                   >
                     <input
@@ -557,7 +585,6 @@ export default function BaldaGame({ onClose }) {
                   data-row={row}
                   data-column={column}
                   onClick={() => handleCellClick(row, column)}
-                  onMouseEnter={() => handleCellMouseEnter(row, column)}
                   disabled={!canEdit}
                   aria-label={`Строка ${row + 1}, столбец ${column + 1}${displayLetter ? `, буква ${displayLetter}` : ', пусто'}`}
                 >
@@ -578,7 +605,7 @@ export default function BaldaGame({ onClose }) {
                   ? 'Нажмите пустую клетку и введите букву прямо в ней.'
                   : !letter
                     ? 'Введите новую букву прямо в выбранной клетке.'
-                    : 'Зажмите правую кнопку мыши и проведите по всему слову. На телефоне — удерживайте палец; также можно выбирать клетки кликами.'}
+                    : 'Зажмите левую кнопку мыши и проведите по всему слову. Правая кнопка тоже работает. На телефоне — удерживайте палец; также можно выбирать клетки кликами.'}
               </p>
               <div className="balda-move-actions">
                 <button className="game-btn" type="submit" disabled={!submitReady || Boolean(busy)}>

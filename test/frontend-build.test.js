@@ -78,7 +78,7 @@ test('Balda exposes two rooms and direct board input with drag selection', () =>
   assert.match(baldaComponent, /onPointerMove=\{handleBoardPointerMove\}/);
   assert.match(baldaComponent, /event\.button !== 0 && event\.button !== 2/);
   assert.match(baldaComponent, /onMouseDown=\{handleBoardMouseDown\}/);
-  assert.match(baldaComponent, /onMouseEnter=\{\(\) => handleCellMouseEnter\(row, column\)\}/);
+  assert.match(baldaComponent, /onMouseMove=\{handleBoardMouseMove\}/);
   assert.match(baldaComponent, /onContextMenu=\{event => event\.preventDefault\(\)\}/);
   assert.match(baldaComponent, /onClick=\{\(\) => handleCellClick\(row, column\)\}/);
   assert.doesNotMatch(baldaComponent, /<label>\s*Новая буква/);
