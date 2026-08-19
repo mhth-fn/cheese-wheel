@@ -44,6 +44,7 @@ export default function BaldaGame({ onClose }) {
   const dragSelectionRef = useRef(null);
   const mouseSelectionRef = useRef(null);
   const suppressClickRef = useRef(false);
+  const completeSelectionRef = useRef(() => {});
 
   useLayoutEffect(() => {
     document.body.classList.add('balda-game-active');
@@ -168,13 +169,20 @@ export default function BaldaGame({ onClose }) {
         board.releasePointerCapture(selection.pointerId);
       }
       dragSelectionRef.current = null;
+      if (selection.active && event.type === 'pointerup') {
+        completeSelectionRef.current(selection.path);
+      }
     };
-    const finishMouseSelection = () => {
-      if (mouseSelectionRef.current?.active) {
+    const finishMouseSelection = event => {
+      const selection = mouseSelectionRef.current;
+      if (selection?.active) {
         suppressClickRef.current = true;
         window.setTimeout(() => { suppressClickRef.current = false; }, 0);
       }
       mouseSelectionRef.current = null;
+      if (selection?.active && event.type === 'mouseup') {
+        completeSelectionRef.current(selection.path);
+      }
     };
     window.addEventListener('pointerup', finishSelection);
     window.addEventListener('pointercancel', finishSelection);
@@ -225,10 +233,13 @@ export default function BaldaGame({ onClose }) {
       || Boolean(isCurrentPlacement && letter);
   }, [letter, placement, state]);
 
-  const extendDragPath = useCallback((row, column) => {
+  const extendDragPath = useCallback((row, column, selection) => {
     if (!isCellAvailableForPath(row, column)) return;
     const nextCell = { row, column };
-    setPath(previous => appendPathCell(previous, nextCell));
+    const nextPath = appendPathCell(selection.path, nextCell);
+    if (nextPath === selection.path) return;
+    selection.path = nextPath;
+    setPath(nextPath);
   }, [isCellAvailableForPath]);
 
   const handleBoardPointerDown = event => {
@@ -245,6 +256,7 @@ export default function BaldaGame({ onClose }) {
       button: event.button,
       column,
       pointerId: event.pointerId,
+      path: [{ row, column }],
       row,
       startX: event.clientX,
       startY: event.clientY,
@@ -264,6 +276,7 @@ export default function BaldaGame({ onClose }) {
       active: isRightButton,
       button: event.button,
       column,
+      path: [{ row, column }],
       row,
     };
     if (isRightButton) {
@@ -286,13 +299,10 @@ export default function BaldaGame({ onClose }) {
       selection.active = true;
       setUnknownDraft(null);
       setActionError('');
-      setPath(appendPathCell(
-        [{ row: selection.row, column: selection.column }],
-        { row, column },
-      ));
+      extendDragPath(row, column, selection);
       return;
     }
-    extendDragPath(row, column);
+    extendDragPath(row, column, selection);
   };
 
   const handleBoardPointerMove = event => {
@@ -310,24 +320,30 @@ export default function BaldaGame({ onClose }) {
       setActionError('');
       const target = document.elementFromPoint(event.clientX, event.clientY)
         ?.closest?.('[data-balda-cell]');
-      const initialPath = [{ row: selection.row, column: selection.column }];
+      let initialPath = selection.path;
       if (target && isCellAvailableForPath(
         Number(target.dataset.row),
         Number(target.dataset.column),
       )) {
-        setPath(appendPathCell(initialPath, {
+        initialPath = appendPathCell(initialPath, {
           row: Number(target.dataset.row),
           column: Number(target.dataset.column),
-        }));
-      } else {
-        setPath(initialPath);
+        });
       }
+      selection.path = initialPath;
+      setPath(initialPath);
       return;
     }
     event.preventDefault();
     const target = document.elementFromPoint(event.clientX, event.clientY)
       ?.closest?.('[data-balda-cell]');
-    if (target) extendDragPath(Number(target.dataset.row), Number(target.dataset.column));
+    if (target) {
+      extendDragPath(
+        Number(target.dataset.row),
+        Number(target.dataset.column),
+        selection,
+      );
+    }
   };
 
   const handleCellClick = (row, column) => {
@@ -358,21 +374,39 @@ export default function BaldaGame({ onClose }) {
     setPath(previous => [...previous, nextCell]);
   };
 
-  const handleSubmit = async event => {
-    event.preventDefault();
-    if (!placement || !letter || path.length < 2) return;
+  const submitMove = useCallback(async selectedPath => {
+    if (
+      !placement
+      || !letter
+      || selectedPath.length < 2
+      || !selectedPath.some(cell => (
+        cell.row === placement.row && cell.column === placement.column
+      ))
+    ) return;
     const move = {
       row: placement.row,
       column: placement.column,
       letter,
-      path,
+      path: selectedPath,
     };
     const result = await perform('balda:submit-move', move);
     if (result?.unknown) {
       setUnknownDraft({ ...move, word: result.word });
+      setPath([]);
     } else if (result?.ok) {
       resetDraft();
     }
+  }, [letter, perform, placement, resetDraft]);
+
+  useLayoutEffect(() => {
+    completeSelectionRef.current = selectedPath => {
+      void submitMove(selectedPath);
+    };
+  }, [submitMove]);
+
+  const handleSubmit = event => {
+    event.preventDefault();
+    void submitMove(path);
   };
 
   const handleProposeWord = async () => {
@@ -605,7 +639,7 @@ export default function BaldaGame({ onClose }) {
                   ? 'Нажмите пустую клетку и введите букву прямо в ней.'
                   : !letter
                     ? 'Введите новую букву прямо в выбранной клетке.'
-                    : 'Зажмите левую кнопку мыши и проведите по всему слову. Правая кнопка тоже работает. На телефоне — удерживайте палец; также можно выбирать клетки кликами.'}
+                    : 'Зажмите левую кнопку мыши, проведите по слову и отпустите — слово проверится автоматически. Правая кнопка и выбор клеток кликами тоже работают.'}
               </p>
               <div className="balda-move-actions">
                 <button className="game-btn" type="submit" disabled={!submitReady || Boolean(busy)}>

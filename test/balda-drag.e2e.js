@@ -7,14 +7,46 @@ const path = require('node:path');
 const test = require('node:test');
 const { chromium } = require('playwright');
 const {
+  createBaldaResources,
+  findBotMove,
+} = require('../server/balda-service');
+const {
   login,
   startServer,
   stopServer,
 } = require('./helpers/server-fixture');
 
 const fsp = fs.promises;
+const baldaResources = createBaldaResources();
 
-test('Balda selects a complete path while a mouse button is held', async t => {
+function findUnknownMove(board) {
+  const knownWords = new Set(baldaResources.builtInWords);
+  const letters = [...'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'];
+  for (let row = 0; row < 5; row += 1) {
+    for (let column = 0; column < 5; column += 1) {
+      const existingLetter = board[(row * 5) + column];
+      if (!existingLetter) continue;
+      for (const [rowDelta, columnDelta] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const placementRow = row + rowDelta;
+        const placementColumn = column + columnDelta;
+        if (placementRow < 0 || placementRow >= 5 || placementColumn < 0 || placementColumn >= 5) continue;
+        if (board[(placementRow * 5) + placementColumn]) continue;
+        const letter = letters.find(candidate => !knownWords.has(`${existingLetter}${candidate}`));
+        if (!letter) continue;
+        return {
+          column: placementColumn,
+          letter,
+          path: [{ row, column }, { row: placementRow, column: placementColumn }],
+          row: placementRow,
+          word: `${existingLetter}${letter}`,
+        };
+      }
+    }
+  }
+  throw new Error('Could not construct an unknown word');
+}
+
+test('Balda automatically plays known dragged words and clears unknown paths', async t => {
   const dataDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'cheese-balda-drag-'));
   const instance = await startServer(dataDir, { frontend: 'built' });
   let browser = null;
@@ -52,36 +84,30 @@ test('Balda selects a complete path while a mouse button is held', async t => {
   const cells = await page.locator('[data-balda-cell]').evaluateAll(elements => (
     elements.map(element => ({
       column: Number(element.dataset.column),
-      filled: !element.getAttribute('aria-label').endsWith(', пусто'),
+      letter: element.querySelector('span')?.textContent?.trim() || '',
       row: Number(element.dataset.row),
     }))
   ));
-  const byKey = new Map(cells.map(cell => [`${cell.row}:${cell.column}`, cell]));
-  const candidates = [
-    { placement: { row: 1, column: 0 }, columns: [0, 1, 2, 3, 4] },
-    { placement: { row: 3, column: 0 }, columns: [0, 1, 2, 3, 4] },
-    { placement: { row: 1, column: 4 }, columns: [4, 3, 2, 1, 0] },
-    { placement: { row: 3, column: 4 }, columns: [4, 3, 2, 1, 0] },
-  ];
-  const candidate = candidates.find(item => (
-    !byKey.get(`${item.placement.row}:${item.placement.column}`)?.filled
-    && item.columns.every(column => byKey.get(`2:${column}`)?.filled)
-  ));
-  assert.ok(candidate, 'the starting row must have a free end for a six-cell path');
-  const placement = candidate.placement;
-  const pathCells = [
-    placement,
-    ...candidate.columns.map(column => ({ row: 2, column })),
-  ];
-
-  const placementCell = page.locator(
-    `[data-row="${placement.row}"][data-column="${placement.column}"]`
+  const board = Array(25).fill('');
+  for (const cell of cells) board[(cell.row * 5) + cell.column] = cell.letter;
+  const initialWord = board.slice(10, 15).join('');
+  const knownMove = findBotMove(
+    board,
+    [initialWord],
+    baldaResources.dictionaryTrie,
+    () => 0,
   );
-  const dragWord = async button => {
+  const unknownMove = findUnknownMove(board);
+  assert.ok(knownMove, `a legal continuation must exist for ${initialWord}`);
+
+  const dragMove = async (move, button) => {
+    const placementCell = page.locator(
+      `[data-row="${move.row}"][data-column="${move.column}"]`
+    );
     await placementCell.click();
-    await page.getByLabel('Новая буква', { exact: true }).fill('С');
+    await page.getByLabel('Новая буква', { exact: true }).fill(move.letter);
     const points = [];
-    for (const cell of pathCells) {
+    for (const cell of move.path) {
       const box = await page.locator(
         `[data-row="${cell.row}"][data-column="${cell.column}"]`
       ).boundingBox();
@@ -97,15 +123,22 @@ test('Balda selects a complete path while a mouse button is held', async t => {
       await page.mouse.move(point.x, point.y, { steps: 4 });
     }
     await page.mouse.up({ button });
-    assert.equal(await page.locator('.balda-cell.is-in-path').count(), pathCells.length);
-    assert.equal(
-      await page.getByRole('button', { name: 'Сыграть слово', exact: true }).isEnabled(),
-      true,
-    );
   };
 
-  await dragWord('left');
-  await page.getByRole('button', { name: 'Сбросить', exact: true }).click();
-  await dragWord('right');
+  await dragMove(unknownMove, 'right');
+  await page.getByText('Слова нет в словаре', { exact: true }).waitFor();
+  assert.equal(await page.locator('.balda-cell.is-in-path').count(), 0);
+  assert.equal(await page.getByLabel('Новая буква', { exact: true }).inputValue(), unknownMove.letter);
+
+  await dragMove(unknownMove, 'left');
+  await page.getByText('Слова нет в словаре', { exact: true }).waitFor();
+  assert.equal(await page.locator('.balda-cell.is-in-path').count(), 0);
+
+  await dragMove(knownMove, 'left');
+  await page.locator('.balda-history strong', { hasText: knownMove.word }).waitFor();
+  assert.equal(await page.locator('.balda-cell.is-in-path').count(), 0);
+  assert.equal(await page.locator(
+    `[data-row="${knownMove.row}"][data-column="${knownMove.column}"] span`
+  ).textContent(), knownMove.letter);
   assert.deepEqual(browserErrors, []);
 });
