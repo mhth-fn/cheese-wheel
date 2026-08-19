@@ -16,7 +16,10 @@ const {
   findBotMove,
   normalizeTurnDuration,
 } = require('../server/balda-service');
-const { loadBuiltInBaldaWords } = require('../server/balda-dictionary');
+const {
+  loadBaldaInitialWords,
+  loadBuiltInBaldaWords,
+} = require('../server/balda-dictionary');
 const {
   delay,
   login,
@@ -29,6 +32,7 @@ const fsp = fs.promises;
 const builtInWords = loadBuiltInBaldaWords();
 const builtInWordSet = new Set(builtInWords);
 const builtInTrie = createDictionaryTrie(builtInWords);
+const initialWords = loadBaldaInitialWords();
 
 function waitForSocket(socket, event, timeout = 5_000) {
   return new Promise((resolve, reject) => {
@@ -72,16 +76,16 @@ function emitAck(socket, event, payload, timeout = 5_000) {
   });
 }
 
-async function readState(socket) {
-  const result = await emitAck(socket, 'balda:watch');
+async function readState(socket, roomId = 1) {
+  const result = await emitAck(socket, 'balda:watch', { roomId });
   assert.equal(result.ok, true, JSON.stringify(result));
   return result.state;
 }
 
-async function waitForState(socket, predicate, timeout = 5_000) {
+async function waitForState(socket, predicate, timeout = 5_000, roomId = 1) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
-    const state = await readState(socket);
+    const state = await readState(socket, roomId);
     if (predicate(state)) return state;
     await delay(25);
   }
@@ -145,6 +149,13 @@ test('Balda starter selection and turn-duration validation cover every option', 
   assert.equal(chooseInitialWord(['ДОМ', 'АРБУЗ', 'СЫРОК'], () => 0), 'АРБУЗ');
   assert.equal(chooseInitialWord(['АРБУЗ', 'СЫРОК'], () => 0, 'АРБУЗ'), 'СЫРОК');
   assert.ok(builtInWords.filter(word => /^[А-ЯЁ]{5}$/u.test(word)).length > 1_000);
+  assert.equal(initialWords.length, 400);
+  assert.equal(new Set(initialWords).size, initialWords.length);
+  assert.ok(initialWords.every(word => /^[А-ЯЁ]{5}$/u.test(word)));
+  assert.ok(initialWords.every(word => builtInWordSet.has(word)));
+  assert.ok(initialWords.every(word => (
+    findBotMove(createBoard(word), [word], builtInTrie, () => 0)
+  )), 'every initial word must have at least one legal dictionary continuation');
   assert.equal(createBoard('АРБУЗ').slice(10, 15).join(''), 'АРБУЗ');
 
   const board = Array(25).fill('');
@@ -200,6 +211,11 @@ test('старая схема партии безопасно получает �
   const columns = new Set(
     migratedDb.prepare('PRAGMA table_info(balda_games)').all().map(column => column.name)
   );
+  const roomIds = migratedDb.prepare('SELECT id FROM balda_games ORDER BY id').all()
+    .map(row => row.id);
+  const tableSql = migratedDb.prepare(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'balda_games'"
+  ).get().sql;
   migratedDb.close();
   for (const column of [
     'round_id',
@@ -211,6 +227,104 @@ test('старая схема партии безопасно получает �
   ]) {
     assert.ok(columns.has(column), `missing migrated column ${column}`);
   }
+  assert.deepEqual(roomIds, [1, 2]);
+  assert.match(tableSql, /id\s+IN\s*\(1,\s*2\)/iu);
+});
+
+test('две комнаты Балды работают независимо и место нельзя занять в обеих', async t => {
+  const dataDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'cheese-balda-rooms-test-'));
+  const instance = await startServer(dataDir);
+  const sockets = [];
+  t.after(async () => {
+    sockets.forEach(socket => socket.disconnect());
+    await stopServer(instance);
+    await fsp.rm(dataDir, { recursive: true, force: true });
+  });
+
+  const firstLogin = await login(instance, 1);
+  const secondLogin = await login(instance, 2);
+  const first = await connect(instance, firstLogin.cookie);
+  const second = await connect(instance, secondLogin.cookie);
+  sockets.push(first, second);
+
+  assertInitialWordHidden(await readState(first, 1));
+  assertInitialWordHidden(await readState(second, 2));
+  assert.equal((await emitAck(first, 'balda:join', { roomId: 1 })).ok, true);
+  assert.equal((await emitAck(first, 'balda:add-bot', { roomId: 1 })).ok, true);
+  assert.equal((await emitAck(second, 'balda:join', { roomId: 2 })).ok, true);
+  assert.equal((await emitAck(second, 'balda:add-bot', { roomId: 2 })).ok, true);
+
+  const roomOne = await readState(first, 1);
+  const roomTwo = await readState(second, 2);
+  assert.equal(roomOne.roomId, 1);
+  assert.equal(roomTwo.roomId, 2);
+  assert.equal(roomOne.status, 'playing');
+  assert.equal(roomTwo.status, 'playing');
+  assert.equal(roomOne.players.find(player => !player.user?.isBot).user.id, 1);
+  assert.equal(roomTwo.players.find(player => !player.user?.isBot).user.id, 2);
+
+  const duplicateSeat = await emitAck(first, 'balda:join', { roomId: 2 });
+  assert.equal(duplicateSeat.ok, false);
+  assert.match(duplicateSeat.error, /комнате 1/);
+
+  const presence = await emitAck(first, 'balda:get-presence');
+  assert.equal(presence.ok, true);
+  assert.equal(presence.rooms.length, 2);
+  assert.deepEqual(
+    presence.rooms.map(room => ({ id: room.roomId, players: room.playerCount })),
+    [{ id: 1, players: 2 }, { id: 2, players: 2 }],
+  );
+});
+
+test('место освобождается после 30-секундного отсутствия на странице Балды', async t => {
+  const dataDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'cheese-balda-presence-test-'));
+  const instance = await startServer(dataDir, {
+    extraEnv: { BALDA_DISCONNECT_GRACE_MS: '220' },
+  });
+  const sockets = [];
+  t.after(async () => {
+    sockets.forEach(socket => socket.disconnect());
+    await stopServer(instance);
+    await fsp.rm(dataDir, { recursive: true, force: true });
+  });
+
+  const firstLogin = await login(instance, 1);
+  const secondLogin = await login(instance, 2);
+  const spectatorLogin = await login(instance, 3);
+  const first = await connect(instance, firstLogin.cookie);
+  const second = await connect(instance, secondLogin.cookie);
+  const spectator = await connect(instance, spectatorLogin.cookie);
+  sockets.push(first, second, spectator);
+  await readState(first);
+  await readState(second);
+  await readState(spectator);
+  assert.equal((await emitAck(first, 'balda:join', { roomId: 1 })).ok, true);
+  assert.equal((await emitAck(second, 'balda:join', { roomId: 1 })).ok, true);
+  assert.equal((await readState(spectator)).status, 'playing');
+
+  assert.equal((await emitAck(first, 'balda:unwatch', { roomId: 1 })).ok, true);
+  await delay(80);
+  assert.equal(
+    (await readState(spectator)).players.some(player => player.user?.id === 1),
+    true,
+    'seat must be reserved during the grace period',
+  );
+  await readState(first);
+  await delay(250);
+  let state = await readState(spectator);
+  assert.equal(state.players.some(player => player.user?.id === 1), true);
+  assert.deepEqual(statsFor(state, 1), { wins: 0, draws: 0, losses: 0 });
+
+  assert.equal((await emitAck(first, 'balda:unwatch', { roomId: 1 })).ok, true);
+  state = await waitForState(
+    spectator,
+    candidate => candidate.status === 'finished'
+      && !candidate.players.some(player => player.user?.id === 1),
+    2_000,
+  );
+  assert.equal(state.winner.id, 2);
+  assert.deepEqual(statsFor(state, 1), { wins: 0, draws: 0, losses: 1 });
+  assert.deepEqual(statsFor(state, 2), { wins: 1, draws: 0, losses: 0 });
 });
 
 test('Балда полностью ведёт партию, онлайн, таймер, словарь и статистику', async t => {

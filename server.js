@@ -5,7 +5,11 @@ const path = require('node:path');
 const { resolveFrontendBuild } = require('./lib/frontend-build');
 const { createDatabase } = require('./server/database');
 const { createAuthService } = require('./server/auth-service');
-const { createBaldaService } = require('./server/balda-service');
+const {
+  BALDA_ROOM_IDS,
+  createBaldaResources,
+  createBaldaService,
+} = require('./server/balda-service');
 const { createVpnService } = require('./server/vpn-service');
 const { createRequestServices } = require('./server/request-services');
 const { createSigameService } = require('./server/sigame-service');
@@ -130,7 +134,17 @@ const {
   getTotpEncryptionKey,
   stmts,
 });
-const baldaService = createBaldaService({ db, io });
+const baldaResources = createBaldaResources();
+const baldaServices = new Map(BALDA_ROOM_IDS.map((roomId, index) => [
+  roomId,
+  createBaldaService({
+    db,
+    io,
+    resources: baldaResources,
+    roomId,
+    seedBuiltInDictionary: index === 0,
+  }),
+]));
 const {
   parseIntStrict,
   readMovieInput,
@@ -236,7 +250,7 @@ const routeContext = {
   app,
   auditLog,
   authSecurityStmts,
-  baldaService,
+  baldaServices,
   broadcastOneOffState,
   broadcastWheelStatus,
   buildVlessLink,

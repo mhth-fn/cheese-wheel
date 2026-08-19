@@ -4,12 +4,27 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const dictionaryPath = path.join(__dirname, 'data', 'balda-nouns.txt');
+const initialWordsPath = path.join(__dirname, 'data', 'balda-start-words.txt');
 
-function loadBuiltInBaldaWords() {
-  return fs.readFileSync(dictionaryPath, 'utf8')
+function loadWordFile(filePath) {
+  return fs.readFileSync(filePath, 'utf8')
     .split(/\r?\n/u)
-    .map(word => word.trim())
-    .filter(word => word && !word.startsWith('#'));
+    .filter(line => !line.trim().startsWith('#'))
+    .flatMap(line => line.trim().split(/\s+/u))
+    .filter(Boolean);
 }
 
-module.exports = { dictionaryPath, loadBuiltInBaldaWords };
+function loadBuiltInBaldaWords() {
+  return loadWordFile(dictionaryPath);
+}
+
+function loadBaldaInitialWords() {
+  return loadWordFile(initialWordsPath);
+}
+
+module.exports = {
+  dictionaryPath,
+  initialWordsPath,
+  loadBaldaInitialWords,
+  loadBuiltInBaldaWords,
+};

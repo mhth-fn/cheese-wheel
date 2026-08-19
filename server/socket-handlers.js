@@ -54,7 +54,7 @@ function registerSocketHandlers(context) {
   const {
     MAX_SPIN_DURATION,
     MIN_SPIN_DURATION,
-    baldaService,
+    baldaServices,
     broadcastOneOffState,
     claimPendingSpin,
     consumeRateLimit,
@@ -92,6 +92,60 @@ function rememberActiveOneOffSpin(payload) {
 }
 
 const onlineUsers = new Map(); // socketId -> { userId, userName }
+const baldaDisconnectTimers = new Map(); // userId -> timeout
+const configuredBaldaGrace = Number(process.env.BALDA_DISCONNECT_GRACE_MS);
+const baldaDisconnectGraceMs = process.env.NODE_ENV === 'test'
+  && Number.isFinite(configuredBaldaGrace)
+  ? Math.max(50, configuredBaldaGrace)
+  : 30_000;
+
+function getBaldaService(roomId) {
+  return baldaServices.get(Number(roomId)) || null;
+}
+
+function getBaldaPresence() {
+  const rooms = [...baldaServices.values()].map(service => service.getSummary());
+  return {
+    ok: true,
+    onlineCount: rooms.reduce((total, room) => total + room.onlineCount, 0),
+    rooms,
+  };
+}
+
+function isUserWatchingBalda(userId) {
+  for (const [socketId, info] of onlineUsers) {
+    if (Number(info.userId) !== Number(userId)) continue;
+    const activeSocket = io.sockets.sockets.get(socketId);
+    const service = getBaldaService(activeSocket?.data?.baldaRoomId);
+    if (service && activeSocket.rooms.has(service.roomName)) return true;
+  }
+  return false;
+}
+
+function cancelBaldaDisconnect(userId) {
+  const timer = baldaDisconnectTimers.get(Number(userId));
+  if (timer) clearTimeout(timer);
+  baldaDisconnectTimers.delete(Number(userId));
+}
+
+function scheduleBaldaDisconnect(userId) {
+  const normalizedUserId = Number(userId);
+  if (!Number.isInteger(normalizedUserId) || isUserWatchingBalda(normalizedUserId)) return;
+  cancelBaldaDisconnect(normalizedUserId);
+  const timer = setTimeout(() => {
+    baldaDisconnectTimers.delete(normalizedUserId);
+    if (isUserWatchingBalda(normalizedUserId)) return;
+    for (const service of baldaServices.values()) {
+      if (service.getSeatedUserIds().includes(normalizedUserId)) service.leave(normalizedUserId);
+    }
+  }, baldaDisconnectGraceMs);
+  timer.unref();
+  baldaDisconnectTimers.set(normalizedUserId, timer);
+}
+
+for (const service of baldaServices.values()) {
+  for (const userId of service.getSeatedUserIds()) scheduleBaldaDisconnect(userId);
+}
 
 function broadcastOnlineUsers() {
   const users = [];
@@ -235,7 +289,9 @@ io.on('connection', (socket) => {
   const memberData = getTokenData(socket.data.authToken);
   if (isMemberToken(memberData)) {
     const user = stmts.getUsers.all().find(item => Number(item.id) === Number(memberData.userId));
-    if (user) onlineUsers.set(socket.id, { userId: user.id, userName: user.name });
+    if (user) {
+      onlineUsers.set(socket.id, { userId: user.id, userName: user.name });
+    }
   }
 
   // Send current online list to newly connected socket
@@ -248,7 +304,7 @@ io.on('connection', (socket) => {
     }
   }
   socket.emit('online-users', currentUsers);
-  socket.emit('balda:presence', { onlineCount: baldaService.getPresenceCount() });
+  for (const room of getBaldaPresence().rooms) socket.emit('balda:presence', room);
   if (onlineUsers.has(socket.id)) broadcastOnlineUsers();
   const activeOneOffSpin = spinState.activeOneOffSpin;
   if (activeOneOffSpin?.spinCompleteAt > Date.now()) {
@@ -265,13 +321,25 @@ io.on('connection', (socket) => {
     if (typeof ack === 'function') ack(result);
   };
 
-  const runBaldaMutation = (scope, ack, mutation) => {
+  const normalizeBaldaArgs = (data, ack) => (
+    typeof data === 'function'
+      ? [{ roomId: socket.data.baldaRoomId || 1 }, data]
+      : [data || {}, ack]
+  );
+
+  const runBaldaMutation = (scope, data, ack, mutation) => {
+    const [payload, callback] = normalizeBaldaArgs(data, ack);
     const tokenData = getTokenData(socket.data.authToken);
     if (!isMemberToken(tokenData)) {
-      replyToBaldaAction(ack, {
+      replyToBaldaAction(callback, {
         ok: false,
         error: 'Игровые места доступны только пользователям',
       });
+      return;
+    }
+    const service = getBaldaService(payload.roomId || socket.data.baldaRoomId || 1);
+    if (!service) {
+      replyToBaldaAction(callback, { ok: false, error: 'Комната не найдена' });
       return;
     }
     const limit = consumeRateLimit(
@@ -281,63 +349,92 @@ io.on('connection', (socket) => {
       60 * 1000,
     );
     if (!limit.allowed) {
-      replyToBaldaAction(ack, { ok: false, error: 'Слишком много запросов' });
+      replyToBaldaAction(callback, { ok: false, error: 'Слишком много запросов' });
       return;
     }
     try {
-      replyToBaldaAction(ack, mutation(Number(tokenData.userId)));
+      replyToBaldaAction(
+        callback,
+        mutation(Number(tokenData.userId), service, payload),
+      );
     } catch (error) {
       console.error('[cheese-wheel] Balda action failed:', error.message);
-      replyToBaldaAction(ack, { ok: false, error: 'Не удалось изменить партию' });
+      replyToBaldaAction(callback, { ok: false, error: 'Не удалось изменить партию' });
     }
   };
 
-  socket.on('balda:watch', (ack) => {
-    if (socket.rooms.has(baldaService.roomName)) {
-      replyToBaldaAction(ack, { ok: true, state: baldaService.getState() });
+  socket.on('balda:watch', (data, ack) => {
+    const [payload, callback] = normalizeBaldaArgs(data, ack);
+    const service = getBaldaService(payload.roomId || 1);
+    if (!service) {
+      replyToBaldaAction(callback, { ok: false, error: 'Комната не найдена' });
       return;
     }
-    socket.join(baldaService.roomName);
-    const state = baldaService.broadcast();
-    replyToBaldaAction(ack, { ok: true, state });
+    const previousService = getBaldaService(socket.data.baldaRoomId);
+    if (previousService && previousService.roomId !== service.roomId) {
+      socket.leave(previousService.roomName);
+      previousService.broadcast();
+    }
+    socket.data.baldaRoomId = service.roomId;
+    if (!socket.rooms.has(service.roomName)) socket.join(service.roomName);
+    const tokenData = getTokenData(socket.data.authToken);
+    if (isMemberToken(tokenData)) cancelBaldaDisconnect(tokenData.userId);
+    const state = service.broadcast();
+    replyToBaldaAction(callback, { ok: true, state });
   });
 
   socket.on('balda:get-presence', (ack) => {
-    replyToBaldaAction(ack, {
-      ok: true,
-      onlineCount: baldaService.getPresenceCount(),
+    replyToBaldaAction(ack, getBaldaPresence());
+  });
+
+  socket.on('balda:unwatch', (data, ack) => {
+    const [payload, callback] = normalizeBaldaArgs(data, ack);
+    const service = getBaldaService(payload.roomId || socket.data.baldaRoomId || 1);
+    const wasWatching = Boolean(service && socket.rooms.has(service.roomName));
+    if (service) socket.leave(service.roomName);
+    if (service?.roomId === socket.data.baldaRoomId) socket.data.baldaRoomId = null;
+    const tokenData = getTokenData(socket.data.authToken);
+    if (isMemberToken(tokenData) && !isUserWatchingBalda(tokenData.userId)) {
+      scheduleBaldaDisconnect(tokenData.userId);
+    }
+    replyToBaldaAction(callback, { ok: true });
+    if (wasWatching) service.broadcast();
+  });
+
+  socket.on('balda:join', (data, ack) => {
+    runBaldaMutation('seat', data, ack, (userId, service) => {
+      const otherRoom = [...baldaServices.values()].find(candidate => (
+        candidate.roomId !== service.roomId && candidate.getSeatedUserIds().includes(userId)
+      ));
+      if (otherRoom) {
+        return { ok: false, error: `Вы уже играете в комнате ${otherRoom.roomId}` };
+      }
+      return service.join(userId);
     });
   });
 
-  socket.on('balda:unwatch', (ack) => {
-    const wasWatching = socket.rooms.has(baldaService.roomName);
-    socket.leave(baldaService.roomName);
-    replyToBaldaAction(ack, { ok: true });
-    if (wasWatching) baldaService.broadcast();
+  socket.on('balda:add-bot', (data, ack) => {
+    runBaldaMutation('seat', data, ack, (userId, service) => service.addBot(userId));
   });
 
-  socket.on('balda:join', (ack) => {
-    runBaldaMutation('seat', ack, userId => baldaService.join(userId));
+  socket.on('balda:remove-bot', (data, ack) => {
+    runBaldaMutation('seat', data, ack, (userId, service) => service.removeBot(userId));
   });
 
-  socket.on('balda:add-bot', (ack) => {
-    runBaldaMutation('seat', ack, userId => baldaService.addBot(userId));
-  });
-
-  socket.on('balda:remove-bot', (ack) => {
-    runBaldaMutation('seat', ack, userId => baldaService.removeBot(userId));
-  });
-
-  socket.on('balda:leave', (ack) => {
-    runBaldaMutation('seat', ack, userId => baldaService.leave(userId));
+  socket.on('balda:leave', (data, ack) => {
+    runBaldaMutation('seat', data, ack, (userId, service) => service.leave(userId));
   });
 
   socket.on('balda:submit-move', (data, ack) => {
-    runBaldaMutation('move', ack, userId => baldaService.submitMove(userId, data));
+    runBaldaMutation('move', data, ack, (userId, service, payload) => (
+      service.submitMove(userId, payload)
+    ));
   });
 
   socket.on('balda:propose-word', (data, ack) => {
-    runBaldaMutation('move', ack, userId => baldaService.proposeWord(userId, data));
+    runBaldaMutation('move', data, ack, (userId, service, payload) => (
+      service.proposeWord(userId, payload)
+    ));
   });
 
   socket.on('balda:check-word', (data, ack) => {
@@ -352,30 +449,36 @@ io.on('connection', (socket) => {
       replyToBaldaAction(ack, { ok: false, error: 'Слишком много запросов' });
       return;
     }
-    replyToBaldaAction(ack, baldaService.checkWord(data?.word));
+    const service = getBaldaService(data?.roomId || 1);
+    replyToBaldaAction(
+      ack,
+      service ? service.checkWord(data?.word) : { ok: false, error: 'Комната не найдена' },
+    );
   });
 
   socket.on('balda:resolve-word', (data, ack) => {
     runBaldaMutation(
       'word',
+      data,
       ack,
-      userId => baldaService.resolveWord(userId, data?.accepted),
+      (userId, service, payload) => service.resolveWord(userId, payload.accepted),
     );
   });
 
-  socket.on('balda:pass', (ack) => {
-    runBaldaMutation('move', ack, userId => baldaService.pass(userId));
+  socket.on('balda:pass', (data, ack) => {
+    runBaldaMutation('move', data, ack, (userId, service) => service.pass(userId));
   });
 
-  socket.on('balda:new-game', (ack) => {
-    runBaldaMutation('game', ack, userId => baldaService.newGame(userId));
+  socket.on('balda:new-game', (data, ack) => {
+    runBaldaMutation('game', data, ack, (userId, service) => service.newGame(userId));
   });
 
   socket.on('balda:set-turn-duration', (data, ack) => {
     runBaldaMutation(
       'game',
+      data,
       ack,
-      userId => baldaService.setTurnDuration(userId, data?.seconds),
+      (userId, service, payload) => service.setTurnDuration(userId, payload.seconds),
     );
   });
 
@@ -514,9 +617,15 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    const disconnectedUserId = onlineUsers.get(socket.id)?.userId;
     onlineUsers.delete(socket.id);
     broadcastOnlineUsers();
-    setImmediate(() => baldaService.broadcast());
+    if (disconnectedUserId && !isUserWatchingBalda(disconnectedUserId)) {
+      scheduleBaldaDisconnect(disconnectedUserId);
+    }
+    setImmediate(() => {
+      for (const service of baldaServices.values()) service.broadcastPresence();
+    });
   });
 });
 

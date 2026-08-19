@@ -27,6 +27,7 @@ export default function GamesPage() {
   const [bossHp, setBossHp] = useState(null);
   const [activeGame, setActiveGame] = useState('menu');
   const [baldaOnlineCount, setBaldaOnlineCount] = useState(0);
+  const baldaRoomsRef = useRef(new Map());
 
   const canvas2dRef = useRef(null);
   const canvas3dRef = useRef(null);
@@ -94,7 +95,17 @@ export default function GamesPage() {
 
   useEffect(() => {
     const applyPresence = payload => {
-      setBaldaOnlineCount(Math.max(0, Number(payload?.onlineCount) || 0));
+      if (Array.isArray(payload?.rooms)) {
+        baldaRoomsRef.current = new Map(
+          payload.rooms.map(room => [Number(room.roomId), room])
+        );
+      } else if (Number.isInteger(Number(payload?.roomId))) {
+        baldaRoomsRef.current.set(Number(payload.roomId), payload);
+      }
+      setBaldaOnlineCount([...baldaRoomsRef.current.values()].reduce(
+        (total, room) => total + Math.max(0, Number(room.onlineCount) || 0),
+        0,
+      ));
     };
     const refreshPresence = () => {
       socket.timeout(5000).emit('balda:get-presence', (error, result) => {

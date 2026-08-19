@@ -257,7 +257,7 @@ db.exec(`
   );
 
   CREATE TABLE IF NOT EXISTS balda_games (
-    id INTEGER PRIMARY KEY CHECK(id = 1),
+    id INTEGER PRIMARY KEY CHECK(id IN (1, 2)),
     round_id TEXT,
     initial_word TEXT NOT NULL DEFAULT 'СЫРОК',
     bot_slot INTEGER CHECK(bot_slot IN (1, 2)),
@@ -347,6 +347,55 @@ if (!baldaGameColumns.some(column => column.name === 'turn_duration_seconds')) {
 }
 if (!baldaGameColumns.some(column => column.name === 'turn_started_at')) {
   db.exec('ALTER TABLE balda_games ADD COLUMN turn_started_at INTEGER');
+}
+const baldaGamesSchema = db.prepare(`
+  SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'balda_games'
+`).get()?.sql || '';
+if (/CHECK\s*\(\s*id\s*=\s*1\s*\)/iu.test(baldaGamesSchema)) {
+  db.transaction(() => {
+    db.exec(`
+      ALTER TABLE balda_games RENAME TO balda_games_single_room;
+      CREATE TABLE balda_games (
+        id INTEGER PRIMARY KEY CHECK(id IN (1, 2)),
+        round_id TEXT,
+        initial_word TEXT NOT NULL DEFAULT 'СЫРОК',
+        bot_slot INTEGER CHECK(bot_slot IN (1, 2)),
+        player_one_id INTEGER,
+        player_two_id INTEGER,
+        board_json TEXT NOT NULL,
+        used_words_json TEXT NOT NULL,
+        scores_json TEXT NOT NULL,
+        moves_json TEXT NOT NULL,
+        current_player_id INTEGER,
+        status TEXT NOT NULL DEFAULT 'waiting'
+          CHECK(status IN ('waiting', 'playing', 'finished')),
+        winner_id INTEGER,
+        winner_is_bot INTEGER NOT NULL DEFAULT 0 CHECK(winner_is_bot IN (0, 1)),
+        pending_word_json TEXT,
+        consecutive_passes INTEGER NOT NULL DEFAULT 0,
+        turn_duration_seconds INTEGER NOT NULL DEFAULT 60,
+        turn_started_at INTEGER,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (player_one_id) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (player_two_id) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (current_player_id) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (winner_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+      INSERT INTO balda_games (
+        id, round_id, initial_word, bot_slot, player_one_id, player_two_id,
+        board_json, used_words_json, scores_json, moves_json, current_player_id,
+        status, winner_id, winner_is_bot, pending_word_json, consecutive_passes,
+        turn_duration_seconds, turn_started_at, updated_at
+      )
+      SELECT
+        id, round_id, initial_word, bot_slot, player_one_id, player_two_id,
+        board_json, used_words_json, scores_json, moves_json, current_player_id,
+        status, winner_id, winner_is_bot, pending_word_json, consecutive_passes,
+        turn_duration_seconds, turn_started_at, updated_at
+      FROM balda_games_single_room;
+      DROP TABLE balda_games_single_room;
+    `);
+  })();
 }
 db.prepare(`
   UPDATE balda_games

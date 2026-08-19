@@ -64,6 +64,21 @@ test('mobile navigation stays hidden while Balda is open', () => {
   );
 });
 
+test('Balda exposes two rooms and direct board input with drag selection', () => {
+  const baldaComponent = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'features', 'game', 'BaldaGame.jsx'),
+    'utf8'
+  );
+
+  assert.match(baldaComponent, /\[1, 2\]\.map\(nextRoomId/);
+  assert.match(baldaComponent, /className="balda-room-tabs surface"/);
+  assert.match(baldaComponent, /data-balda-cell/);
+  assert.match(baldaComponent, /aria-label="Новая буква"/);
+  assert.match(baldaComponent, /onPointerDown=\{handleBoardPointerDown\}/);
+  assert.match(baldaComponent, /onPointerMove=\{handleBoardPointerMove\}/);
+  assert.doesNotMatch(baldaComponent, /<label>\s*Новая буква/);
+});
+
 test('desktop navigation fills the header with equal menu targets', () => {
   const navComponent = fs.readFileSync(
     path.join(__dirname, '..', 'src', 'components', 'Nav.jsx'),

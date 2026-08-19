@@ -1,11 +1,11 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const { loadBuiltInBaldaWords } = require('./balda-dictionary');
+const { loadBaldaInitialWords, loadBuiltInBaldaWords } = require('./balda-dictionary');
 
 const BOARD_SIZE = 5;
 const INITIAL_WORD = 'СЫРОК';
-const ROOM_NAME = 'balda';
+const BALDA_ROOM_IDS = Object.freeze([1, 2]);
 const TURN_DURATIONS = new Set([30, 60, 120, 180, 240, 300]);
 const BOT_ID = -1;
 const BOT_NAME = 'Борхес';
@@ -65,6 +65,22 @@ function createDictionaryTrie(words) {
     node.word = word;
   }
   return root;
+}
+
+function createBaldaResources() {
+  const builtInWords = loadBuiltInBaldaWords();
+  const builtInWordSet = new Set(builtInWords);
+  const initialWords = loadBaldaInitialWords().filter(word => (
+    /^[А-ЯЁ]{5}$/u.test(word) && builtInWordSet.has(word)
+  ));
+  if (initialWords.length < 100) {
+    throw new Error('[cheese-wheel] Слишком мало стартовых слов для Балды');
+  }
+  return {
+    builtInWords,
+    dictionaryTrie: createDictionaryTrie(builtInWords),
+    initialWords,
+  };
 }
 
 function findBotMove(board, usedWords, trie, randomInt = crypto.randomInt) {
@@ -140,15 +156,21 @@ function findBotMove(board, usedWords, trie, randomInt = crypto.randomInt) {
 function createBaldaService({
   db,
   io,
+  resources = createBaldaResources(),
+  roomId = 1,
+  seedBuiltInDictionary = true,
   randomInt = crypto.randomInt,
   randomUUID = crypto.randomUUID,
 }) {
+  const normalizedRoomId = Number(roomId);
+  if (!BALDA_ROOM_IDS.includes(normalizedRoomId)) {
+    throw new Error(`Некорректная комната Балды: ${roomId}`);
+  }
+  const roomName = `balda:${normalizedRoomId}`;
   let turnTimer = null;
   let botTimer = null;
-  const builtInWords = loadBuiltInBaldaWords();
-  const initialWords = builtInWords.filter(word => /^[А-ЯЁ]{5}$/u.test(word));
-  const dictionaryTrie = createDictionaryTrie(builtInWords);
-  const getGameStmt = db.prepare('SELECT * FROM balda_games WHERE id = 1');
+  const { builtInWords, dictionaryTrie, initialWords } = resources;
+  const getGameStmt = db.prepare('SELECT * FROM balda_games WHERE id = ?');
   const getUserStmt = db.prepare('SELECT id, name FROM users WHERE id = ?');
   const findWordStmt = db.prepare('SELECT word FROM balda_dictionary WHERE word = ?');
   const countWordsStmt = db.prepare('SELECT COUNT(*) AS count FROM balda_dictionary');
@@ -239,7 +261,7 @@ function createBaldaService({
       turn_duration_seconds = @turn_duration_seconds,
       turn_started_at = @turn_started_at,
       updated_at = @updated_at
-    WHERE id = 1
+    WHERE id = @id
   `);
 
   const seededInitialWord = chooseInitialWord(initialWords, randomInt);
@@ -247,8 +269,9 @@ function createBaldaService({
     INSERT OR IGNORE INTO balda_games (
       id, round_id, initial_word, board_json, used_words_json, scores_json, moves_json,
       status, consecutive_passes, updated_at
-    ) VALUES (1, ?, ?, ?, ?, '{}', '[]', 'waiting', 0, ?)
+    ) VALUES (?, ?, ?, ?, ?, '{}', '[]', 'waiting', 0, ?)
   `).run(
+    normalizedRoomId,
     randomUUID(),
     seededInitialWord,
     JSON.stringify(createBoard(seededInitialWord)),
@@ -256,15 +279,17 @@ function createBaldaService({
     Date.now(),
   );
 
-  const seedDictionary = db.transaction(() => {
-    for (const word of builtInWords) {
-      insertWordStmt.run(word, 'built-in', null, null, 0);
-    }
-  });
-  seedDictionary();
+  if (seedBuiltInDictionary) {
+    const seedDictionary = db.transaction(() => {
+      for (const word of builtInWords) {
+        insertWordStmt.run(word, 'built-in', null, null, 0);
+      }
+    });
+    seedDictionary();
+  }
 
   function readGame() {
-    const row = getGameStmt.get();
+    const row = getGameStmt.get(normalizedRoomId);
     const initialWord = /^[А-ЯЁ]{5}$/u.test(row.initial_word || '')
       ? row.initial_word
       : INITIAL_WORD;
@@ -286,6 +311,7 @@ function createBaldaService({
 
   function writeGame(game) {
     const row = {
+      id: normalizedRoomId,
       round_id: game.round_id || randomUUID(),
       initial_word: game.initialWord || INITIAL_WORD,
       bot_slot: game.bot_slot || null,
@@ -337,7 +363,7 @@ function createBaldaService({
   }
 
   function getRoomVisitors() {
-    const socketIds = io.sockets.adapter.rooms.get(ROOM_NAME) || new Set();
+    const socketIds = io.sockets.adapter.rooms.get(roomName) || new Set();
     const visitors = new Set();
     for (const socketId of socketIds) {
       const socket = io.sockets.sockets.get(socketId);
@@ -390,6 +416,7 @@ function createBaldaService({
       : game.winner_id ? getUserStmt.get(game.winner_id) : null;
     const hasStarted = game.status !== 'waiting';
     return {
+      roomId: normalizedRoomId,
       board: hasStarted ? game.board : Array(BOARD_SIZE * BOARD_SIZE).fill(''),
       boardSize: BOARD_SIZE,
       consecutivePasses: game.consecutive_passes || 0,
@@ -420,15 +447,25 @@ function createBaldaService({
     };
   }
 
+  function getSummary() {
+    const game = readGame();
+    return {
+      roomId: normalizedRoomId,
+      onlineCount: getPresenceCount(),
+      playerCount: getPlayerIds(game).filter(playerId => playerId !== null).length,
+      status: game.status,
+    };
+  }
+
   function broadcastPresence() {
-    const presence = { onlineCount: getPresenceCount() };
+    const presence = getSummary();
     io.emit('balda:presence', presence);
     return presence;
   }
 
   function broadcast() {
     const state = serializeGame();
-    io.to(ROOM_NAME).emit('balda:state', state);
+    io.to(roomName).emit('balda:state', state);
     broadcastPresence();
     scheduleTurnTimer();
     scheduleBotTurn();
@@ -475,6 +512,12 @@ function createBaldaService({
 
   function isSeated(game, userId) {
     return getPlayerIds(game).some(playerId => Number(playerId) === Number(userId));
+  }
+
+  function getSeatedUserIds() {
+    return getPlayerIds(readGame())
+      .filter(playerId => playerId !== null && Number(playerId) !== BOT_ID)
+      .map(Number);
   }
 
   function finishGame(game, finishReason, forcedWinnerId = undefined) {
@@ -845,14 +888,18 @@ function createBaldaService({
   }
 
   function scheduleBotTurn() {
-    if (botTimer) {
-      clearTimeout(botTimer);
-      botTimer = null;
-    }
     const game = readGame();
     const botMustAnswer = Number(game.pendingWord?.responderId) === BOT_ID;
-    if (game.status !== 'playing' || (!botMustAnswer && getCurrentPlayerId(game) !== BOT_ID)) return;
-    botTimer = setTimeout(handleBotAction, BOT_MOVE_DELAY_MS);
+    if (game.status !== 'playing' || (!botMustAnswer && getCurrentPlayerId(game) !== BOT_ID)) {
+      if (botTimer) clearTimeout(botTimer);
+      botTimer = null;
+      return;
+    }
+    if (botTimer) return;
+    botTimer = setTimeout(() => {
+      botTimer = null;
+      handleBotAction();
+    }, BOT_MOVE_DELAY_MS);
     botTimer.unref();
   }
 
@@ -915,6 +962,8 @@ function createBaldaService({
     broadcastPresence,
     checkWord,
     getPresenceCount,
+    getSeatedUserIds,
+    getSummary,
     getState: () => serializeGame(),
     join,
     leave,
@@ -923,13 +972,15 @@ function createBaldaService({
     proposeWord,
     removeBot,
     resolveWord,
-    roomName: ROOM_NAME,
+    roomId: normalizedRoomId,
+    roomName,
     setTurnDuration,
     submitMove,
   };
 }
 
 module.exports = {
+  BALDA_ROOM_IDS,
   BOARD_SIZE,
   BOT_ID,
   BOT_NAME,
@@ -938,6 +989,7 @@ module.exports = {
   chooseInitialWord,
   createBoard,
   createDictionaryTrie,
+  createBaldaResources,
   createBaldaService,
   findBotMove,
   normalizeWord,

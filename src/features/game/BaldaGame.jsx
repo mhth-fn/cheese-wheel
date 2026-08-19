@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../app/AppContext';
 
 const BOARD_SIZE = 5;
@@ -13,6 +13,8 @@ function isAdjacent(first, second) {
 
 export default function BaldaGame({ onClose }) {
   const { connected, currentUser, isGuest, socket } = useApp();
+  const [roomId, setRoomId] = useState(1);
+  const [roomSummaries, setRoomSummaries] = useState(new Map());
   const [state, setState] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -25,6 +27,9 @@ export default function BaldaGame({ onClose }) {
   const [dictionaryWord, setDictionaryWord] = useState('');
   const [dictionaryResult, setDictionaryResult] = useState(null);
   const [clockNow, setClockNow] = useState(Date.now());
+  const cellInputRef = useRef(null);
+  const dragSelectionRef = useRef(null);
+  const suppressClickRef = useRef(false);
 
   useLayoutEffect(() => {
     document.body.classList.add('balda-game-active');
@@ -33,28 +38,46 @@ export default function BaldaGame({ onClose }) {
 
   useEffect(() => {
     const onState = nextState => {
+      if (Number(nextState?.roomId) !== Number(roomId)) return;
       setState(nextState);
       setLoadError('');
     };
+    const onPresence = summary => {
+      if (!Number.isInteger(Number(summary?.roomId))) return;
+      setRoomSummaries(previous => {
+        const next = new Map(previous);
+        next.set(Number(summary.roomId), summary);
+        return next;
+      });
+    };
     const watch = () => {
-      socket.timeout(5000).emit('balda:watch', (error, result) => {
+      socket.timeout(5000).emit('balda:watch', { roomId }, (error, result) => {
         if (error) {
           setLoadError('Не удалось загрузить партию');
           return;
         }
         if (result?.state) onState(result.state);
       });
+      socket.timeout(5000).emit('balda:get-presence', (error, result) => {
+        if (!error && Array.isArray(result?.rooms)) {
+          setRoomSummaries(new Map(
+            result.rooms.map(summary => [Number(summary.roomId), summary])
+          ));
+        }
+      });
     };
 
     socket.on('balda:state', onState);
+    socket.on('balda:presence', onPresence);
     socket.on('connect', watch);
     if (socket.connected) watch();
     return () => {
       socket.off('balda:state', onState);
+      socket.off('balda:presence', onPresence);
       socket.off('connect', watch);
-      if (socket.connected) socket.emit('balda:unwatch');
+      if (socket.connected) socket.emit('balda:unwatch', { roomId });
     };
-  }, [socket]);
+  }, [roomId, socket]);
 
   useEffect(() => {
     setClockNow(Date.now());
@@ -63,7 +86,7 @@ export default function BaldaGame({ onClose }) {
     return () => window.clearInterval(interval);
   }, [state?.turnDeadline]);
 
-  const perform = useCallback((event, payload) => new Promise(resolve => {
+  const perform = useCallback((event, payload = {}) => new Promise(resolve => {
     setBusy(event);
     setActionError('');
     const callback = (timeoutError, result) => {
@@ -80,9 +103,8 @@ export default function BaldaGame({ onClose }) {
       }
       resolve(result);
     };
-    if (payload === undefined) socket.timeout(5000).emit(event, callback);
-    else socket.timeout(5000).emit(event, payload, callback);
-  }), [socket]);
+    socket.timeout(5000).emit(event, { ...payload, roomId }, callback);
+  }), [roomId, socket]);
 
   const currentUserId = Number(currentUser?.id);
   const players = state?.players || [];
@@ -115,6 +137,28 @@ export default function BaldaGame({ onClose }) {
     if (!isMyTurn) setUnknownDraft(null);
   }, [isMyTurn]);
 
+  useEffect(() => {
+    if (placement && canEdit) cellInputRef.current?.focus();
+  }, [canEdit, placement]);
+
+  useEffect(() => {
+    const finishSelection = event => {
+      const selection = dragSelectionRef.current;
+      if (!selection || (event.pointerId && event.pointerId !== selection.pointerId)) return;
+      if (selection.active) {
+        suppressClickRef.current = true;
+        window.setTimeout(() => { suppressClickRef.current = false; }, 0);
+      }
+      dragSelectionRef.current = null;
+    };
+    window.addEventListener('pointerup', finishSelection);
+    window.addEventListener('pointercancel', finishSelection);
+    return () => {
+      window.removeEventListener('pointerup', finishSelection);
+      window.removeEventListener('pointercancel', finishSelection);
+    };
+  }, []);
+
   const pathPositions = useMemo(() => new Map(
     path.map((cell, index) => [cellKey(cell.row, cell.column), index + 1])
   ), [path]);
@@ -136,14 +180,80 @@ export default function BaldaGame({ onClose }) {
     setUnknownDraft(null);
   }, []);
 
+  const handleRoomChange = nextRoomId => {
+    if (Number(nextRoomId) === Number(roomId) || myPlayer) return;
+    resetDraft();
+    setActionError('');
+    setLoadError('');
+    setState(null);
+    setRoomId(Number(nextRoomId));
+  };
+
+  const isCellAvailableForPath = useCallback((row, column) => {
+    if (!state) return false;
+    const isCurrentPlacement = placement?.row === row && placement?.column === column;
+    return Boolean(state.board[(row * BOARD_SIZE) + column])
+      || Boolean(isCurrentPlacement && letter);
+  }, [letter, placement, state]);
+
+  const extendDragPath = useCallback((row, column) => {
+    if (!isCellAvailableForPath(row, column)) return;
+    const nextCell = { row, column };
+    setPath(previous => {
+      if (previous.length === 0) return [nextCell];
+      const existingIndex = previous.findIndex(cell => (
+        cell.row === row && cell.column === column
+      ));
+      if (existingIndex === previous.length - 2) return previous.slice(0, -1);
+      if (existingIndex >= 0 || !isAdjacent(previous.at(-1), nextCell)) return previous;
+      return [...previous, nextCell];
+    });
+  }, [isCellAvailableForPath]);
+
+  const handleBoardPointerDown = event => {
+    if (!canEdit) return;
+    const cell = event.target.closest('[data-balda-cell]');
+    if (!cell) return;
+    const row = Number(cell.dataset.row);
+    const column = Number(cell.dataset.column);
+    if (!isCellAvailableForPath(row, column)) return;
+    dragSelectionRef.current = {
+      active: false,
+      column,
+      pointerId: event.pointerId,
+      row,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+  };
+
+  const handleBoardPointerMove = event => {
+    const selection = dragSelectionRef.current;
+    if (!selection || selection.pointerId !== event.pointerId || !canEdit) return;
+    if (!selection.active) {
+      const distance = Math.hypot(
+        event.clientX - selection.startX,
+        event.clientY - selection.startY,
+      );
+      if (distance < 5) return;
+      selection.active = true;
+      setUnknownDraft(null);
+      setActionError('');
+      setPath([{ row: selection.row, column: selection.column }]);
+    }
+    event.preventDefault();
+    const target = document.elementFromPoint(event.clientX, event.clientY)
+      ?.closest?.('[data-balda-cell]');
+    if (target) extendDragPath(Number(target.dataset.row), Number(target.dataset.column));
+  };
+
   const handleCellClick = (row, column) => {
+    if (suppressClickRef.current) return;
     if (!canEdit || !state) return;
     setActionError('');
     setUnknownDraft(null);
-    const index = (row * BOARD_SIZE) + column;
     const key = cellKey(row, column);
-    const isCurrentPlacement = placement?.row === row && placement?.column === column;
-    const isAvailableForPath = Boolean(state.board[index]) || (isCurrentPlacement && letter);
+    const isAvailableForPath = isCellAvailableForPath(row, column);
 
     if (!isAvailableForPath) {
       setPlacement({ row, column });
@@ -239,13 +349,33 @@ export default function BaldaGame({ onClose }) {
       <header className="balda-header surface">
         <div>
           <button className="balda-back" type="button" onClick={onClose}>← К играм</button>
-          <h1>Балда</h1>
+          <h1>Балда · Комната {roomId}</h1>
           <p>Добавьте букву и соберите слово по соседним клеткам.</p>
         </div>
         <div className="balda-viewers" title="Людей сейчас в игре">
           <span aria-hidden="true">👥</span> {state.presenceCount}
         </div>
       </header>
+
+      <nav className="balda-room-tabs surface" aria-label="Комнаты Балды">
+        {[1, 2].map(nextRoomId => {
+          const summary = roomSummaries.get(nextRoomId);
+          const isActive = nextRoomId === roomId;
+          return (
+            <button
+              className={isActive ? 'is-active' : ''}
+              type="button"
+              key={nextRoomId}
+              disabled={Boolean(myPlayer && !isActive)}
+              title={myPlayer && !isActive ? 'Сначала освободите место в текущей комнате' : undefined}
+              onClick={() => handleRoomChange(nextRoomId)}
+            >
+              <strong>Комната {nextRoomId}</strong>
+              <span>{summary?.playerCount || 0}/2 игроков · 👥 {summary?.onlineCount || 0}</span>
+            </button>
+          );
+        })}
+      </nav>
 
       <div className="balda-scoreboard" aria-label="Счёт игроков">
         {players.map(player => {
@@ -273,7 +403,7 @@ export default function BaldaGame({ onClose }) {
 
       <div className="balda-status surface" role="status" aria-live="polite">
         <strong>{statusText}</strong>
-        {!connected && <span>Нет связи с сервером</span>}
+        {!connected && <span>Нет связи. Вернитесь в течение 30 секунд, иначе место освободится.</span>}
         {state.status === 'playing' && state.consecutivePasses === 1 && (
           <span>Один ход пропущен. Ещё один пропуск завершит партию.</span>
         )}
@@ -306,7 +436,13 @@ export default function BaldaGame({ onClose }) {
 
       <div className="balda-layout">
         <div className="balda-play-column">
-          <div className="balda-board surface" role="grid" aria-label="Игровое поле 5 на 5">
+          <div
+            className="balda-board surface"
+            role="grid"
+            aria-label="Игровое поле 5 на 5"
+            onPointerDown={handleBoardPointerDown}
+            onPointerMove={handleBoardPointerMove}
+          >
             {state.board.map((boardLetter, index) => {
               const row = Math.floor(index / BOARD_SIZE);
               const column = index % BOARD_SIZE;
@@ -314,17 +450,51 @@ export default function BaldaGame({ onClose }) {
               const isPlacement = placement?.row === row && placement?.column === column;
               const order = pathPositions.get(key);
               const displayLetter = boardLetter || (isPlacement ? letter : '');
+              const cellClassName = [
+                'balda-cell',
+                boardLetter ? 'is-filled' : '',
+                isPlacement ? 'is-placement' : '',
+                order ? 'is-in-path' : '',
+              ].filter(Boolean).join(' ');
+              if (isPlacement && !boardLetter && canEdit) {
+                return (
+                  <label
+                    className={cellClassName}
+                    role="gridcell"
+                    key={key}
+                    data-balda-cell
+                    data-row={row}
+                    data-column={column}
+                    aria-label={`Строка ${row + 1}, столбец ${column + 1}, новая буква${letter ? ` ${letter}` : ''}`}
+                  >
+                    <input
+                      ref={cellInputRef}
+                      value={letter}
+                      maxLength={1}
+                      aria-label="Новая буква"
+                      inputMode="text"
+                      onChange={event => {
+                        const nextLetter = event.target.value.toLocaleUpperCase('ru-RU')
+                          .replace(/[^А-ЯЁ]/gu, '')
+                          .slice(-1);
+                        setLetter(nextLetter);
+                        setPath([]);
+                        setUnknownDraft(null);
+                      }}
+                    />
+                    {order && <small aria-hidden="true">{order}</small>}
+                  </label>
+                );
+              }
               return (
                 <button
-                  className={[
-                    'balda-cell',
-                    boardLetter ? 'is-filled' : '',
-                    isPlacement ? 'is-placement' : '',
-                    order ? 'is-in-path' : '',
-                  ].filter(Boolean).join(' ')}
+                  className={cellClassName}
                   type="button"
                   role="gridcell"
                   key={key}
+                  data-balda-cell
+                  data-row={row}
+                  data-column={column}
                   onClick={() => handleCellClick(row, column)}
                   disabled={!canEdit}
                   aria-label={`Строка ${row + 1}, столбец ${column + 1}${displayLetter ? `, буква ${displayLetter}` : ', пусто'}`}
@@ -338,33 +508,15 @@ export default function BaldaGame({ onClose }) {
 
           {isMyTurn && !state.pendingWord && (
             <form className="balda-move-panel surface" onSubmit={handleSubmit}>
-              <label>
-                Новая буква
-                <input
-                  value={letter}
-                  maxLength={1}
-                  disabled={!placement || Boolean(busy) || !connected}
-                  onChange={event => {
-                    const nextLetter = event.target.value.toLocaleUpperCase('ru-RU')
-                      .replace(/[^А-ЯЁ]/gu, '')
-                      .slice(-1);
-                    setLetter(nextLetter);
-                    setPath([]);
-                    setUnknownDraft(null);
-                  }}
-                  aria-describedby="balda-move-hint"
-                  inputMode="text"
-                />
-              </label>
               <div className="balda-word-preview" aria-label={`Собранное слово: ${previewWord || 'нет'}`}>
                 {previewWord || 'СЛОВО'}
               </div>
               <p id="balda-move-hint">
                 {!placement
-                  ? 'Сначала выберите пустую клетку.'
+                  ? 'Нажмите пустую клетку и введите букву прямо в ней.'
                   : !letter
-                    ? 'Введите букву, затем нажмите клетки слова по порядку.'
-                    : 'Нажимайте соседние клетки; повторное нажатие укоротит путь.'}
+                    ? 'Введите новую букву прямо в выбранной клетке.'
+                    : 'Проведите мышью или пальцем по буквам слова. Можно выбирать клетки и кликами.'}
               </p>
               <div className="balda-move-actions">
                 <button className="game-btn" type="submit" disabled={!submitReady || Boolean(busy)}>
@@ -517,13 +669,16 @@ export default function BaldaGame({ onClose }) {
             </p>
             <ol>
               <li>Играют существительными в именительном падеже; нарицательными именами.</li>
-              <li>Выберите пустую клетку и добавьте одну букву.</li>
-              <li>Соберите новое слово, переходя по сторонам клеток без повторов.</li>
+              <li>Выберите пустую клетку и введите одну букву прямо в неё.</li>
+              <li>Проведите мышью или пальцем по новому слову, переходя по сторонам клеток без повторов.</li>
               <li>За слово начисляется столько очков, сколько в нём букв.</li>
               <li>Если слова нет в словаре, соперник может принять его. Тогда оно сохранится для будущих партий.</li>
               <li>Неизвестное слово отправляется сопернику только отдельной кнопкой; таймер при этом не останавливается.</li>
               <li>На ход даётся от 30 секунд до 5 минут. По истечении времени ход пропускается.</li>
               <li>Партия заканчивается при заполнении поля или после двух пропусков подряд.</li>
+              <li>Есть две независимые комнаты. Один пользователь занимает место только в одной из них.</li>
+              <li>Если игрок ушёл со страницы Балды больше чем на 30 секунд, его место освобождается. В идущей партии ему засчитывается поражение.</li>
+              <li>Начальное слово выбирается из 400 частотных пятибуквенных слов с большим числом возможных продолжений.</li>
               <li>На свободное место можно добавить бота Борхеса; он играет по тому же словарю и правилам.</li>
             </ol>
           </details>
