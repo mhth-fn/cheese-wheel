@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../app/AppContext';
 import PasswordPanel from './nav/PasswordPanel';
+import ProfileNamePanel from './nav/ProfileNamePanel';
+import InvitePanel from './nav/InvitePanel';
 import TwoFactorPanel from './nav/TwoFactorPanel';
 import { useMobileNavVisibility } from './nav/useMobileNavVisibility';
 
@@ -36,11 +38,15 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
     interfaceTheme,
     isAdmin,
     isGuest,
+    refreshSession,
+    retryUsers,
     setInterfaceTheme,
     showToast,
   } = useApp();
   const [changingPassword, setChangingPassword] = useState(false);
+  const [changingName, setChangingName] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [invitingUser, setInvitingUser] = useState(false);
   const [securityOpen, setSecurityOpen] = useState(false);
   const dropdownRef = useRef(null);
   const dropdownWasOpenRef = useRef(false);
@@ -56,6 +62,8 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
 
   const resetSubmenus = useCallback(() => {
     setChangingPassword(false);
+    setChangingName(false);
+    setInvitingUser(false);
     setSecurityOpen(false);
   }, []);
 
@@ -114,7 +122,14 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
       triggerRef.current?.focus();
     }
     return undefined;
-  }, [changingPassword, dropdownOpen, securityOpen]);
+  }, [changingName, changingPassword, dropdownOpen, invitingUser, securityOpen]);
+
+  const handleNameChanged = async () => {
+    await Promise.all([retryUsers(), refreshSession()]);
+    closeDropdown();
+  };
+
+  const submenuOpen = changingName || changingPassword || invitingUser || securityOpen;
 
   return (
     <header className="nav">
@@ -187,12 +202,12 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
         {dropdownOpen && (
           <div
             id="nav-profile-popover"
-            className={`nav-dropdown ${securityOpen ? 'nav-dropdown-wide' : ''}`}
+            className={`nav-dropdown ${securityOpen || invitingUser ? 'nav-dropdown-wide' : ''}`}
             role="dialog"
             aria-modal="false"
             aria-label={`Настройки пользователя ${userName}`}
           >
-            {!changingPassword && !securityOpen && (
+            {!submenuOpen && (
               <>
                 <div className="nav-dropdown-profile">
                   <span>{userName}</span>
@@ -227,7 +242,44 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
               </>
             )}
 
-            {!isGuest && !changingPassword && !securityOpen && (
+            {isAdmin && !submenuOpen && (
+              <button
+                className="nav-dropdown-item nav-dropdown-invite"
+                type="button"
+                onClick={() => setInvitingUser(true)}
+              >
+                ПРИГЛАСИТЬ
+              </button>
+            )}
+
+            {invitingUser && (
+              <InvitePanel
+                showToast={showToast}
+                onCancel={() => setInvitingUser(false)}
+              />
+            )}
+
+            {!isGuest && !submenuOpen && (
+              <button
+                className="nav-dropdown-item"
+                type="button"
+                onClick={() => setChangingName(true)}
+              >
+                Поменять имя
+              </button>
+            )}
+
+            {changingName && (
+              <ProfileNamePanel
+                currentName={currentUser.name}
+                userId={currentUser.id}
+                showToast={showToast}
+                onCancel={() => setChangingName(false)}
+                onComplete={handleNameChanged}
+              />
+            )}
+
+            {!isGuest && !submenuOpen && (
               <button
                 className="nav-dropdown-item"
                 type="button"
@@ -246,7 +298,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
               />
             )}
 
-            {!isGuest && !changingPassword && !securityOpen && (
+            {!isGuest && !submenuOpen && (
               <button
                 className="nav-dropdown-item"
                 type="button"
@@ -263,7 +315,7 @@ export default function Nav({ activePage, onNavigate, onLogout, userName }) {
               />
             )}
 
-            {!changingPassword && !securityOpen && (
+            {!submenuOpen && (
               <button
                 className="nav-dropdown-item nav-dropdown-logout"
                 type="button"

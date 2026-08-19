@@ -7,6 +7,7 @@ const stmts = {
   setTheme: db.prepare("UPDATE settings SET value = ? WHERE key = 'theme'"),
   getUsers: db.prepare('SELECT id, name FROM users ORDER BY id'),
   getUserById: db.prepare('SELECT id FROM users WHERE id = ?'),
+  getUserByLoginKey: db.prepare('SELECT id, name, login_key, role FROM users WHERE login_key = ?'),
   getAuthUser: db.prepare(`
     SELECT u.id, u.name, u.role,
       CASE WHEN t.enabled = 1 THEN 1 ELSE 0 END AS two_factor_enabled
@@ -22,7 +23,11 @@ const stmts = {
     ORDER BY u.id
   `),
   getUserWithPassword: db.prepare('SELECT id, name, password_hash, role FROM users WHERE id = ?'),
+  getUserWithPasswordByLogin: db.prepare(
+    'SELECT id, name, password_hash, role FROM users WHERE login_key = ?'
+  ),
   setUserPassword: db.prepare('UPDATE users SET password_hash = ? WHERE id = ?'),
+  setUserName: db.prepare('UPDATE users SET name = ?, login_key = ? WHERE id = ?'),
   getUnwatched: db.prepare(`
     SELECT m.*, u.name as added_by_name
     FROM movies m LEFT JOIN users u ON m.added_by = u.id

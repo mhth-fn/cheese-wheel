@@ -91,7 +91,7 @@ const {
 } = createVpnService();
 // База данных, миграции и подготовленные SQL-выражения
 const {
-  CORE_STATS_USER_NAMES,
+  CORE_STATS_USER_IDS,
   DUMMY_PASSWORD_HASH,
   auditLog,
   authSecurityStmts,
@@ -231,10 +231,12 @@ const uploadsPath = registerHttpMiddleware({
   rejectRateLimited,
   rootDir: __dirname,
 });
+const userPresence = {};
 
 const routeContext = {
+  APP_ORIGIN,
   ALLOWED_THEMES,
-  CORE_STATS_USER_NAMES,
+  CORE_STATS_USER_IDS,
   DUMMY_PASSWORD_HASH,
   MAX_ONE_OFF_MOVIES,
   MAX_SIGAME_PACK_BYTES,
@@ -324,6 +326,7 @@ const routeContext = {
   toWheelSnapshotMovie,
   updateFormedWheelSnapshot,
   uploadsPath,
+  userPresence,
   verifyPassword,
   vpnMutations,
   vpnStmts,

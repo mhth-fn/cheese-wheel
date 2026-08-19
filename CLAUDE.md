@@ -44,7 +44,7 @@ PORT=8080 npm start  # Run on custom port
 **Legacy frontend** (`public/`) — original vanilla JS, kept for reference.
 
 **Database** (`cheese_wheel.db`): Auto-created SQLite file with 4 tables:
-- `users` — 4 hardcoded users (Антон, Сергей, Пётр, Митя)
+- `users` — existing and invited users with unique normalized login names
 - `movies` — movie titles with `is_watched` flag
 - `ratings` — per-user ratings (1-10) per movie, unique constraint on (movie_id, user_id)
 - `settings` — key-value store (spin duration, theme)
@@ -56,7 +56,7 @@ PORT=8080 npm start  # Run on custom port
 - **Wheel rendering**: Canvas 2D API in `CheeseWheel.jsx` — cheese colors, green rind, cheese holes, pointer, center hub. Spin animation via `requestAnimationFrame` with canvas redraw.
 - **Theme system**: Three themes ("cheese", "newyear", "spring") controlled via CSS classes on `<body>` and a server-persisted setting.
 - **Admin access**: User ID 2 (Сергей) has access to the admin settings panel. Client-side only check.
-- **Auth**: Per-user passwords (scrypt hashed in `server.js`). Guest mode provides read-only access. Session stored in localStorage.
+- **Auth**: Login name + scrypt-hashed password, optional 2FA, one-time admin invitations, and HTTP-only cookie sessions. Guest mode provides read-only access.
 - **Navigation**: Client-side page switching via React state + `history.pushState`.
 
 ## API Routes (all in server.js)

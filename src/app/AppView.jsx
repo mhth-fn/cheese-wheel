@@ -90,7 +90,6 @@ function AuthState() {
     loginGuest,
     retryUsers,
     sessionChecked,
-    users,
     usersLoadState,
   } = useApp();
 
@@ -109,7 +108,7 @@ function AuthState() {
     );
   }
   return sessionChecked
-    ? <AuthPage users={users} onLogin={login} onGuest={loginGuest} />
+    ? <AuthPage onLogin={login} onGuest={loginGuest} />
     : null;
 }
 

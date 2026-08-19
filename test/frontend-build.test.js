@@ -248,6 +248,18 @@ test('startup shows an animated cheese wheel illustration instead of initials', 
   assert.match(authCss, /@keyframes miniCheeseLoaderFloat/);
 });
 
+test('authentication uses login and password fields instead of a user picker', () => {
+  const authPage = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'components', 'AuthPage.jsx'),
+    'utf8'
+  );
+
+  assert.match(authPage, />Логин</);
+  assert.match(authPage, /autoComplete="username"/);
+  assert.match(authPage, /autoComplete="current-password"/);
+  assert.doesNotMatch(authPage, /auth-users|users\.map/);
+});
+
 test('production refuses to start without the current frontend build', async t => {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'cheese-wheel-frontend-'));
   t.after(() => fsp.rm(root, { recursive: true, force: true }));

@@ -295,16 +295,20 @@ const regenerateRecoveryCodeSet = db.transaction((userId, submittedCode) => {
   return createRecoveryCodeSet(userId);
 });
 
-// Динамический запрос getWatched — строится по реальным user_id из БД
-{
-  const allUsers = db.prepare('SELECT id FROM users ORDER BY id').all();
-  const ratingCols = allUsers.map(u => `MAX(CASE WHEN r.user_id = ${u.id} THEN r.rating END) as rating_${u.id}`).join(',\n      ');
-  stmts.getWatched = db.prepare(`
+// Список колонок оценок меняется после принятия приглашения,
+// поэтому SQL собирается перед каждым чтением, а не только при старте.
+stmts.getWatched = {
+  all() {
+    const allUsers = db.prepare('SELECT id FROM users ORDER BY id').all();
+    const ratingCols = allUsers
+      .map(user => `MAX(CASE WHEN r.user_id = ${Number(user.id)} THEN r.rating END) as rating_${Number(user.id)}`)
+      .join(',\n      ');
+    return db.prepare(`
     SELECT
       m.id, m.title, m.alternative_title, m.director, m.year,
       m.watched_at, m.added_at, m.added_by,
       proposer.name as added_by_name,
-      ${ratingCols},
+      ${ratingCols ? `${ratingCols},` : ''}
       ROUND(AVG(r.rating), 1) as avg_rating,
       COUNT(r.rating) as ratings_count,
       (
@@ -318,8 +322,9 @@ const regenerateRecoveryCodeSet = db.transaction((userId, submittedCode) => {
     WHERE m.is_watched = 1
     GROUP BY m.id
     ORDER BY m.watched_at DESC
-  `);
-}
+    `).all();
+  },
+};
 
 // Хелперы валидации
 

@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
@@ -48,6 +49,147 @@ async function connect(instance, cookie) {
   ]);
   return socket;
 }
+
+async function startDiscordWebhook() {
+  let resolveMessage;
+  const message = new Promise(resolve => {
+    resolveMessage = resolve;
+  });
+  const server = http.createServer((request, response) => {
+    const chunks = [];
+    request.on('data', chunk => chunks.push(chunk));
+    request.on('end', () => {
+      resolveMessage(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+      response.statusCode = 204;
+      response.end();
+    });
+  });
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  return {
+    close: () => new Promise((resolve, reject) => {
+      server.close(error => error ? reject(error) : resolve());
+    }),
+    message,
+    url: `http://127.0.0.1:${server.address().port}/webhook`,
+  };
+}
+
+test('admins invite unique logins, invitees set a password, and members rename themselves', async t => {
+  const dataDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'cheese-wheel-invite-test-'));
+  const discord = await startDiscordWebhook();
+  const instance = await startServer(dataDir, { discordWebhookUrl: discord.url });
+  t.after(async () => {
+    await stopServer(instance);
+    await discord.close();
+    await fsp.rm(dataDir, { recursive: true, force: true });
+  });
+
+  const admin = await login(instance, 2);
+  const member = await login(instance, 1);
+  assert.equal((await request(instance, '/api/admin/invitations', {
+    method: 'POST',
+    cookie: member.cookie,
+    body: { name: 'Нельзя пригласить' },
+  })).status, 403);
+  assert.equal((await request(instance, '/api/admin/invitations', {
+    method: 'POST',
+    cookie: admin.cookie,
+    body: { name: 'сЕРГЕЙ' },
+  })).status, 409);
+
+  const created = await request(instance, '/api/admin/invitations', {
+    method: 'POST',
+    cookie: admin.cookie,
+    body: { name: '  Новая   Участница  ' },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.payload));
+  assert.equal(created.payload.invitation.name, 'Новая Участница');
+  const invitationUrl = new URL(created.payload.invitation.url);
+  assert.equal(invitationUrl.origin, instance.baseUrl);
+  const invitationToken = invitationUrl.pathname.split('/').at(-1);
+
+  const invitation = await request(instance, `/api/invitations/${invitationToken}`);
+  assert.equal(invitation.status, 200);
+  assert.equal(invitation.payload.name, 'Новая Участница');
+  assert.equal((await request(instance, `/api/invitations/${invitationToken}`, {
+    method: 'POST',
+    body: { password: 'short' },
+  })).status, 400);
+
+  const accepted = await request(instance, `/api/invitations/${invitationToken}`, {
+    method: 'POST',
+    body: { password: 'new-member-password-42' },
+  });
+  assert.equal(accepted.status, 201, JSON.stringify(accepted.payload));
+  assert.equal(accepted.payload.user.role, 'member');
+  const invitedCookie = accepted.response.headers.get('set-cookie').split(';', 1)[0];
+  const invitedUserId = accepted.payload.user.id;
+  assert.equal((await request(instance, `/api/invitations/${invitationToken}`, {
+    method: 'POST',
+    body: { password: 'another-password-42' },
+  })).status, 409);
+
+  const welcome = await Promise.race([
+    discord.message,
+    delay(3_000).then(() => { throw new Error('Discord welcome was not sent'); }),
+  ]);
+  assert.equal(welcome.content, 'Добро пожаловать, *Новая Участница*');
+
+  const loginByName = await request(instance, '/api/auth', {
+    method: 'POST',
+    body: { login: 'нОВАЯ уЧАСТНИЦА', password: 'new-member-password-42' },
+  });
+  assert.equal(loginByName.status, 200, JSON.stringify(loginByName.payload));
+  assert.equal(loginByName.payload.user.id, invitedUserId);
+
+  const conflict = await request(instance, `/api/users/${invitedUserId}/name`, {
+    method: 'PATCH',
+    cookie: invitedCookie,
+    body: { name: 'СЕргей' },
+  });
+  assert.equal(conflict.status, 409);
+  const renamed = await request(instance, `/api/users/${invitedUserId}/name`, {
+    method: 'PATCH',
+    cookie: invitedCookie,
+    body: { name: 'Новый Ник' },
+  });
+  assert.equal(renamed.status, 200, JSON.stringify(renamed.payload));
+  assert.equal(renamed.payload.user.name, 'Новый Ник');
+  assert.equal((await request(instance, '/api/auth', {
+    method: 'POST',
+    body: { login: 'Новая Участница', password: 'new-member-password-42' },
+  })).status, 401);
+  assert.equal((await request(instance, '/api/auth', {
+    method: 'POST',
+    body: { login: 'новый ник', password: 'new-member-password-42' },
+  })).status, 200);
+
+  const addedMovie = await request(instance, '/api/watched', {
+    method: 'POST',
+    cookie: admin.cookie,
+    body: { title: 'Invitation rating columns' },
+  });
+  assert.equal(addedMovie.status, 200, JSON.stringify(addedMovie.payload));
+  const watched = await request(instance, '/api/watched', { cookie: invitedCookie });
+  assert.equal(watched.status, 200);
+  assert.equal(Object.hasOwn(watched.payload[0], `rating_${invitedUserId}`), true);
+  const users = await request(instance, '/api/users');
+  assert.ok(users.payload.some(user => user.id === invitedUserId && user.name === 'Новый Ник'));
+
+  assert.equal((await request(instance, `/api/users/${member.user.id}/name`, {
+    method: 'PATCH',
+    cookie: member.cookie,
+    body: { name: 'Антон Новый' },
+  })).status, 200);
+  const coreStatsAfterRename = await request(instance, '/api/stats?scope=core', {
+    cookie: member.cookie,
+  });
+  assert.equal(coreStatsAfterRename.status, 200, JSON.stringify(coreStatsAfterRename.payload));
+  assert.ok(coreStatsAfterRename.payload.per_user_avg.some(user => user.name === 'Антон Новый'));
+});
 
 test('real server enforces authentication, dynamic roles and content ownership', async t => {
   const dataDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'cheese-wheel-api-test-'));

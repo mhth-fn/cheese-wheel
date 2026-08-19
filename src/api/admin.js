@@ -12,6 +12,14 @@ export function updateAdminUserRole(userId, role) {
   });
 }
 
+export function createInvitation(name) {
+  return apiFetch('/api/admin/invitations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+}
+
 export function fetchAdminAudit({ cursor, limit = 30 } = {}) {
   const params = new URLSearchParams({ limit: String(limit) });
   if (cursor !== undefined && cursor !== null && cursor !== '') {

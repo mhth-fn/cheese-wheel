@@ -108,8 +108,8 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   assert.equal(response.status(), 200);
   await page.getByRole('heading', { name: 'Сырное Колесо' }).waitFor();
 
-  await page.getByRole('button', { name: 'Сергей', exact: true }).click();
-  await page.getByPlaceholder('Введите пароль…').fill(testPassword);
+  await page.getByLabel('Логин', { exact: true }).fill('Сергей');
+  await page.getByLabel('Пароль', { exact: true }).fill(testPassword);
   const loginResponsePromise = page.waitForResponse(response => (
     response.request().method() === 'POST'
     && new URL(response.url()).pathname === '/api/auth'
@@ -145,6 +145,17 @@ test('mobile browser can log in and use watched and reviews navigation', async t
   await page.locator('nav[aria-label="Основные разделы"]').waitFor();
   const profileButton = page.getByRole('button', { name: 'Меню пользователя Сергей' });
   await profileButton.waitFor();
+  await profileButton.click();
+  await page.getByRole('button', { name: 'ПРИГЛАСИТЬ', exact: true }).click();
+  await page.getByPlaceholder('Уникальное имя').fill('Браузерный гость');
+  await page.getByRole('button', { name: 'Создать ссылку', exact: true }).click();
+  await page.getByLabel('Ссылка-приглашение').waitFor();
+  assert.match(
+    await page.getByLabel('Ссылка-приглашение').inputValue(),
+    /\/invite\/[A-Za-z0-9_-]+$/
+  );
+  await page.getByRole('button', { name: '← Назад', exact: true }).click();
+  await profileButton.click();
   await page.getByRole('button', { name: 'VPN', exact: true }).waitFor();
 
   await page.getByRole('button', { name: 'Паки SIGame', exact: true }).click();

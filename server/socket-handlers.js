@@ -74,6 +74,7 @@ function registerSocketHandlers(context) {
     spinState,
     stmts,
     stopOneOffElimination,
+    userPresence,
   } = context;
 
 let activeOneOffSpinTimer = null;
@@ -158,6 +159,16 @@ function broadcastOnlineUsers() {
   }
   io.emit('online-users', users);
 }
+
+userPresence.renameUser = (userId, userName) => {
+  let changed = false;
+  for (const info of onlineUsers.values()) {
+    if (Number(info.userId) !== Number(userId)) continue;
+    info.userName = userName;
+    changed = true;
+  }
+  if (changed) broadcastOnlineUsers();
+};
 
 function getSocketToken(socket) {
   const authToken = socket.handshake.auth?.token;

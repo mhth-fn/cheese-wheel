@@ -23,6 +23,12 @@ test('known mutation routes get stable human-readable actions', () => {
   assert.equal(routeToAction('DELETE', '/api/watched/42'), 'watched.deleted');
   assert.equal(routeToAction('POST', '/api/2fa/enable'), 'two_factor.enabled');
   assert.equal(routeToAction('POST', '/api/music-reviews'), 'music_review.created');
+  assert.equal(routeToAction('POST', '/api/admin/invitations'), 'invitation.created');
+  assert.equal(
+    routeToAction('POST', '/api/invitations/abcdefghijklmnopqrstuvwxyz012345'),
+    'invitation.accepted'
+  );
+  assert.equal(routeToAction('PATCH', '/api/users/2/name'), 'user.name_changed');
   assert.equal(
     routeToAction('PATCH', '/api/music-reviews/23'),
     'music_review.updated'

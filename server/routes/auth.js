@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const {
   base32Encode,
   encryptTotpSecret,
@@ -7,9 +8,21 @@ const {
   hashLoginChallenge,
   hashSessionToken,
 } = require('../../lib/security');
+const {
+  normalizeLoginIdentifier,
+  validateUserName,
+} = require('../user-identity');
+
+const INVITATION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+
+function hashInvitationToken(token) {
+  if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{32,128}$/u.test(token)) return null;
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
 
 function registerAuthRoutes(context) {
   const {
+    APP_ORIGIN,
     DUMMY_PASSWORD_HASH,
     app,
     auditLog,
@@ -29,6 +42,8 @@ function registerAuthRoutes(context) {
     io,
     isMemberToken,
     issueLoginChallenge,
+    escapeDiscordMarkdown,
+    notifyDiscord,
     parseIntStrict,
     regenerateRecoveryCodeSet,
     rejectRateLimited,
@@ -38,6 +53,7 @@ function registerAuthRoutes(context) {
     serializeAuthUser,
     setSessionCookie,
     stmts,
+    userPresence,
     verifyPassword,
   } = context;
 
@@ -63,6 +79,9 @@ app.use('/api', (req, res, next) => {
   if (req.path === '/auth/2fa' && req.method === 'POST') return next();
   if (req.path === '/auth/guest' && req.method === 'POST') return next();
   if (req.path === '/auth/logout' && req.method === 'POST') return next();
+  if (/^\/invitations\/[A-Za-z0-9_-]{32,128}$/u.test(req.path)) {
+    if (req.method === 'GET' || req.method === 'POST') return next();
+  }
   if (req.path === '/users' && req.method === 'GET') return next();
   requireAuth(req, res, () => {
     if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
@@ -79,20 +98,24 @@ app.use('/api', (req, res, next) => {
 });
 
 app.post('/api/auth', (req, res) => {
-  const { user_id, password } = req.body || {};
-  const userId = parseIntStrict(user_id);
-  if (isNaN(userId) || typeof password !== 'string') {
+  const { login, password, user_id } = req.body || {};
+  const legacyUserId = user_id === undefined ? NaN : parseIntStrict(user_id);
+  const loginKey = typeof login === 'string' ? normalizeLoginIdentifier(login) : '';
+  if ((!loginKey && isNaN(legacyUserId)) || typeof password !== 'string') {
     return res.status(400).json({ error: 'Неверный формат' });
   }
 
   const ipLimit = consumeRateLimit('auth-ip', getClientRateKey(req), 30, 60 * 1000);
   if (!ipLimit.allowed) return rejectRateLimited(res, ipLimit);
-  const accountLimit = consumeRateLimit('auth-account', userId, 10, 60 * 1000);
+  const accountKey = loginKey || `legacy:${legacyUserId}`;
+  const accountLimit = consumeRateLimit('auth-account', accountKey, 10, 60 * 1000);
   if (!accountLimit.allowed) return rejectRateLimited(res, accountLimit);
   const globalLimit = consumeRateLimit('auth-global', 'all', 120, 60 * 1000);
   if (!globalLimit.allowed) return rejectRateLimited(res, globalLimit);
 
-  const user = stmts.getUserWithPassword.get(userId);
+  const user = loginKey
+    ? stmts.getUserWithPasswordByLogin.get(loginKey)
+    : stmts.getUserWithPassword.get(legacyUserId);
   const passwordValid = verifyPassword(password, user?.password_hash || DUMMY_PASSWORD_HASH);
   if (user && passwordValid) {
     req.auditActor = { userId: user.id, role: user.role };
@@ -115,7 +138,7 @@ app.post('/api/auth', (req, res) => {
       user: serializeAuthUser(stmts.getAuthUser.get(user.id)),
     });
   } else {
-    res.status(401).json({ error: 'Неверный пользователь или пароль' });
+    res.status(401).json({ error: 'Неверный логин или пароль' });
   }
 });
 
@@ -219,6 +242,112 @@ app.get('/api/auth/session', (req, res) => {
   });
 });
 
+app.get('/api/invitations/:token', (req, res) => {
+  const tokenHash = hashInvitationToken(req.params.token);
+  if (!tokenHash) return res.status(404).json({ error: 'Приглашение не найдено' });
+  const viewLimit = consumeRateLimit(
+    'invitation-view-ip',
+    getClientRateKey(req),
+    60,
+    60 * 60 * 1000
+  );
+  if (!viewLimit.allowed) return rejectRateLimited(res, viewLimit);
+
+  const invitation = db.prepare(`
+    SELECT name, expires_at, accepted_at
+    FROM user_invitations
+    WHERE token_hash = ?
+  `).get(tokenHash);
+  if (!invitation) return res.status(404).json({ error: 'Приглашение не найдено' });
+  if (invitation.accepted_at) {
+    return res.status(409).json({ error: 'Приглашение уже использовано' });
+  }
+  if (invitation.expires_at < Date.now()) {
+    return res.status(410).json({ error: 'Срок приглашения истёк' });
+  }
+  res.json({ name: invitation.name, expires_at: invitation.expires_at });
+});
+
+const acceptInvitation = db.transaction((tokenHash, passwordHash, now) => {
+  const invitation = db.prepare(`
+    SELECT token_hash, name, login_key, expires_at, accepted_at
+    FROM user_invitations
+    WHERE token_hash = ?
+  `).get(tokenHash);
+  if (!invitation) return { status: 'not-found' };
+  if (invitation.accepted_at) return { status: 'accepted' };
+  if (invitation.expires_at < now) return { status: 'expired' };
+  if (stmts.getUserByLoginKey.get(invitation.login_key)) return { status: 'name-taken' };
+
+  const insert = db.prepare(`
+    INSERT INTO users (name, login_key, password_hash, role)
+    VALUES (?, ?, ?, 'member')
+  `).run(invitation.name, invitation.login_key, passwordHash);
+  const userId = Number(insert.lastInsertRowid);
+  const accepted = db.prepare(`
+    UPDATE user_invitations
+    SET accepted_at = ?, accepted_user_id = ?
+    WHERE token_hash = ? AND accepted_at IS NULL
+  `).run(now, userId, tokenHash);
+  if (accepted.changes !== 1) throw new Error('Invitation acceptance race');
+  return { status: 'ok', user: stmts.getAuthUser.get(userId) };
+});
+
+app.post('/api/invitations/:token', (req, res) => {
+  const tokenHash = hashInvitationToken(req.params.token);
+  const password = req.body?.password;
+  if (!tokenHash || typeof password !== 'string') {
+    return res.status(400).json({ error: 'Неверный формат' });
+  }
+  if (password.length < 8 || password.length > 100) {
+    return res.status(400).json({ error: 'Пароль от 8 до 100 символов' });
+  }
+  const ipLimit = consumeRateLimit(
+    'invitation-accept-ip',
+    getClientRateKey(req),
+    10,
+    10 * 60 * 1000
+  );
+  if (!ipLimit.allowed) return rejectRateLimited(res, ipLimit);
+  const inviteLimit = consumeRateLimit(
+    'invitation-accept-token',
+    tokenHash,
+    10,
+    10 * 60 * 1000
+  );
+  if (!inviteLimit.allowed) return rejectRateLimited(res, inviteLimit);
+
+  try {
+    const result = acceptInvitation(tokenHash, hashPassword(password), Date.now());
+    if (result.status === 'not-found') {
+      return res.status(404).json({ error: 'Приглашение не найдено' });
+    }
+    if (result.status === 'accepted') {
+      return res.status(409).json({ error: 'Приглашение уже использовано' });
+    }
+    if (result.status === 'expired') {
+      return res.status(410).json({ error: 'Срок приглашения истёк' });
+    }
+    if (result.status === 'name-taken') {
+      return res.status(409).json({ error: 'Это имя уже занято' });
+    }
+
+    const user = serializeAuthUser(result.user);
+    req.auditActor = { userId: user.id, role: user.role };
+    const token = createToken(user.id);
+    setSessionCookie(res, token);
+    io.emit('users-changed');
+    void notifyDiscord(`Добро пожаловать, *${escapeDiscordMarkdown(user.name)}*`);
+    return res.status(201).json({ success: true, user });
+  } catch (error) {
+    if (error?.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return res.status(409).json({ error: 'Это имя уже занято' });
+    }
+    console.error('[cheese-wheel] Invitation acceptance failed:', error.message);
+    return res.status(500).json({ error: 'Не удалось принять приглашение' });
+  }
+});
+
 // Смена пароля
 app.post('/api/users/:id/password', (req, res) => {
   const id = parseIntStrict(req.params.id);
@@ -247,8 +376,79 @@ app.post('/api/users/:id/password', (req, res) => {
   res.json({ success: true });
 });
 
+app.patch('/api/users/:id/name', (req, res) => {
+  const id = parseIntStrict(req.params.id);
+  if (isNaN(id) || !isMemberToken(req.tokenData) || Number(req.tokenData.userId) !== id) {
+    return res.status(403).json({ error: 'Можно изменить только своё имя' });
+  }
+  const validation = validateUserName(req.body?.name);
+  if (validation.error) return res.status(400).json({ error: validation.error });
+  const loginKey = normalizeLoginIdentifier(validation.name);
+  const conflict = stmts.getUserByLoginKey.get(loginKey);
+  if (conflict && Number(conflict.id) !== id) {
+    return res.status(409).json({ error: 'Это имя уже занято' });
+  }
+  const reserved = db.prepare(`
+    SELECT 1
+    FROM user_invitations
+    WHERE login_key = ? AND accepted_at IS NULL AND expires_at >= ?
+  `).get(loginKey, Date.now());
+  if (reserved) {
+    return res.status(409).json({ error: 'Это имя уже зарезервировано приглашением' });
+  }
+
+  try {
+    stmts.setUserName.run(validation.name, loginKey, id);
+  } catch (error) {
+    if (error?.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return res.status(409).json({ error: 'Это имя уже занято' });
+    }
+    throw error;
+  }
+  const user = serializeAuthUser(stmts.getAuthUser.get(id));
+  userPresence.renameUser?.(id, user.name);
+  io.emit('user-name-changed', { user_id: id, name: user.name });
+  io.emit('users-changed');
+  res.json({ success: true, user });
+});
+
 app.get('/api/admin/users', requireAdmin, (req, res) => {
   res.json(stmts.getAdminUsers.all().map(serializeAuthUser));
+});
+
+app.post('/api/admin/invitations', requireAdmin, (req, res) => {
+  const validation = validateUserName(req.body?.name);
+  if (validation.error) return res.status(400).json({ error: validation.error });
+  const loginKey = normalizeLoginIdentifier(validation.name);
+  if (stmts.getUserByLoginKey.get(loginKey)) {
+    return res.status(409).json({ error: 'Это имя уже занято' });
+  }
+
+  const rawToken = crypto.randomBytes(32).toString('base64url');
+  const tokenHash = hashInvitationToken(rawToken);
+  const now = Date.now();
+  const expiresAt = now + INVITATION_LIFETIME_MS;
+  const replaceInvitation = db.transaction(() => {
+    db.prepare(`
+      DELETE FROM user_invitations
+      WHERE login_key = ? AND accepted_at IS NULL
+    `).run(loginKey);
+    db.prepare(`
+      INSERT INTO user_invitations (
+        token_hash, name, login_key, invited_by, created_at, expires_at
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(tokenHash, validation.name, loginKey, req.tokenData.userId, now, expiresAt);
+  });
+  replaceInvitation();
+
+  const url = `${APP_ORIGIN.replace(/\/$/u, '')}/invite/${rawToken}`;
+  res.status(201).json({
+    invitation: {
+      name: validation.name,
+      url,
+      expires_at: expiresAt,
+    },
+  });
 });
 
 app.get('/api/admin/audit', requireAdmin, (req, res) => {

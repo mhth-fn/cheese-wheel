@@ -2,7 +2,7 @@
 
 function registerStatsRoutes(context) {
   const {
-    CORE_STATS_USER_NAMES,
+    CORE_STATS_USER_IDS,
     app,
     parseIntStrict,
     stmts,
@@ -187,7 +187,7 @@ function buildPersonalStats(currentUser, comparisonScope = 'all', selectedCompar
     .filter(user => (
       comparisonScope === 'selected'
         ? selectedComparisonUserIdSet.has(Number(user.id))
-        : comparisonScope !== 'core' || CORE_STATS_USER_NAMES.includes(user.name)
+        : comparisonScope !== 'core' || CORE_STATS_USER_IDS.includes(Number(user.id))
     ));
   const buildRatingPairs = comparisonUsersList => comparisonUsersList.flatMap((otherUser, order) => {
     const differences = watchedMovies.flatMap(movie => {
@@ -332,9 +332,9 @@ app.get('/api/stats', (req, res) => {
     ));
   }
   if (scope === 'core') {
-    const usersByName = new Map(stmts.getUsers.all().map(user => [user.name, user]));
-    const coreUsers = CORE_STATS_USER_NAMES.map(name => usersByName.get(name)).filter(Boolean);
-    if (coreUsers.length !== CORE_STATS_USER_NAMES.length) {
+    const usersById = new Map(stmts.getUsers.all().map(user => [Number(user.id), user]));
+    const coreUsers = CORE_STATS_USER_IDS.map(id => usersById.get(id)).filter(Boolean);
+    if (coreUsers.length !== CORE_STATS_USER_IDS.length) {
       return res.status(503).json({ error: 'Не удалось собрать основной состав' });
     }
     return res.json(buildCoreStats(coreUsers));

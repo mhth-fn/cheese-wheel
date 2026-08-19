@@ -31,6 +31,7 @@ export default function App() {
   const wheel = useWheelState(session.isLoggedIn);
   const realtime = useRealtimeSocket({
     isLoggedIn: session.isLoggedIn,
+    retryUsers: session.retryUsers,
     setCurrentUser: session.setCurrentUser,
     settings,
     wheel,

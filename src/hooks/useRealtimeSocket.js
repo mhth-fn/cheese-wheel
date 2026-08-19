@@ -14,6 +14,7 @@ const MAX_PROCESSED_SPINS = 20;
 
 export function useRealtimeSocket({
   isLoggedIn,
+  retryUsers,
   setCurrentUser,
   settings,
   wheel,
@@ -147,6 +148,16 @@ export function useRealtimeSocket({
           : previous
       ));
     };
+    const onUserNameChanged = ({ user_id: userId, name }) => {
+      setCurrentUser(previous => (
+        previous && Number(previous.id) === Number(userId)
+          ? { ...previous, name }
+          : previous
+      ));
+    };
+    const onUsersChanged = () => {
+      retryUsers().catch(() => {});
+    };
     const onThemeChanged = data => setThemeState(data.theme);
     const onSettingsChanged = data => applySettings(data);
     const onWheelSpinning = data => {
@@ -181,6 +192,8 @@ export function useRealtimeSocket({
     socket.on('movie-updated', onMovieUpdated);
     socket.on('wheel-status-changed', onWheelStatusChanged);
     socket.on('user-role-changed', onUserRoleChanged);
+    socket.on('user-name-changed', onUserNameChanged);
+    socket.on('users-changed', onUsersChanged);
     socket.on('theme-changed', onThemeChanged);
     socket.on('settings-changed', onSettingsChanged);
     socket.on('wheel-spinning', onWheelSpinning);
@@ -204,6 +217,8 @@ export function useRealtimeSocket({
       socket.off('movie-updated', onMovieUpdated);
       socket.off('wheel-status-changed', onWheelStatusChanged);
       socket.off('user-role-changed', onUserRoleChanged);
+      socket.off('user-name-changed', onUserNameChanged);
+      socket.off('users-changed', onUsersChanged);
       socket.off('theme-changed', onThemeChanged);
       socket.off('settings-changed', onSettingsChanged);
       socket.off('wheel-spinning', onWheelSpinning);
@@ -224,6 +239,7 @@ export function useRealtimeSocket({
     setDecorationsEnabled,
     setNextWheelMovies,
     setOneOffState,
+    retryUsers,
     setRemoteOneOffSpin,
     setRemoteSpin,
     setSpinDuration,

@@ -31,6 +31,7 @@ const LEGACY_EXPECTED_TABLES = Object.freeze([
   'movie_reviews',
 ]);
 const SECURITY_TABLES = Object.freeze([
+  'user_invitations',
   'user_totp',
   'two_factor_recovery_codes',
   'login_challenges',

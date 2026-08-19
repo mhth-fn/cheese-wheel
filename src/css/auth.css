@@ -137,6 +137,41 @@
   margin-top: var(--space-6);
 }
 
+.auth-login-form {
+  margin-top: 0;
+}
+
+.auth-field {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--color-text);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-align: left;
+}
+
+.auth-field .auth-password-input {
+  text-align: left;
+}
+
+.auth-invite-error {
+  display: grid;
+  max-width: 360px;
+  gap: var(--space-3);
+  justify-items: center;
+}
+
+.auth-back-link {
+  min-height: var(--control-height);
+  padding: var(--space-3) var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-weight: 700;
+  text-decoration: none;
+}
+
 .auth-password-input {
   width: 100%;
   min-height: var(--control-height-large);

@@ -7,6 +7,7 @@ const Database = require('better-sqlite3');
 const { createAuditLog } = require('../lib/audit-log');
 const { createPersistentRateLimiter } = require('../lib/persistent-rate-limit');
 const { createStatements } = require('./database-statements');
+const { normalizeLoginIdentifier } = require('./user-identity');
 const {
   decryptTotpSecret,
   hashSessionToken,
@@ -46,6 +47,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT UNIQUE NOT NULL,
+    login_key TEXT UNIQUE,
     password_hash TEXT,
     role TEXT NOT NULL DEFAULT 'member' CHECK(role IN ('member', 'admin'))
   );
@@ -121,6 +123,26 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_login_challenges_expires
     ON login_challenges(expires);
+
+  CREATE TABLE IF NOT EXISTS user_invitations (
+    token_hash TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    login_key TEXT NOT NULL,
+    invited_by INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    accepted_at INTEGER,
+    accepted_user_id INTEGER,
+    FOREIGN KEY (invited_by) REFERENCES users(id),
+    FOREIGN KEY (accepted_user_id) REFERENCES users(id)
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_user_invitations_active_login
+    ON user_invitations(login_key)
+    WHERE accepted_at IS NULL;
+
+  CREATE INDEX IF NOT EXISTS idx_user_invitations_expires
+    ON user_invitations(expires_at);
 
   CREATE INDEX IF NOT EXISTS idx_recovery_codes_user_unused
     ON two_factor_recovery_codes(user_id, used_at);
@@ -526,6 +548,32 @@ try {
 }
 db.exec("UPDATE users SET role = 'member' WHERE role IS NULL OR role NOT IN ('member', 'admin')");
 
+// Логин храним отдельно от отображаемого имени. Это даёт
+// единую Unicode-нормализацию и уникальность без учёта регистра.
+try {
+  db.exec('ALTER TABLE users ADD COLUMN login_key TEXT');
+} catch (e) {
+  // колонка уже существует
+}
+const backfillUserLoginKeys = db.transaction(() => {
+  const users = db.prepare('SELECT id, name, login_key FROM users ORDER BY id').all();
+  const seen = new Map();
+  const update = db.prepare('UPDATE users SET login_key = ? WHERE id = ?');
+  users.forEach(user => {
+    const loginKey = normalizeLoginIdentifier(user.name);
+    const conflictingId = seen.get(loginKey);
+    if (!loginKey || conflictingId) {
+      throw new Error(
+        `[cheese-wheel] Нельзя создать уникальные логины для users.id=${user.id}`
+      );
+    }
+    seen.set(loginKey, user.id);
+    if (user.login_key !== loginKey) update.run(loginKey, user.id);
+  });
+});
+backfillUserLoginKeys();
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_login_key ON users(login_key)');
+
 // Старые cookies продолжают работать, но в БД вместо bearer-токенов
 // остаются только их SHA-256 отпечатки. Маркер и замена атомарны.
 const migrateSessionTokenHashes = db.transaction(() => {
@@ -738,9 +786,17 @@ const seedUsers = [
   { id: 6, name: 'Женя' },
   { id: 7, name: 'Юлий' },
 ];
-const CORE_STATS_USER_NAMES = Object.freeze(['Антон', 'Митя', 'Пётр', 'Сергей', 'Егор']);
-const insertUser = db.prepare('INSERT OR IGNORE INTO users (id, name, password_hash) VALUES (?, ?, ?)');
-seedUsers.forEach(u => insertUser.run(u.id, u.name, hashPassword(DEFAULT_PASSWORD)));
+const CORE_STATS_USER_IDS = Object.freeze([1, 4, 3, 2, 5]);
+const insertUser = db.prepare(`
+  INSERT OR IGNORE INTO users (id, name, login_key, password_hash)
+  VALUES (?, ?, ?, ?)
+`);
+seedUsers.forEach(u => insertUser.run(
+  u.id,
+  u.name,
+  normalizeLoginIdentifier(u.name),
+  hashPassword(DEFAULT_PASSWORD)
+));
 
 // Прежний ID используется только в атомарной одноразовой миграции. После неё
 // отсутствие администратора является ошибкой конфигурации, а не поводом снова
@@ -873,7 +929,7 @@ const {
 } = createStatements(db);
 
   return {
-    CORE_STATS_USER_NAMES,
+    CORE_STATS_USER_IDS,
     DUMMY_PASSWORD_HASH,
     auditLog,
     authSecurityStmts,

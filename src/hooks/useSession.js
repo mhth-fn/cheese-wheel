@@ -94,8 +94,10 @@ export function useSession({ onLogout, showToast }) {
       if (!Array.isArray(loadedUsers)) throw new Error('Некорректный список участников');
       setUsers(loadedUsers);
       setUsersLoadState('ready');
+      return loadedUsers;
     } catch {
       setUsersLoadState('error');
+      return null;
     }
   }, []);
 
@@ -154,6 +156,7 @@ export function useSession({ onLogout, showToast }) {
 
   const login = useCallback(async () => {
     try {
+      await retryUsers();
       const session = await refreshSession();
       if (!session?.user || session.isGuest) return false;
       setPage('wheel');
@@ -163,7 +166,7 @@ export function useSession({ onLogout, showToast }) {
       showToast('Вход выполнен, но сессию не удалось проверить', 'error');
       return false;
     }
-  }, [refreshSession, showToast]);
+  }, [refreshSession, retryUsers, showToast]);
 
   const loginGuest = useCallback(async () => {
     try {

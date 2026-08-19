@@ -9,11 +9,23 @@ export function fetchAuthSession() {
   return apiFetch('/api/auth/session');
 }
 
-export function postAuth(userId, password) {
+export function postAuth(login, password) {
   return fetch('/api/auth', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: userId, password }),
+    body: JSON.stringify({ login, password }),
+  });
+}
+
+export function fetchInvitation(token) {
+  return fetch(`/api/invitations/${encodeURIComponent(token)}`);
+}
+
+export function acceptInvitation(token, password) {
+  return fetch(`/api/invitations/${encodeURIComponent(token)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
   });
 }
 
@@ -38,6 +50,14 @@ export function changePassword(userId, oldPassword, newPassword) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+  });
+}
+
+export function changeUserName(userId, name) {
+  return apiFetch(`/api/users/${userId}/name`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
   });
 }
 
