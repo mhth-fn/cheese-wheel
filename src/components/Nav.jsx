@@ -26,11 +26,6 @@ const PRIMARY_PAGES = [
   },
   { key: 'games', label: 'Игры' },
   {
-    key: 'conquiztador',
-    label: 'ConQUIZtador',
-    shortLabel: 'Quiz',
-  },
-  {
     key: 'sigame',
     label: 'Паки SIGame',
     shortLabel: 'Паки',

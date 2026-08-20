@@ -422,9 +422,6 @@
   .nav-pages[data-page-count='6'] .nav-label-short {
     display: inline;
   }
-
-  .nav-pages[data-page-count='7'] .nav-label-full { display: none; }
-  .nav-pages[data-page-count='7'] .nav-label-short { display: inline; }
 }
 
 @media (min-width: 721px) and (max-width: 1120px) {
