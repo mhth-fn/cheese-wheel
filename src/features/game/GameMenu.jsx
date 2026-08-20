@@ -2,6 +2,7 @@ export default function GameMenu({
   baldaOnlineCount,
   mode,
   onBalda,
+  onConquiztador,
   onModeChange,
   onPlay,
 }) {
@@ -43,6 +44,17 @@ export default function GameMenu({
         </div>
         <button className="game-btn" type="button" onClick={onBalda}>
           Открыть игру
+        </button>
+      </div>
+      <div className="game-card game-card-conquiztador">
+        <div className="game-card-icon" aria-hidden="true">♜</div>
+        <div className="game-card-info">
+          <h3>ConQUIZtador</h3>
+          <p>Захватывай земли. Отвечай на вопросы. Уничтожай замки.</p>
+          <span className="game-card-tag">Одиночная партия · 2 бота</span>
+        </div>
+        <button className="game-btn" type="button" onClick={onConquiztador}>
+          Начать завоевание
         </button>
       </div>
     </div>

@@ -13,6 +13,7 @@ import WheelPage from '../components/WheelPage';
 import { useApp } from './AppContext';
 
 const GamesPage = lazy(() => import('../components/GamesPage'));
+const ConquiztadorGame = lazy(() => import('../features/game/ConquiztadorGame'));
 const SigamePacksPage = lazy(() => import('../components/SigamePacksPage'));
 const VpnPage = lazy(() => import('../components/VpnPage'));
 const WatchedPage = lazy(() => import('../components/WatchedPage'));
@@ -135,6 +136,13 @@ function PageContent() {
         <div id="games-page" className="page active">
           <Suspense fallback={<PageLoading />}>
             <GamesPage />
+          </Suspense>
+        </div>
+      )}
+      {page === 'conquiztador' && (
+        <div id="conquiztador-page" className="page active">
+          <Suspense fallback={<PageLoading />}>
+            <ConquiztadorGame />
           </Suspense>
         </div>
       )}

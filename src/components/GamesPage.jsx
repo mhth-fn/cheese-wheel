@@ -14,7 +14,7 @@ import GameScreen from '../features/game/GameScreen';
 import BaldaGame from '../features/game/BaldaGame';
 
 export default function GamesPage() {
-  const { socket } = useApp();
+  const { navigate, socket } = useApp();
   const [mode, setMode] = useState('topdown');
   const [playing, setPlaying] = useState(false);
   const [gameOver, setGameOver] = useState(false);
@@ -569,6 +569,7 @@ export default function GamesPage() {
         baldaOnlineCount={baldaOnlineCount}
         mode={mode}
         onBalda={() => setActiveGame('balda')}
+        onConquiztador={() => navigate('conquiztador')}
         onModeChange={setMode}
         onPlay={handlePlay}
       />

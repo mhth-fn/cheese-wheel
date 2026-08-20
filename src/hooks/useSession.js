@@ -16,6 +16,17 @@ function clearSessionHints() {
   localStorage.removeItem('cheeseWheelToken');
 }
 
+function pathForCurrentLocation(page) {
+  const path = pathForPage(page);
+  if (
+    page === 'conquiztador'
+    && new URLSearchParams(window.location.search).get('conquizDev') === '1'
+  ) {
+    return `${path}?conquizDev=1`;
+  }
+  return path;
+}
+
 export function normalizeServerSession(data, users) {
   if (!data || data.authenticated === false) return null;
   const isGuest = Boolean(data.isGuest ?? data.is_guest ?? data.guest);
@@ -135,8 +146,8 @@ export function useSession({ onLogout, showToast }) {
   }, [refreshSession, usersLoadState]);
 
   useEffect(() => {
-    if (!isLoggedIn) return;
-    history.replaceState({ page }, '', pathForPage(page));
+    if (!isLoggedIn || page === 'auth') return;
+    history.replaceState({ page }, '', pathForCurrentLocation(page));
   }, [isLoggedIn, page]);
 
   useEffect(() => {
@@ -159,7 +170,8 @@ export function useSession({ onLogout, showToast }) {
       await retryUsers();
       const session = await refreshSession();
       if (!session?.user || session.isGuest) return false;
-      setPage('wheel');
+      const requestedPage = pageFromLocation();
+      setPage(canVisitPage(requestedPage, session) ? requestedPage : 'wheel');
       return true;
     } catch (error) {
       console.error(error);
@@ -175,7 +187,8 @@ export function useSession({ onLogout, showToast }) {
       if (!response.ok) throw new Error(data.error || 'Не удалось войти в гостевой режим');
       const session = await refreshSession();
       if (!session?.isGuest) throw new Error('Не удалось проверить гостевую сессию');
-      setPage('wheel');
+      const requestedPage = pageFromLocation();
+      setPage(canVisitPage(requestedPage, session) ? requestedPage : 'wheel');
     } catch (error) {
       console.error(error);
       showToast(error.message || 'Не удалось войти в гостевой режим', 'error');

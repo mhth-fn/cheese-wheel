@@ -64,6 +64,49 @@ test('mobile navigation stays hidden while Balda is open', () => {
   );
 });
 
+test('ConQUIZtador has a direct route, game-menu entry and refresh-safe state', () => {
+  const routing = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'app', 'routing.js'),
+    'utf8'
+  );
+  const appView = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'app', 'AppView.jsx'),
+    'utf8'
+  );
+  const gameMenu = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'features', 'game', 'GameMenu.jsx'),
+    'utf8'
+  );
+  const conquiztador = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'features', 'game', 'ConquiztadorGame.jsx'),
+    'utf8'
+  );
+  const navCss = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'css', 'nav.css'),
+    'utf8'
+  );
+  const useSession = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'hooks', 'useSession.js'),
+    'utf8'
+  );
+
+  assert.match(routing, /conquiztador:\s*['"]\/conquiztador['"]/);
+  assert.match(routing, /\[['"]\/conquiztador['"],\s*['"]conquiztador['"]\]/);
+  assert.match(appView, /lazy\(\(\) => import\(['"]\.\.\/features\/game\/ConquiztadorGame['"]\)\)/);
+  assert.match(gameMenu, />ConQUIZtador</);
+  assert.match(gameMenu, /onConquiztador/);
+  assert.match(conquiztador, /cheese-wheel:conquiztador:active:v1/);
+  assert.match(conquiztador, /import ConquiztadorBoard from ['"]\.\/ConquiztadorBoard['"]/);
+  assert.match(conquiztador, /writeJson\(saveKey, game\)/);
+  assert.match(conquiztador, /function writeJson[\s\S]*localStorage\.setItem[\s\S]*catch/);
+  assert.match(conquiztador, /restoreGame\(saved\)/);
+  assert.match(conquiztador, /deadlineAt=\{game\.questionDeadlineAt\}/);
+  assert.match(conquiztador, /conquiztador-game-active/);
+  assert.match(useSession, /if \(!isLoggedIn \|\| page === ['"]auth['"]\) return/);
+  assert.doesNotMatch(conquiztador, /\b(?:alert|confirm|prompt)\s*\(/);
+  assert.match(navCss, /body\.conquiztador-game-active \.nav-pages\s*\{[^}]*display:\s*none;/s);
+});
+
 test('Balda exposes two rooms and direct board input with drag selection', () => {
   const baldaComponent = fs.readFileSync(
     path.join(__dirname, '..', 'src', 'features', 'game', 'BaldaGame.jsx'),

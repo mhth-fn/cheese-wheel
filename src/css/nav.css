@@ -422,6 +422,9 @@
   .nav-pages[data-page-count='6'] .nav-label-short {
     display: inline;
   }
+
+  .nav-pages[data-page-count='7'] .nav-label-full { display: none; }
+  .nav-pages[data-page-count='7'] .nav-label-short { display: inline; }
 }
 
 @media (min-width: 721px) and (max-width: 1120px) {
@@ -565,6 +568,11 @@
   }
 
   body.balda-game-active .app-container {
+    padding-bottom: max(var(--space-3), env(safe-area-inset-bottom));
+  }
+
+  body.conquiztador-game-active .nav-pages { display: none; }
+  body.conquiztador-game-active .app-container {
     padding-bottom: max(var(--space-3), env(safe-area-inset-bottom));
   }
 }

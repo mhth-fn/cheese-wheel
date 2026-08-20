@@ -1,4 +1,5 @@
 const PAGE_PATHS = {
+  conquiztador: '/conquiztador',
   games: '/games',
   'food-reviews': '/reviews/food',
   'movie-reviews': '/reviews',
@@ -11,6 +12,7 @@ const PAGE_PATHS = {
 };
 
 const PATH_PAGES = new Map([
+  ['/conquiztador', 'conquiztador'],
   ['/games', 'games'],
   ['/food-reviews', 'food-reviews'],
   ['/reviews/food', 'food-reviews'],
