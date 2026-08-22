@@ -19,6 +19,7 @@ const {
   registerHttpMiddleware,
 } = require('./server/http');
 const { registerAuthRoutes } = require('./server/routes/auth');
+const { registerAdminBackupRoutes } = require('./server/routes/admin-backup');
 const { registerVpnRoutes } = require('./server/routes/vpn');
 const { registerWheelRoutes } = require('./server/routes/wheels');
 const { registerStatsRoutes } = require('./server/routes/stats');
@@ -28,6 +29,7 @@ const { registerMusicReviewRoutes } = require('./server/routes/music-reviews');
 const { registerSigameRoutes } = require('./server/routes/sigame');
 const { registerFoodReviewRoutes } = require('./server/routes/food-reviews');
 const { registerSocketHandlers } = require('./server/socket-handlers');
+const { createPortableBackup } = require('./server/portable-backup');
 
 const testFrontendDistPath = (
   process.env.NODE_ENV === 'test'
@@ -267,7 +269,9 @@ const routeContext = {
   clearSessionCookie,
   completeTwoFactorLogin,
   consumeRateLimit,
+  createPortableBackup,
   createToken,
+  dataDir,
   db,
   disableTwoFactor,
   enablePendingTotp,
@@ -309,6 +313,7 @@ const routeContext = {
   requireAdmin,
   requireAuth,
   requireMember,
+  rootDir: __dirname,
   sanitizeSigameOriginalFileName,
   sanitizeTitle,
   schedulePendingSpin,
@@ -333,6 +338,7 @@ const routeContext = {
 };
 
 registerAuthRoutes(routeContext);
+registerAdminBackupRoutes(routeContext);
 registerVpnRoutes(routeContext);
 registerWheelRoutes(routeContext);
 registerStatsRoutes(routeContext);

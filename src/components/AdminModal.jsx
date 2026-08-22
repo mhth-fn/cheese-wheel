@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  downloadPortableBackup,
   fetchAdminAudit,
   fetchAdminUsers,
   postTheme,
@@ -64,6 +65,7 @@ const actionLabels = {
   'authorization.denied': 'Отказано в доступе',
   'backup.completed': 'Создана резервная копия',
   'backup.failed': 'Ошибка резервного копирования',
+  'backup.downloaded': 'Скачивание переносимого бэкапа',
 };
 
 function readResponse(response) {
@@ -134,6 +136,16 @@ function formatAuditDetails(entry) {
     .slice(0, 220);
 }
 
+function backupFileName(response) {
+  const disposition = response.headers.get('content-disposition') || '';
+  const utf8Match = /filename\*=UTF-8''([^;]+)/iu.exec(disposition);
+  const plainMatch = /filename="?([^";]+)"?/iu.exec(disposition);
+  const candidate = utf8Match?.[1] ? decodeURIComponent(utf8Match[1]) : plainMatch?.[1];
+  return candidate && /^[A-Za-z0-9_.-]+$/u.test(candidate)
+    ? candidate
+    : 'cheese-wheel-portable-backup.tar.gz';
+}
+
 export default function AdminModal({ theme, onClose }) {
   const {
     currentUser,
@@ -159,6 +171,8 @@ export default function AdminModal({ theme, onClose }) {
   const [auditEntries, setAuditEntries] = useState([]);
   const [auditState, setAuditState] = useState('loading');
   const [auditCursor, setAuditCursor] = useState(null);
+  const [backupPassword, setBackupPassword] = useState('');
+  const [backupBusy, setBackupBusy] = useState(false);
 
   const loadUsers = useCallback(async () => {
     setUsersState('loading');
@@ -265,6 +279,35 @@ export default function AdminModal({ theme, onClose }) {
     }
   };
 
+  const handlePortableBackup = async event => {
+    event.preventDefault();
+    if (!backupPassword || backupBusy) return;
+    setBackupBusy(true);
+    try {
+      const response = await downloadPortableBackup(backupPassword);
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Сервер отклонил запрос');
+      }
+      const blob = await response.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = backupFileName(response);
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 30_000);
+      setBackupPassword('');
+      showToast('Переносимый бэкап скачан', 'success');
+      loadAudit();
+    } catch (error) {
+      showToast(error.message || 'Не удалось скачать бэкап', 'error');
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
   return (
     <div className="admin-modal active" onMouseDown={event => event.target === event.currentTarget && onClose()}>
       <section ref={dialogRef} className="admin-modal-content" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title" tabIndex={-1}>
@@ -276,6 +319,7 @@ export default function AdminModal({ theme, onClose }) {
             ['settings', 'Оформление'],
             ['users', 'Роли'],
             ['audit', 'Журнал'],
+            ['backup', 'Бэкап'],
           ].map(([key, label]) => (
             <button
               key={key}
@@ -430,6 +474,47 @@ export default function AdminModal({ theme, onClose }) {
                 {auditState === 'loading-more' ? 'Загружаем…' : 'Показать ещё'}
               </button>
             )}
+          </div>
+        )}
+
+        {activeTab === 'backup' && (
+          <div className="admin-backup" role="tabpanel">
+            <div className="admin-backup-card">
+              <span className="admin-backup-icon" aria-hidden="true">📦</span>
+              <div>
+                <h3>Переносимая копия сайта</h3>
+                <p>
+                  В архив войдут код сайта, база данных, загруженные изображения,
+                  пакеты SIGame и инструкции запуска на macOS, Linux и Windows.
+                </p>
+              </div>
+            </div>
+            <div className="admin-backup-warning">
+              Архив содержит пользовательские данные, хэши паролей и VPN-конфигурации.
+              Храни его в закрытом месте. Активные сессии, 2FA-секреты и серверный
+              <code>.env</code> в копию не входят.
+            </div>
+            <form className="admin-backup-form" onSubmit={handlePortableBackup}>
+              <label htmlFor="admin-backup-password">Текущий пароль администратора</label>
+              <input
+                id="admin-backup-password"
+                type="password"
+                value={backupPassword}
+                onChange={event => setBackupPassword(event.target.value)}
+                autoComplete="current-password"
+                maxLength={200}
+                disabled={backupBusy}
+                required
+              />
+              <button
+                className="button-primary admin-backup-download"
+                type="submit"
+                disabled={backupBusy || !backupPassword}
+              >
+                {backupBusy ? 'Собираем и проверяем архив…' : 'Скачать переносимый бэкап'}
+              </button>
+              <small>Создание архива может занять несколько минут.</small>
+            </form>
           </div>
         )}
       </section>

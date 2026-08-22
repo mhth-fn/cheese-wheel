@@ -27,3 +27,11 @@ export function fetchAdminAudit({ cursor, limit = 30 } = {}) {
   }
   return apiFetch(`/api/admin/audit?${params.toString()}`);
 }
+
+export function downloadPortableBackup(password) {
+  return apiFetch('/api/admin/portable-backup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+}
