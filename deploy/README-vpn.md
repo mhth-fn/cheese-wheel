@@ -12,7 +12,7 @@ The VPN page receives its server list and supported protocols from
 ## Bern Cloudzy
 
 Installed on 2026-09-05 with 3x-ui v3.7.0 and Xray v26.7.28. Inbound 1 uses VLESS
-over TCP, Reality, Vision and port 443. Its Reality target/SNI is `www.cloudflare.com`.
+over TCP, Reality, Vision and port 443. Its Reality target/SNI is `www.google.com`.
 Reality keys and the short ID are unique to this server.
 
 The complete create/connect/delete flow was verified with an Xray v26.7.28 client.
