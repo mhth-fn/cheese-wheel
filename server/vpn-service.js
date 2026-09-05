@@ -43,6 +43,18 @@ const VPN_SERVERS = [
     tlsFingerprint: process.env.XUI_SECONDARY_TLS_FINGERPRINT,
     awgHelper: process.env.AWG_SECONDARY_HELPER,
   },
+  {
+    id: 'bern',
+    label: 'Берн Cloudzy',
+    address: '45.59.122.129',
+    baseUrl: process.env.XUI_BERN_URL,
+    username: process.env.XUI_BERN_USERNAME,
+    password: process.env.XUI_BERN_PASSWORD,
+    apiToken: process.env.XUI_BERN_API_TOKEN,
+    apiVersion: 3,
+    inboundId: Number.parseInt(process.env.XUI_BERN_INBOUND_ID || '1', 10),
+    tlsFingerprint: process.env.XUI_BERN_TLS_FINGERPRINT,
+  },
 ];
 const xuiSessions = new Map();
 const vpnMutations = new Set();
@@ -54,8 +66,7 @@ function getVpnServer(serverId) {
 function isVpnServerConfigured(server) {
   return Boolean(
     server?.baseUrl &&
-    server.username &&
-    server.password &&
+    (server.apiToken || (server.username && server.password)) &&
     server.tlsFingerprint &&
     Number.isInteger(server.inboundId)
   );
@@ -219,12 +230,13 @@ async function requestXui(serverConfig, pathname, options = {}) {
   }
   const body = options.body || '';
   const socket = await openPinnedTlsSocket(serverConfig, url);
+  const agent = new https.Agent({ keepAlive: false });
+  agent.createConnection = () => socket;
 
   return new Promise((resolve, reject) => {
     const req = https.request(url, {
       method: options.method || 'GET',
-      agent: false,
-      createConnection: () => socket,
+      agent,
       rejectUnauthorized: false,
       headers: {
         Accept: 'application/json',
@@ -253,6 +265,7 @@ async function requestXui(serverConfig, pathname, options = {}) {
 
     req.on('timeout', () => req.destroy(new Error('x-ui request timed out')));
     req.on('error', reject);
+    req.once('close', () => agent.destroy());
     if (body) req.write(body);
     req.end();
   });
@@ -281,19 +294,24 @@ async function loginXui(serverConfig) {
 }
 
 async function callXuiApi(serverConfig, pathname, options = {}, retry = true) {
-  let cookie = xuiSessions.get(serverConfig.id);
-  if (!cookie) cookie = await loginXui(serverConfig);
+  let cookie;
+  if (!serverConfig.apiToken) {
+    cookie = xuiSessions.get(serverConfig.id);
+    if (!cookie) cookie = await loginXui(serverConfig);
+  }
 
   const response = await requestXui(serverConfig, pathname, {
     ...options,
     headers: {
       ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      Cookie: cookie,
+      ...(serverConfig.apiToken
+        ? { Authorization: `Bearer ${serverConfig.apiToken}` }
+        : { Cookie: cookie }),
       ...options.headers,
     },
   });
 
-  if (response.status === 401 && retry) {
+  if (response.status === 401 && retry && !serverConfig.apiToken) {
     xuiSessions.delete(serverConfig.id);
     return callXuiApi(serverConfig, pathname, options, false);
   }
@@ -308,6 +326,32 @@ async function callXuiApi(serverConfig, pathname, options = {}, retry = true) {
     throw new Error(`x-ui API request failed for ${serverConfig.id}`);
   }
   return payload.obj ?? payload;
+}
+
+function createVlessClient(serverConfig, client) {
+  if (serverConfig.apiVersion === 3) {
+    return callXuiApi(serverConfig, 'panel/api/clients/add', {
+      method: 'POST',
+      body: JSON.stringify({
+        client: { ...client, tgId: Number(client.tgId) || 0 },
+        inboundIds: [serverConfig.inboundId],
+      }),
+    });
+  }
+  return callXuiApi(serverConfig, 'panel/api/inbounds/addClient', {
+    method: 'POST',
+    body: JSON.stringify({
+      id: serverConfig.inboundId,
+      settings: JSON.stringify({ clients: [client] }),
+    }),
+  });
+}
+
+function deleteVlessClient(serverConfig, inboundId, clientId, email) {
+  const pathname = serverConfig.apiVersion === 3
+    ? `panel/api/clients/del/${encodeURIComponent(email)}`
+    : `panel/api/inbounds/${inboundId}/delClient/${encodeURIComponent(clientId)}`;
+  return callXuiApi(serverConfig, pathname, { method: 'POST', body: '{}' });
 }
 
 const VLESS_SHARE_PARAM_ORDER = [
@@ -534,10 +578,12 @@ async function checkVpnServer(serverConfig) {
     VPN_SERVERS,
     buildVlessLink,
     createAwgClient,
+    createVlessClient,
     callXuiApi,
     canonicalizeVlessLink,
     checkVpnServer,
     deleteAwgClient,
+    deleteVlessClient,
     getVpnServer,
     getVpnServerProtocols,
     isAwgServerConfigured,

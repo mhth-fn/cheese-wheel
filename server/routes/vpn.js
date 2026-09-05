@@ -14,7 +14,9 @@ function registerVpnRoutes(context) {
     checkVpnServer,
     consumeRateLimit,
     createAwgClient,
+    createVlessClient,
     deleteAwgClient,
+    deleteVlessClient,
     getVpnServer,
     getVpnServerProtocols,
     isVpnProtocolConfigured,
@@ -132,13 +134,7 @@ app.post('/api/vpn/clients', requireMember, async (req, res) => {
 
   try {
     if (protocol === VPN_PROTOCOLS.VLESS) {
-      await callXuiApi(serverConfig, 'panel/api/inbounds/addClient', {
-        method: 'POST',
-        body: JSON.stringify({
-          id: serverConfig.inboundId,
-          settings: JSON.stringify({ clients: [client] }),
-        }),
-      });
+      await createVlessClient(serverConfig, client);
       vlessClientCreated = true;
       const inbound = await callXuiApi(
         serverConfig,
@@ -185,10 +181,11 @@ app.post('/api/vpn/clients', requireMember, async (req, res) => {
     if (provisionedClient || vlessClientCreated) {
       try {
         if (protocol === VPN_PROTOCOLS.VLESS) {
-          await callXuiApi(
+          await deleteVlessClient(
             serverConfig,
-            `panel/api/inbounds/${serverConfig.inboundId}/delClient/${client.id}`,
-            { method: 'POST', body: '{}' }
+            serverConfig.inboundId,
+            client.id,
+            client.email
           );
         } else {
           await deleteAwgClient(serverConfig, provisionedClient.clientId);
@@ -229,10 +226,11 @@ app.delete('/api/vpn/clients/:id', requireMember, async (req, res) => {
 
   try {
     if (protocol === VPN_PROTOCOLS.VLESS) {
-      await callXuiApi(
+      await deleteVlessClient(
         serverConfig,
-        `panel/api/inbounds/${storedClient.inbound_id}/delClient/${storedClient.client_id}`,
-        { method: 'POST', body: '{}' }
+        storedClient.inbound_id,
+        storedClient.client_id,
+        storedClient.email
       );
     } else {
       await deleteAwgClient(serverConfig, storedClient.client_id);
