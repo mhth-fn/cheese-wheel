@@ -15,9 +15,14 @@ Installed on 2026-09-05 with 3x-ui v3.7.0 and Xray v26.7.28. Inbound 1 uses VLES
 over TCP, Reality, Vision and port 443. Its Reality target/SNI is `www.google.com`.
 Reality keys and the short ID are unique to this server.
 
-The complete create/connect/delete flow was verified with an Xray v26.7.28 client.
-The older v26.1.18 test client failed the Reality handshake; do not assume older
-VPN app builds are compatible. The final deployment retains the current core.
+Reality must explicitly set `minClientVer: "0.0.0"` on the server. Leaving it
+empty lets the current Xray configuration builder impose a version floor that
+rejects sing-box (including Throne/Hiddify) and older Xray clients. This setting
+keeps the current server core and authenticated Reality encryption; it only
+removes the client version restriction. Preserve it when editing the inbound.
+
+The complete create/connect/delete flow was verified with Xray v26.7.28,
+Xray v26.1.18 and sing-box v1.13.16 clients after applying the compatibility setting.
 
 The site's root-owned `/opt/cheese-wheel/.env` needs these values:
 
